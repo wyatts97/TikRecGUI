@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Loader2 } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
