@@ -71,7 +71,11 @@ def list_recordings(
     query = db.query(Recording).join(User)
     
     if status_filter:
-        query = query.filter(Recording.status == status_filter)
+        if "," in status_filter:
+            statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
+            query = query.filter(Recording.status.in_(statuses))
+        else:
+            query = query.filter(Recording.status == status_filter)
     if user_id:
         query = query.filter(Recording.user_id == user_id)
     

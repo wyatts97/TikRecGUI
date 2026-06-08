@@ -10,8 +10,8 @@ export default function Watch() {
   const navigate = useNavigate()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['recordings', 'completed'],
-    queryFn: () => api.recordings.list(1, 100, 'completed'),
+    queryKey: ['recordings', 'watchable'],
+    queryFn: () => api.recordings.list(1, 100, 'completed,stopped'),
   })
 
   const recordings = data?.recordings || []
