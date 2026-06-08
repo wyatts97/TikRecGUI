@@ -166,16 +166,19 @@ def get_user_avatar(user_id: int, refresh: bool = False, db: Session = Depends(g
             detail="User not found"
         )
     
-    avatar_path = user_info_service.fetch_and_cache_avatar(user.username, force=refresh)
-    
-    if avatar_path and Path(avatar_path).exists():
+    avatar_path = user_info_service.AVATARS_DIR / f"{user.username}.jpg"
+
+    if refresh:
+        fetched = user_info_service.fetch_and_cache_avatar(user.username, force=True)
+        if fetched:
+            avatar_path = Path(fetched)
+
+    if avatar_path.exists():
         return FileResponse(
-            path=avatar_path,
+            path=str(avatar_path),
             media_type="image/jpeg",
             content_disposition_type="inline",
         )
-    
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Avatar not available"
-    )
+
+    from fastapi.responses import Response as _Response
+    return _Response(status_code=204)

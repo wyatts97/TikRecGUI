@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Globe } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -489,6 +489,101 @@ export default function SettingsPage() {
                 </div>
               </>
             )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" />
+              Display Timezone
+            </CardTitle>
+            <CardDescription>
+              All timestamps shown in the app will use this timezone
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2">
+              <Label htmlFor="timezone">Timezone</Label>
+              <select
+                id="timezone"
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={formData.timezone || 'UTC'}
+                onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+              >
+                <optgroup label="UTC">
+                  <option value="UTC">UTC</option>
+                </optgroup>
+                <optgroup label="Americas">
+                  <option value="America/New_York">Eastern Time — New York (ET)</option>
+                  <option value="America/Chicago">Central Time — Chicago (CT)</option>
+                  <option value="America/Denver">Mountain Time — Denver (MT)</option>
+                  <option value="America/Phoenix">Mountain Time — Phoenix (no DST)</option>
+                  <option value="America/Los_Angeles">Pacific Time — Los Angeles (PT)</option>
+                  <option value="America/Anchorage">Alaska Time — Anchorage</option>
+                  <option value="Pacific/Honolulu">Hawaii Time — Honolulu</option>
+                  <option value="America/Toronto">Eastern Time — Toronto</option>
+                  <option value="America/Vancouver">Pacific Time — Vancouver</option>
+                  <option value="America/Sao_Paulo">Brasília Time — São Paulo</option>
+                  <option value="America/Argentina/Buenos_Aires">Argentina — Buenos Aires</option>
+                  <option value="America/Mexico_City">Central Time — Mexico City</option>
+                </optgroup>
+                <optgroup label="Europe">
+                  <option value="Europe/London">GMT/BST — London</option>
+                  <option value="Europe/Paris">CET/CEST — Paris</option>
+                  <option value="Europe/Berlin">CET/CEST — Berlin</option>
+                  <option value="Europe/Madrid">CET/CEST — Madrid</option>
+                  <option value="Europe/Rome">CET/CEST — Rome</option>
+                  <option value="Europe/Amsterdam">CET/CEST — Amsterdam</option>
+                  <option value="Europe/Brussels">CET/CEST — Brussels</option>
+                  <option value="Europe/Vienna">CET/CEST — Vienna</option>
+                  <option value="Europe/Warsaw">CET/CEST — Warsaw</option>
+                  <option value="Europe/Stockholm">CET/CEST — Stockholm</option>
+                  <option value="Europe/Helsinki">EET/EEST — Helsinki</option>
+                  <option value="Europe/Athens">EET/EEST — Athens</option>
+                  <option value="Europe/Bucharest">EET/EEST — Bucharest</option>
+                  <option value="Europe/Kiev">EET/EEST — Kyiv</option>
+                  <option value="Europe/Moscow">MSK — Moscow</option>
+                  <option value="Europe/Istanbul">TRT — Istanbul</option>
+                </optgroup>
+                <optgroup label="Asia &amp; Pacific">
+                  <option value="Asia/Dubai">GST — Dubai</option>
+                  <option value="Asia/Kolkata">IST — India</option>
+                  <option value="Asia/Dhaka">BST — Dhaka</option>
+                  <option value="Asia/Bangkok">ICT — Bangkok</option>
+                  <option value="Asia/Singapore">SGT — Singapore</option>
+                  <option value="Asia/Shanghai">CST — China</option>
+                  <option value="Asia/Tokyo">JST — Japan</option>
+                  <option value="Asia/Seoul">KST — Seoul</option>
+                  <option value="Asia/Jakarta">WIB — Jakarta</option>
+                  <option value="Asia/Karachi">PKT — Karachi</option>
+                  <option value="Asia/Riyadh">AST — Riyadh</option>
+                  <option value="Australia/Sydney">AEDT/AEST — Sydney</option>
+                  <option value="Australia/Melbourne">AEDT/AEST — Melbourne</option>
+                  <option value="Australia/Perth">AWST — Perth</option>
+                  <option value="Pacific/Auckland">NZDT/NZST — Auckland</option>
+                </optgroup>
+                <optgroup label="Africa">
+                  <option value="Africa/Cairo">EET — Cairo</option>
+                  <option value="Africa/Johannesburg">SAST — Johannesburg</option>
+                  <option value="Africa/Lagos">WAT — Lagos</option>
+                  <option value="Africa/Nairobi">EAT — Nairobi</option>
+                </optgroup>
+              </select>
+            </div>
+            <div className="p-3 rounded-lg bg-gray-50 text-sm">
+              <span className="text-muted-foreground">Current time in selected zone: </span>
+              <span className="font-medium tabular-nums">
+                {new Date().toLocaleString('en-US', {
+                  timeZone: formData.timezone || 'UTC',
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                })}
+              </span>
+            </div>
           </CardContent>
         </Card>
       </div>

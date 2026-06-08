@@ -9,9 +9,11 @@ import { ArrowLeft, Download, Loader2, FileText, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
-import { formatBytes, formatDuration, formatDate } from '@/lib/utils'
+import { formatBytes, formatDuration } from '@/lib/utils'
+import { useDateFormat } from '@/lib/timezone-context'
 
 export default function WatchPlayer() {
+  const fmt = useDateFormat()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const recordingId = Number(id)
@@ -101,7 +103,7 @@ export default function WatchPlayer() {
         <div className="p-4 rounded-xl bg-white border border-kraken-border">
           <p className="text-xs text-muted-foreground uppercase tracking-wider">Recorded</p>
           <p className="mt-1 font-medium text-kraken-black">
-            {formatDate(recording.ended_at || recording.created_at)}
+            {fmt(recording.ended_at || recording.created_at)}
           </p>
         </div>
         <div className="p-4 rounded-xl bg-white border border-kraken-border">

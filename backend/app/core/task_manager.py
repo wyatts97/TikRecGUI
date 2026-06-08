@@ -71,20 +71,23 @@ def _generate_thumbnail(video_path: Path) -> Path | None:
     thumb_path = video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
     thumb_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        subprocess.run(
+        result = subprocess.run(
             [
-                "ffmpeg", "-y", "-ss", "00:00:01", "-vframes", "1",
-                "-i", str(video_path), "-vf", "scale=480:-1",
+                "ffmpeg", "-y",
+                "-ss", "00:00:01",
+                "-i", str(video_path),
+                "-vframes", "1",
+                "-vf", "scale=480:-2",
                 str(thumb_path),
             ],
             capture_output=True,
             check=True,
             timeout=30,
         )
-        if thumb_path.exists():
+        if thumb_path.exists() and thumb_path.stat().st_size > 0:
             return thumb_path
-    except Exception:
-        logger.warning(f"Thumbnail generation failed for {video_path}")
+    except Exception as exc:
+        logger.warning(f"Thumbnail generation failed for {video_path}: {exc}")
     return None
 
 

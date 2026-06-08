@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -32,10 +32,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { api, type User } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { useDateFormat } from '@/lib/timezone-context'
 import { useToast } from '@/components/ui/use-toast'
 
 export default function Watchlist() {
+  const fmt = useDateFormat()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [isMonitoring, setIsMonitoring] = useState(false)
@@ -215,18 +216,20 @@ export default function Watchlist() {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
-                          <img
-                            src={api.users.getAvatarUrl(user.id)}
-                            alt={user.username}
-                            className="h-full w-full object-cover"
-                            onError={(e) => {
-                              const img = e.target as HTMLImageElement
-                              img.style.display = 'none'
-                              const fallback = img.nextElementSibling as HTMLElement
-                              if (fallback) fallback.style.display = 'flex'
-                            }}
-                          />
-                          <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
+                          {user.profile_pic_url ? (
+                            <img
+                              src={api.users.getAvatarUrl(user.id)}
+                              alt={user.username}
+                              className="h-full w-full object-cover"
+                              onError={(e) => {
+                                const img = e.target as HTMLImageElement
+                                img.style.display = 'none'
+                                const fallback = img.nextElementSibling as HTMLElement
+                                if (fallback) fallback.style.display = 'flex'
+                              }}
+                            />
+                          ) : null}
+                          <span className={`text-sm font-medium text-primary ${user.profile_pic_url ? 'hidden' : 'flex'} items-center justify-center h-full w-full`}>
                             {user.username[0].toUpperCase()}
                           </span>
                         </div>
@@ -278,7 +281,7 @@ export default function Watchlist() {
                       </Button>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
-                      {formatDate(user.last_checked)}
+                      {fmt(user.last_checked)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">

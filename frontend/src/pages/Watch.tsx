@@ -4,9 +4,11 @@ import { Play, Download, Tv, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
-import { formatBytes, formatDuration, formatDate } from '@/lib/utils'
+import { formatBytes, formatDuration } from '@/lib/utils'
+import { useDateFormat } from '@/lib/timezone-context'
 
 export default function Watch() {
+  const fmt = useDateFormat()
   const navigate = useNavigate()
 
   const { data, isLoading } = useQuery({
@@ -105,7 +107,7 @@ export default function Watch() {
                         @{recording.username}
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatDate(recording.ended_at || recording.created_at)}
+                        {fmt(recording.ended_at || recording.created_at)}
                       </p>
                     </div>
                   </div>

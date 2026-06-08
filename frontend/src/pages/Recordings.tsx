@@ -36,7 +36,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { api, type Recording } from '@/lib/api'
-import { formatBytes, formatDuration, formatDate } from '@/lib/utils'
+import { formatBytes, formatDuration } from '@/lib/utils'
+import { useDateFormat } from '@/lib/timezone-context'
 import { useToast } from '@/components/ui/use-toast'
 
 const statusVariantMap: Record<string, 'default' | 'recording' | 'completed' | 'failed' | 'stopped' | 'pending'> = {
@@ -48,6 +49,7 @@ const statusVariantMap: Record<string, 'default' | 'recording' | 'completed' | '
 }
 
 export default function Recordings() {
+  const fmt = useDateFormat()
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
   const [sortBy, setSortBy] = useState('date')
@@ -441,7 +443,7 @@ export default function Recordings() {
                       <TableCell>{formatDuration(recording.duration_seconds)}</TableCell>
                       <TableCell>{formatBytes(recording.file_size)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {formatDate(recording.started_at || recording.created_at)}
+                        {fmt(recording.started_at || recording.created_at)}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">

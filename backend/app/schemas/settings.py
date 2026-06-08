@@ -26,6 +26,7 @@ class SettingsResponse(BaseModel):
     default_bitrate: str | None = None
     automatic_interval: int = 5
     auto_cleanup: AutoCleanupConfig = AutoCleanupConfig()
+    timezone: str = "UTC"
 
 
 class SettingsUpdate(BaseModel):
@@ -35,3 +36,4 @@ class SettingsUpdate(BaseModel):
     default_bitrate: str | None = None
     automatic_interval: int | None = None
     auto_cleanup: AutoCleanupConfig | None = None
+    timezone: str | None = None

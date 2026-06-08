@@ -8,10 +8,12 @@ import Watch from './pages/Watch'
 import WatchPlayer from './pages/WatchPlayer'
 import Settings from './pages/Settings'
 import { Toaster } from './components/ui/toaster'
+import { TimezoneProvider } from './lib/timezone-context'
 
 function App() {
   return (
     <ThemeProvider>
+      <TimezoneProvider>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
@@ -22,6 +24,7 @@ function App() {
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
+      </TimezoneProvider>
       <Toaster />
     </ThemeProvider>
   )

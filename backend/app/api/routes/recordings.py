@@ -1,9 +1,12 @@
 import os
 import json
 import time
+import logging
 import subprocess
+import threading
 import zipfile
 import tempfile
+
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -25,6 +28,8 @@ from app.core.task_manager import task_manager
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
 
+logger = logging.getLogger("tikrec.recordings")
+
 
 def _thumbnail_path(video_path: Path) -> Path:
     return video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
@@ -40,13 +45,13 @@ def _generate_thumbnail(video_path: Path, thumb_path: Path) -> bool:
     
     for seek_time in seek_positions:
         try:
-            result = subprocess.run(
+            subprocess.run(
                 [
                     "ffmpeg", "-y",
-                    "-i", str(video_path),
                     "-ss", seek_time,
+                    "-i", str(video_path),
                     "-vframes", "1",
-                    "-vf", "scale=480:-1",
+                    "-vf", "scale=480:-2",
                     str(thumb_path),
                 ],
                 capture_output=True,
@@ -54,18 +59,36 @@ def _generate_thumbnail(video_path: Path, thumb_path: Path) -> bool:
             )
             if thumb_path.exists() and thumb_path.stat().st_size > 0:
                 return True
-        except Exception:
+        except Exception as exc:
+            logger.warning(f"Thumbnail seek={seek_time} failed for {video_path}: {exc}")
             continue
-    
+
     return False
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
 
+_thumb_retry_in_progress: set[int] = set()
+
+
 def _is_thumbnail_ready(recording: Recording) -> bool:
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
     thumb_path = _thumbnail_path(video_path)
-    return thumb_path.exists() and thumb_path.stat().st_size > 0
+    if thumb_path.exists() and thumb_path.stat().st_size > 0:
+        return True
+    # Kick off a background retry for completed recordings that lost their thumbnail
+    if (
+        recording.status in ("completed", "stopped")
+        and video_path.exists()
+        and recording.id not in _thumb_retry_in_progress
+    ):
+        _thumb_retry_in_progress.add(recording.id)
+        threading.Thread(
+            target=_generate_thumbnail,
+            args=(video_path, thumb_path),
+            daemon=True,
+        ).start()
+    return False
 
 
 def _build_response(rec: Recording) -> RecordingResponse:
@@ -363,7 +386,7 @@ def download_recording(recording_id: int, db: Session = Depends(get_db)):
     )
 
 
-@router.get("/{recording_id}/stream")
+@router.api_route("/{recording_id}/stream", methods=["GET", "HEAD"])
 def stream_recording(recording_id: int, db: Session = Depends(get_db)):
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:

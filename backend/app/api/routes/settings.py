@@ -65,7 +65,8 @@ def get_settings():
         output_dir=str(settings.RECORDINGS_DIR),
         default_bitrate=settings_store.get("default_bitrate", settings.DEFAULT_BITRATE),
         automatic_interval=settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL),
-        auto_cleanup=AutoCleanupConfig(**auto_cleanup_data)
+        auto_cleanup=AutoCleanupConfig(**auto_cleanup_data),
+        timezone=settings_store.get("timezone", "UTC")
     )
 
 
@@ -106,6 +107,9 @@ def update_settings(update: SettingsUpdate):
             "days": update.auto_cleanup.days,
             "action": update.auto_cleanup.action
         })
+
+    if update.timezone is not None:
+        settings_store.set("timezone", update.timezone.strip() or "UTC")
 
     return get_settings()
 

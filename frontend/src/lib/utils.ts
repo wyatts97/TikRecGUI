@@ -24,10 +24,11 @@ export function formatDuration(seconds: number | null | undefined): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`
 }
 
-export function formatDate(date: string | Date | null | undefined): string {
+export function formatDate(date: string | Date | null | undefined, timeZone = "UTC"): string {
   if (!date) return "--"
   const d = new Date(date)
   return d.toLocaleDateString("en-US", {
+    timeZone,
     month: "short",
     day: "numeric",
     year: "numeric",

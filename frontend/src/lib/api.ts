@@ -30,6 +30,7 @@ export interface User {
   display_name: string | null
   bio: string | null
   follower_count: number | null
+  profile_pic_url: string | null
   room_id: string | null
   is_monitoring: boolean
   is_live: boolean
@@ -92,6 +93,7 @@ export interface Settings {
   default_bitrate: string | null
   automatic_interval: number
   auto_cleanup: AutoCleanupConfig
+  timezone: string
 }
 
 export interface HealthStatus {
