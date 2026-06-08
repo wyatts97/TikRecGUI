@@ -18,7 +18,6 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN uv pip install --system --no-cache -r requirements.txt
 
-COPY tiktok-live-recorder/ ./tiktok-live-recorder/
 COPY app/ ./app/
 
 # ---- Stage 2: Runtime ----
@@ -30,6 +29,7 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ffmpeg \
+    curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
