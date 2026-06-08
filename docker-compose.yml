@@ -1,0 +1,42 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tikrec-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./recordings:/app/recordings
+      - ./data:/app/data
+      - ./tiktok-live-recorder:/app/tiktok-live-recorder:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DATABASE_URL=sqlite:///./data/tikrec.db
+      - RECORDINGS_DIR=/app/recordings
+      - DATA_DIR=/app/data
+      - TIKTOK_RECORDER_PATH=/app/tiktok-live-recorder/src
+      - COOKIES_FILE=/app/data/cookies.json
+      - TELEGRAM_CONFIG_FILE=/app/data/telegram.json
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tikrec-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  recordings:
+  data:
