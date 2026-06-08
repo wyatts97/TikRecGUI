@@ -19,6 +19,7 @@ class RecordingResponse(BaseModel):
     id: int
     user_id: int
     username: str
+    profile_pic_url: str | None = None
     filename: str
     status: str
     mode: str
@@ -28,7 +29,7 @@ class RecordingResponse(BaseModel):
     file_size: int | None = None
     error_message: str | None = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -43,6 +44,7 @@ class RecordingListResponse(BaseModel):
 class ActiveRecordingResponse(BaseModel):
     id: int
     username: str
+    profile_pic_url: str | None = None
     status: str
     started_at: datetime | None = None
     duration_seconds: int | None = None

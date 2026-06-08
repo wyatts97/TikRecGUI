@@ -64,13 +64,29 @@ export default function Watch() {
 
               <div className="p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium text-kraken-black truncate">
-                      @{recording.username}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {formatDate(recording.ended_at || recording.created_at)}
-                    </p>
+                  <div className="flex items-center gap-2 min-w-0">
+                    {recording.profile_pic_url ? (
+                      <img
+                        src={recording.profile_pic_url}
+                        alt={recording.username}
+                        className="h-7 w-7 rounded-full object-cover shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : (
+                      <div className="h-7 w-7 rounded-full bg-primary-subtle flex items-center justify-center shrink-0">
+                        <span className="text-xs font-medium text-primary">
+                          {recording.username[0].toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-kraken-black truncate">
+                        @{recording.username}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {formatDate(recording.ended_at || recording.created_at)}
+                      </p>
+                    </div>
                   </div>
                   <Button
                     variant="ghost"

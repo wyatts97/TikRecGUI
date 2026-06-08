@@ -14,6 +14,7 @@ class User(Base):
     is_monitoring = Column(Boolean, default=False)
     is_live = Column(Boolean, default=False)
     last_checked = Column(DateTime, nullable=True)
+    profile_pic_url = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

@@ -41,16 +41,19 @@ class RecorderService:
             room_id = api.get_room_id_from_user(username)
             if room_id:
                 is_live = api.is_room_alive(room_id)
+                avatar_url = api.get_avatar_url(room_id)
                 return {
                     "username": username,
                     "is_live": is_live,
                     "room_id": room_id,
+                    "avatar_url": avatar_url,
                     "error": None
                 }
             return {
                 "username": username,
                 "is_live": False,
                 "room_id": None,
+                "avatar_url": None,
                 "error": None
             }
         except Exception as e:
@@ -58,6 +61,7 @@ class RecorderService:
                 "username": username,
                 "is_live": False,
                 "room_id": None,
+                "avatar_url": None,
                 "error": str(e)
             }
     

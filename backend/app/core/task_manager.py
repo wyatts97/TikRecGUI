@@ -335,6 +335,7 @@ class MonitorService:
                 status_info = recorder_service.check_user_live(user.username)
                 user.is_live = status_info.get("is_live", False)
                 user.room_id = status_info.get("room_id")
+                user.profile_pic_url = status_info.get("avatar_url")
                 user.last_checked = datetime.utcnow()
                 db.commit()
 
