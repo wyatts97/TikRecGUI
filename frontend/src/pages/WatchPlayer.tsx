@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { MediaPlayer, MediaProvider, Track } from '@vidstack/react'
+import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import '@vidstack/react/player/styles/default/theme.css'
 import '@vidstack/react/player/styles/default/layouts/video.css'
@@ -23,7 +23,7 @@ export default function WatchPlayer() {
     queryKey: ['recording', recordingId],
     queryFn: () => api.recordings.get(recordingId),
     enabled: !isNaN(recordingId),
-    refetchInterval: (query: { state: { data: typeof recording } }) => {
+    refetchInterval: (query: any) => {
       const rec = query.state.data
       if (!rec) return false
       if (rec.transcript_status === 'processing' || rec.transcript_status === 'pending') return 3000
@@ -83,14 +83,11 @@ export default function WatchPlayer() {
             title={`@${recording.username}`}
             className="w-full aspect-video"
           >
-            <MediaProvider>
-              <Track
-                src={api.recordings.getSpriteVttUrl(recording.id)}
-                kind="thumbnails"
-                default
-              />
-            </MediaProvider>
-            <DefaultVideoLayout icons={defaultLayoutIcons} />
+            <MediaProvider />
+            <DefaultVideoLayout
+              icons={defaultLayoutIcons}
+              thumbnails={api.recordings.getSpriteVttUrl(recording.id)}
+            />
           </MediaPlayer>
         ) : (
           <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-900">
