@@ -1,6 +1,4 @@
-import sys
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,15 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.database import init_db
 from app.api.routes import users, recordings, settings as settings_routes
-from app.core.task_manager import task_manager
-
-sys.path.insert(0, str(settings.TIKTOK_RECORDER_PATH))
+from app.core.task_manager import task_manager, monitor_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    monitor_service.start()
     yield
+    monitor_service.stop()
     task_manager.shutdown()
 
 

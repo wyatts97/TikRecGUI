@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Users, Video, Settings, Radio } from 'lucide-react'
+import { LayoutDashboard, Users, Video, Settings, Radio, Moon, Sun } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme } from '@/hooks/useTheme'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -10,6 +11,8 @@ const navItems = [
 ]
 
 export default function Layout() {
+  const { theme, toggleTheme } = useTheme()
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-kraken-border">
@@ -21,7 +24,7 @@ export default function Layout() {
                 TikRec
               </span>
             </div>
-            
+
             <div className="flex items-center gap-1">
               {navItems.map((item) => (
                 <NavLink
@@ -40,11 +43,23 @@ export default function Layout() {
                   <span className="hidden sm:inline">{item.label}</span>
                 </NavLink>
               ))}
+              <button
+                onClick={toggleTheme}
+                className="flex items-center justify-center h-9 w-9 rounded-lg transition-colors text-kraken-gray hover:bg-gray-100"
+                aria-label="Toggle dark mode"
+                title="Toggle dark mode"
+              >
+                {theme === 'dark' ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+              </button>
             </div>
           </div>
         </div>
       </nav>
-      
+
       <main className="pt-20 pb-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
         <Outlet />
       </main>

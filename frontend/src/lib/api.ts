@@ -83,6 +83,7 @@ export interface Settings {
 
 export interface HealthStatus {
   status: string
+  recorder_available: boolean
   country_blacklisted: boolean
   cookies_configured: boolean
   recordings_dir: string

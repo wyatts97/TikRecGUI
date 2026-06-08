@@ -18,6 +18,7 @@ from app.schemas.recording import (
 )
 from app.core.recorder_service import recorder_service
 from app.core.task_manager import task_manager
+from app.core.settings_store import settings_store
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
@@ -156,9 +157,9 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
         username=username,
         room_id=room_id,
         duration=request.duration,
-        bitrate=request.bitrate,
+        bitrate=request.bitrate or settings_store.get("default_bitrate", settings.DEFAULT_BITRATE),
         cookies=cookies,
-        proxy=settings.DEFAULT_PROXY
+        proxy=settings_store.get("proxy", settings.DEFAULT_PROXY)
     )
     
     if not success:

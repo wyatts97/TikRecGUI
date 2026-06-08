@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom'
+import { ThemeProvider } from './hooks/useTheme'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Watchlist from './pages/Watchlist'
@@ -8,7 +9,7 @@ import { Toaster } from './components/ui/toaster'
 
 function App() {
   return (
-    <>
+    <ThemeProvider>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
@@ -18,7 +19,7 @@ function App() {
         </Route>
       </Routes>
       <Toaster />
-    </>
+    </ThemeProvider>
   )
 }
 

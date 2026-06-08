@@ -1,22 +1,15 @@
-import sys
 import time
-import asyncio
+import logging
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-from concurrent.futures import ThreadPoolExecutor
-
-from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.database import SessionLocal
 from app.db.models import Recording, User
+from app.core.recorder_loader import get_tiktok_api_class
 
-sys.path.insert(0, str(settings.TIKTOK_RECORDER_PATH))
-
-from core.tiktok_api import TikTokAPI
-from utils.logger_manager import logger
+logger = logging.getLogger("tikrec.task_manager")
 
 
 class RecordingTask:
@@ -63,7 +56,8 @@ class RecordingTask:
             recording.started_at = datetime.utcnow()
             db.commit()
             
-            api = TikTokAPI(proxy=self.proxy, cookies=self.cookies)
+            api_cls = get_tiktok_api_class()
+            api = api_cls(proxy=self.proxy, cookies=self.cookies)
             
             if not api.is_room_alive(self.room_id):
                 recording.status = "failed"
@@ -208,3 +202,120 @@ class TaskManager:
 
 
 task_manager = TaskManager()
+
+
+class MonitorService:
+    """Background loop that auto-records watched users when they go live.
+
+    Every ``automatic_interval`` minutes it checks each user flagged with
+    ``is_monitoring`` and, if live and not already recording, starts a recording.
+    """
+
+    def __init__(self):
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+        logger.info("Monitor service started")
+
+    def stop(self):
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=10)
+
+    def _interval_seconds(self) -> int:
+        from app.core.settings_store import settings_store
+        minutes = settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL)
+        try:
+            return max(60, int(minutes) * 60)
+        except (TypeError, ValueError):
+            return settings.DEFAULT_AUTOMATIC_INTERVAL * 60
+
+    def _run(self):
+        # Initial short delay so the app finishes starting up.
+        if self._stop_event.wait(15):
+            return
+        while not self._stop_event.is_set():
+            try:
+                self._check_once()
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.error(f"Monitor loop error: {exc}", exc_info=True)
+            if self._stop_event.wait(self._interval_seconds()):
+                break
+
+    def _check_once(self):
+        from app.core.recorder_service import recorder_service
+        from app.core.settings_store import settings_store
+
+        if not recorder_service.is_available():
+            return
+
+        db = SessionLocal()
+        try:
+            monitored = db.query(User).filter(User.is_monitoring == True).all()  # noqa: E712
+            if not monitored:
+                return
+
+            active_ids = set(task_manager.get_active_recordings())
+            recording_user_ids = {
+                rec.user_id
+                for rec in db.query(Recording).filter(Recording.id.in_(active_ids)).all()
+            } if active_ids else set()
+
+            cookies = recorder_service._load_cookies()
+            proxy = settings_store.get("proxy", settings.DEFAULT_PROXY)
+            bitrate = settings_store.get("default_bitrate", settings.DEFAULT_BITRATE)
+
+            for user in monitored:
+                if self._stop_event.is_set():
+                    break
+                if user.id in recording_user_ids:
+                    continue
+
+                status_info = recorder_service.check_user_live(user.username)
+                user.is_live = status_info.get("is_live", False)
+                user.room_id = status_info.get("room_id")
+                user.last_checked = datetime.utcnow()
+                db.commit()
+
+                if not user.is_live or not user.room_id:
+                    continue
+
+                filename = (
+                    f"TK_{user.username}_"
+                    f"{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}_flv.mp4"
+                )
+                recording = Recording(
+                    user_id=user.id,
+                    filename=filename,
+                    status="pending",
+                    mode="automatic",
+                )
+                db.add(recording)
+                db.commit()
+                db.refresh(recording)
+
+                started = task_manager.start_recording(
+                    recording_id=recording.id,
+                    username=user.username,
+                    room_id=user.room_id,
+                    cookies=cookies,
+                    proxy=proxy,
+                    bitrate=bitrate,
+                )
+                if started:
+                    logger.info(f"Auto-started recording for @{user.username}")
+                else:
+                    recording.status = "failed"
+                    recording.error_message = "Failed to start automatic recording"
+                    db.commit()
+        finally:
+            db.close()
+
+
+monitor_service = MonitorService()

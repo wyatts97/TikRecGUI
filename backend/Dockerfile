@@ -11,12 +11,20 @@ RUN apt-get update && \
     gcc \
     g++ \
     libffi-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY requirements.txt ./
 RUN uv pip install --system --no-cache -r requirements.txt
+
+# Vendor the TikTok recorder into the image so it is always present,
+# independent of the host filesystem / git state.
+ARG TIKTOK_RECORDER_REF=main
+RUN git clone --depth 1 --branch "${TIKTOK_RECORDER_REF}" \
+    https://github.com/Michele0303/tiktok-live-recorder.git \
+    /app/tiktok-live-recorder
 
 COPY app/ ./app/
 

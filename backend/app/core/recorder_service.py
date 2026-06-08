@@ -1,20 +1,15 @@
-import sys
 import json
-from pathlib import Path
 from typing import Any
 
 from app.config import settings
-
-sys.path.insert(0, str(settings.TIKTOK_RECORDER_PATH))
-
-from core.tiktok_api import TikTokAPI
-from utils.enums import Mode
+from app.core.recorder_loader import get_tiktok_api_class, recorder_available
+from app.core.settings_store import settings_store
 
 
 class RecorderService:
     def __init__(self):
         self._cookies = self._load_cookies()
-        self._proxy = settings.DEFAULT_PROXY
+        self._proxy = settings_store.get("proxy", settings.DEFAULT_PROXY)
     
     def _load_cookies(self) -> dict | None:
         if settings.COOKIES_FILE.exists():
@@ -32,9 +27,13 @@ class RecorderService:
     
     def set_proxy(self, proxy: str | None):
         self._proxy = proxy
-    
-    def get_api(self) -> TikTokAPI:
-        return TikTokAPI(proxy=self._proxy, cookies=self._cookies)
+
+    def is_available(self) -> bool:
+        return recorder_available()
+
+    def get_api(self):
+        api_cls = get_tiktok_api_class()
+        return api_cls(proxy=self._proxy, cookies=self._cookies)
     
     def check_user_live(self, username: str) -> dict[str, Any]:
         api = self.get_api()

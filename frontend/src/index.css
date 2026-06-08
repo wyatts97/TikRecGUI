@@ -25,6 +25,28 @@
     --ring: 262 91% 58%;
     --radius: 12px;
   }
+
+  .dark {
+    --background: 222 16% 8%;
+    --foreground: 220 14% 92%;
+    --card: 222 14% 11%;
+    --card-foreground: 220 14% 92%;
+    --popover: 222 14% 11%;
+    --popover-foreground: 220 14% 92%;
+    --primary: 262 91% 64%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 228 8% 22%;
+    --secondary-foreground: 220 14% 92%;
+    --muted: 228 8% 20%;
+    --muted-foreground: 230 8% 65%;
+    --accent: 228 8% 18%;
+    --accent-foreground: 220 14% 92%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 228 8% 20%;
+    --input: 228 8% 22%;
+    --ring: 262 91% 64%;
+  }
 }
 
 @layer base {
@@ -34,6 +56,32 @@
   body {
     @apply bg-background text-foreground;
     font-family: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+}
+
+/* Dark-mode overrides for hardcoded utility classes used across pages,
+   so the entire app themes consistently from the semantic tokens. */
+@layer utilities {
+  .dark .bg-white {
+    background-color: hsl(var(--card));
+  }
+  .dark .bg-gray-50 {
+    background-color: hsl(var(--background));
+  }
+  .dark .bg-gray-100 {
+    background-color: hsl(var(--accent));
+  }
+  .dark .hover\:bg-gray-100:hover {
+    background-color: hsl(var(--accent));
+  }
+  .dark .text-kraken-black {
+    color: hsl(var(--foreground));
+  }
+  .dark .text-kraken-gray {
+    color: hsl(var(--muted-foreground));
+  }
+  .dark .border-kraken-border {
+    border-color: hsl(var(--border));
   }
 }
 

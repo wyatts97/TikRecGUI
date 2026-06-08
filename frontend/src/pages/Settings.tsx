@@ -95,6 +95,23 @@ export default function SettingsPage() {
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+              <span className="text-sm font-medium">Recorder</span>
+              <div className="flex items-center gap-2">
+                {health?.recorder_available ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    <span className="text-sm text-success">Ready</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm text-yellow-600">Unavailable</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
               <span className="text-sm font-medium">Region Status</span>
               <div className="flex items-center gap-2">
                 {health?.country_blacklisted ? (
@@ -153,43 +170,51 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="sessionid_ss">Session ID (sessionid_ss)</Label>
-              <Input
-                id="sessionid_ss"
-                type="password"
-                placeholder="Enter your TikTok session ID"
-                value={formData.cookies?.sessionid_ss || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    cookies: {
-                      ...formData.cookies,
-                      sessionid_ss: e.target.value,
-                      tt_target_idc: formData.cookies?.tt_target_idc || 'useast2a',
-                    },
-                  })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="tt_target_idc">Target IDC (tt-target-idc)</Label>
-              <Input
-                id="tt_target_idc"
-                placeholder="useast2a"
-                value={formData.cookies?.tt_target_idc || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    cookies: {
-                      ...formData.cookies,
-                      sessionid_ss: formData.cookies?.sessionid_ss || '',
-                      tt_target_idc: e.target.value,
-                    },
-                  })
-                }
-              />
-            </div>
+            <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+              <div className="grid gap-2">
+                <Label htmlFor="sessionid_ss">Session ID (sessionid_ss)</Label>
+                <Input
+                  id="sessionid_ss"
+                  name="sessionid_ss"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Enter your TikTok session ID"
+                  value={formData.cookies?.sessionid_ss || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      cookies: {
+                        ...formData.cookies,
+                        sessionid_ss: e.target.value,
+                        tt_target_idc: formData.cookies?.tt_target_idc || 'useast2a',
+                      },
+                    })
+                  }
+                />
+              </div>
+            </form>
+            <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+              <div className="grid gap-2">
+                <Label htmlFor="tt_target_idc">Target IDC (tt-target-idc)</Label>
+                <Input
+                  id="tt_target_idc"
+                  name="tt_target_idc"
+                  placeholder="useast2a"
+                  autoComplete="off"
+                  value={formData.cookies?.tt_target_idc || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      cookies: {
+                        ...formData.cookies,
+                        sessionid_ss: formData.cookies?.sessionid_ss || '',
+                        tt_target_idc: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </form>
           </CardContent>
         </Card>
 
@@ -209,64 +234,76 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="api_id">API ID</Label>
-              <Input
-                id="api_id"
-                placeholder="Enter your Telegram API ID"
-                value={formData.telegram?.api_id || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    telegram: {
-                      ...formData.telegram,
-                      api_id: e.target.value,
-                      api_hash: formData.telegram?.api_hash || '',
-                      chat_id: formData.telegram?.chat_id || 'me',
-                    },
-                  })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="api_hash">API Hash</Label>
-              <Input
-                id="api_hash"
-                type="password"
-                placeholder="Enter your Telegram API Hash"
-                value={formData.telegram?.api_hash || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    telegram: {
-                      ...formData.telegram,
-                      api_id: formData.telegram?.api_id || '',
-                      api_hash: e.target.value,
-                      chat_id: formData.telegram?.chat_id || 'me',
-                    },
-                  })
-                }
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="chat_id">Chat ID</Label>
-              <Input
-                id="chat_id"
-                placeholder="me"
-                value={formData.telegram?.chat_id || ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    telegram: {
-                      ...formData.telegram,
-                      api_id: formData.telegram?.api_id || '',
-                      api_hash: formData.telegram?.api_hash || '',
-                      chat_id: e.target.value,
-                    },
-                  })
-                }
-              />
-            </div>
+            <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+              <div className="grid gap-2">
+                <Label htmlFor="api_id">API ID</Label>
+                <Input
+                  id="api_id"
+                  name="api_id"
+                  placeholder="Enter your Telegram API ID"
+                  autoComplete="off"
+                  value={formData.telegram?.api_id || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      telegram: {
+                        ...formData.telegram,
+                        api_id: e.target.value,
+                        api_hash: formData.telegram?.api_hash || '',
+                        chat_id: formData.telegram?.chat_id || 'me',
+                      },
+                    })
+                  }
+                />
+              </div>
+            </form>
+            <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+              <div className="grid gap-2">
+                <Label htmlFor="api_hash">API Hash</Label>
+                <Input
+                  id="api_hash"
+                  name="api_hash"
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Enter your Telegram API Hash"
+                  value={formData.telegram?.api_hash || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      telegram: {
+                        ...formData.telegram,
+                        api_id: formData.telegram?.api_id || '',
+                        api_hash: e.target.value,
+                        chat_id: formData.telegram?.chat_id || 'me',
+                      },
+                    })
+                  }
+                />
+              </div>
+            </form>
+            <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+              <div className="grid gap-2">
+                <Label htmlFor="chat_id">Chat ID</Label>
+                <Input
+                  id="chat_id"
+                  name="chat_id"
+                  placeholder="me"
+                  autoComplete="off"
+                  value={formData.telegram?.chat_id || ''}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      telegram: {
+                        ...formData.telegram,
+                        api_id: formData.telegram?.api_id || '',
+                        api_hash: formData.telegram?.api_hash || '',
+                        chat_id: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+            </form>
           </CardContent>
         </Card>
 

@@ -9,6 +9,7 @@ from app.schemas.settings import (
     SettingsUpdate
 )
 from app.core.recorder_service import recorder_service
+from app.core.settings_store import settings_store
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -51,10 +52,10 @@ def get_settings():
             api_hash=telegram_data.get("api_hash", ""),
             chat_id=telegram_data.get("chat_id", "me")
         ),
-        proxy=settings.DEFAULT_PROXY,
+        proxy=settings_store.get("proxy", settings.DEFAULT_PROXY),
         output_dir=str(settings.RECORDINGS_DIR),
-        default_bitrate=settings.DEFAULT_BITRATE,
-        automatic_interval=settings.DEFAULT_AUTOMATIC_INTERVAL
+        default_bitrate=settings_store.get("default_bitrate", settings.DEFAULT_BITRATE),
+        automatic_interval=settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL)
     )
 
 
@@ -77,20 +78,32 @@ def update_settings(update: SettingsUpdate):
         _write_json_file(settings.TELEGRAM_CONFIG_FILE, telegram_data)
     
     if update.proxy is not None:
-        recorder_service.set_proxy(update.proxy if update.proxy else None)
-    
+        proxy = update.proxy.strip() or None
+        settings_store.set("proxy", proxy)
+        recorder_service.set_proxy(proxy)
+
+    if update.default_bitrate is not None:
+        bitrate = update.default_bitrate.strip() or None
+        settings_store.set("default_bitrate", bitrate)
+
+    if update.automatic_interval is not None:
+        interval = max(1, int(update.automatic_interval))
+        settings_store.set("automatic_interval", interval)
+
     return get_settings()
 
 
 @router.get("/health")
 def health_check():
-    is_blacklisted = recorder_service.is_country_blacklisted()
-    
     cookies_data = _read_json_file(settings.COOKIES_FILE, {})
     has_cookies = bool(cookies_data.get("sessionid_ss"))
-    
+
+    recorder_ready = recorder_service.is_available()
+    is_blacklisted = recorder_service.is_country_blacklisted() if recorder_ready else False
+
     return {
         "status": "healthy",
+        "recorder_available": recorder_ready,
         "country_blacklisted": is_blacklisted,
         "cookies_configured": has_cookies,
         "recordings_dir": str(settings.RECORDINGS_DIR),
