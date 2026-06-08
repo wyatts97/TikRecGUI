@@ -6,7 +6,6 @@ import {
   Trash2,
   Play,
   Radio,
-  MoreVertical,
   Eye,
   EyeOff,
 } from 'lucide-react'
@@ -43,7 +42,7 @@ export default function Watchlist() {
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
-  const { data: users = [], isLoading, refetch } = useQuery({
+  const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.users.list(),
   })
