@@ -10,6 +10,7 @@ services:
     volumes:
       - ./recordings:/app/recordings
       - ./data:/app/data
+      - ./tiktok-live-recorder:/app/tiktok-live-recorder
     environment:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=sqlite:///./data/tikrec.db
