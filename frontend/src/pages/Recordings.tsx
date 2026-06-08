@@ -10,6 +10,9 @@ import {
   CheckSquare,
   Square,
   Loader2,
+  ArrowUp,
+  ArrowDown,
+  X,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,6 +50,13 @@ const statusVariantMap: Record<string, 'default' | 'recording' | 'completed' | '
 export default function Recordings() {
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
+  const [sortBy, setSortBy] = useState('date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [usernameFilter, setUsernameFilter] = useState('')
+  const [minSizeMb, setMinSizeMb] = useState('')
+  const [maxSizeMb, setMaxSizeMb] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -56,9 +66,31 @@ export default function Recordings() {
   const { toast } = useToast()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['recordings', page, statusFilter],
-    queryFn: () => api.recordings.list(page, 20, statusFilter),
+    queryKey: ['recordings', page, statusFilter, sortBy, sortOrder, usernameFilter, minSizeMb, maxSizeMb, dateFrom, dateTo],
+    queryFn: () => api.recordings.list(page, 20, statusFilter, undefined, {
+      sortBy,
+      sortOrder,
+      usernameFilter: usernameFilter || undefined,
+      minSize: minSizeMb ? Math.round(parseFloat(minSizeMb) * 1024 * 1024) : undefined,
+      maxSize: maxSizeMb ? Math.round(parseFloat(maxSizeMb) * 1024 * 1024) : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
+    }),
   })
+
+  const hasActiveFilters = usernameFilter || minSizeMb || maxSizeMb || dateFrom || dateTo || statusFilter
+
+  const clearFilters = () => {
+    setStatusFilter(undefined)
+    setUsernameFilter('')
+    setMinSizeMb('')
+    setMaxSizeMb('')
+    setDateFrom('')
+    setDateTo('')
+    setSortBy('date')
+    setSortOrder('desc')
+    setPage(1)
+  }
 
   const recordings = data?.recordings || []
   const total = data?.total || 0
@@ -223,15 +255,21 @@ export default function Recordings() {
               <Video className="h-5 w-5" />
               Recordings ({total})
             </CardTitle>
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs">
+                <X className="h-3 w-3 mr-1" />
+                Clear filters
+              </Button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <div className="flex items-center gap-1.5">
+              <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <select
-                className="text-sm border rounded-lg px-3 py-1.5 bg-white"
+                className="text-sm border rounded-lg px-2 py-1.5 bg-white"
                 value={statusFilter || ''}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value || undefined)
-                  setPage(1)
-                }}
+                onChange={(e) => { setStatusFilter(e.target.value || undefined); setPage(1) }}
               >
                 <option value="">All Status</option>
                 <option value="recording">Recording</option>
@@ -239,6 +277,71 @@ export default function Recordings() {
                 <option value="stopped">Stopped</option>
                 <option value="failed">Failed</option>
               </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Sort:</span>
+              <select
+                className="text-sm border rounded-lg px-2 py-1.5 bg-white"
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value); setPage(1) }}
+              >
+                <option value="date">Date</option>
+                <option value="size">Size</option>
+                <option value="duration">Duration</option>
+                <option value="username">User</option>
+              </select>
+              <button
+                onClick={() => { setSortOrder((o: 'asc' | 'desc') => o === 'asc' ? 'desc' : 'asc'); setPage(1) }}
+                className="flex items-center justify-center h-8 w-8 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
+                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+              >
+                {sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+
+            <Input
+              placeholder="Filter by user…"
+              value={usernameFilter}
+              onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
+              className="h-8 w-36 text-sm"
+            />
+
+            <div className="flex items-center gap-1">
+              <Input
+                placeholder="Min MB"
+                type="number"
+                min="0"
+                value={minSizeMb}
+                onChange={(e) => { setMinSizeMb(e.target.value); setPage(1) }}
+                className="h-8 w-20 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">–</span>
+              <Input
+                placeholder="Max MB"
+                type="number"
+                min="0"
+                value={maxSizeMb}
+                onChange={(e) => { setMaxSizeMb(e.target.value); setPage(1) }}
+                className="h-8 w-20 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">MB</span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
+                className="text-sm border rounded-lg px-2 py-1 bg-white h-8"
+              />
+              <span className="text-xs text-muted-foreground">–</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
+                className="text-sm border rounded-lg px-2 py-1 bg-white h-8"
+              />
             </div>
           </div>
         </CardHeader>

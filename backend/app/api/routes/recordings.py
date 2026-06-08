@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Body
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -22,6 +22,7 @@ from app.schemas.recording import (
 )
 from app.core.recorder_service import recorder_service
 from app.core.task_manager import task_manager
+from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
 
 
@@ -61,6 +62,32 @@ def _generate_thumbnail(video_path: Path, thumb_path: Path) -> bool:
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
 
+def _is_thumbnail_ready(recording: Recording) -> bool:
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    thumb_path = _thumbnail_path(video_path)
+    return thumb_path.exists() and thumb_path.stat().st_size > 0
+
+
+def _build_response(rec: Recording) -> RecordingResponse:
+    return RecordingResponse(
+        id=rec.id,
+        user_id=rec.user_id,
+        username=rec.user.username,
+        filename=rec.filename,
+        status=rec.status,
+        mode=rec.mode,
+        started_at=rec.started_at,
+        ended_at=rec.ended_at,
+        duration_seconds=rec.duration_seconds,
+        file_size=rec.file_size,
+        error_message=rec.error_message,
+        created_at=rec.created_at,
+        thumbnail_ready=_is_thumbnail_ready(rec),
+        transcript_status=rec.transcript_status,
+        transcript_text=rec.transcript_text,
+    )
+
+
 def _load_cookies() -> dict | None:
     if settings.COOKIES_FILE.exists():
         try:
@@ -79,10 +106,17 @@ def list_recordings(
     page_size: int = 20,
     status_filter: str | None = None,
     user_id: int | None = None,
+    sort_by: str = "date",
+    sort_order: str = "desc",
+    username_filter: str | None = None,
+    min_size: int | None = None,
+    max_size: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(Recording).join(User)
-    
+
     if status_filter:
         if "," in status_filter:
             statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
@@ -91,36 +125,42 @@ def list_recordings(
             query = query.filter(Recording.status == status_filter)
     if user_id:
         query = query.filter(Recording.user_id == user_id)
-    
+    if username_filter:
+        query = query.filter(User.username.ilike(f"%{username_filter}%"))
+    if min_size is not None:
+        query = query.filter(Recording.file_size >= min_size)
+    if max_size is not None:
+        query = query.filter(Recording.file_size <= max_size)
+    if date_from:
+        try:
+            query = query.filter(Recording.created_at >= datetime.fromisoformat(date_from))
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            query = query.filter(Recording.created_at <= datetime.fromisoformat(date_to))
+        except ValueError:
+            pass
+
     total = query.count()
-    
+
+    sort_col_map = {
+        "size": Recording.file_size,
+        "duration": Recording.duration_seconds,
+        "username": User.username,
+    }
+    sort_col = sort_col_map.get(sort_by, Recording.created_at)
+    query = query.order_by(sort_col.asc() if sort_order == "asc" else sort_col.desc())
+
     recordings = (
         query
-        .order_by(Recording.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
-    
-    response_recordings = []
-    for rec in recordings:
-        response_recordings.append(RecordingResponse(
-            id=rec.id,
-            user_id=rec.user_id,
-            username=rec.user.username,
-            filename=rec.filename,
-            status=rec.status,
-            mode=rec.mode,
-            started_at=rec.started_at,
-            ended_at=rec.ended_at,
-            duration_seconds=rec.duration_seconds,
-            file_size=rec.file_size,
-            error_message=rec.error_message,
-            created_at=rec.created_at
-        ))
-    
+
     return RecordingListResponse(
-        recordings=response_recordings,
+        recordings=[_build_response(rec) for rec in recordings],
         total=total,
         page=page,
         page_size=page_size
@@ -215,20 +255,7 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
     
     db.refresh(recording)
     
-    return RecordingResponse(
-        id=recording.id,
-        user_id=recording.user_id,
-        username=user.username,
-        filename=recording.filename,
-        status=recording.status,
-        mode=recording.mode,
-        started_at=recording.started_at,
-        ended_at=recording.ended_at,
-        duration_seconds=recording.duration_seconds,
-        file_size=recording.file_size,
-        error_message=recording.error_message,
-        created_at=recording.created_at
-    )
+    return _build_response(recording)
 
 
 @router.get("/active", response_model=list[ActiveRecordingResponse])
@@ -264,20 +291,7 @@ def get_recording(recording_id: int, db: Session = Depends(get_db)):
             detail="Recording not found"
         )
 
-    return RecordingResponse(
-        id=recording.id,
-        user_id=recording.user_id,
-        username=recording.user.username,
-        filename=recording.filename,
-        status=recording.status,
-        mode=recording.mode,
-        started_at=recording.started_at,
-        ended_at=recording.ended_at,
-        duration_seconds=recording.duration_seconds,
-        file_size=recording.file_size,
-        error_message=recording.error_message,
-        created_at=recording.created_at
-    )
+    return _build_response(recording)
 
 
 @router.post("/{recording_id}/stop", response_model=RecordingResponse)
@@ -299,20 +313,7 @@ def stop_recording(recording_id: int, db: Session = Depends(get_db)):
     
     db.refresh(recording)
     
-    return RecordingResponse(
-        id=recording.id,
-        user_id=recording.user_id,
-        username=recording.user.username,
-        filename=recording.filename,
-        status=recording.status,
-        mode=recording.mode,
-        started_at=recording.started_at,
-        ended_at=recording.ended_at,
-        duration_seconds=recording.duration_seconds,
-        file_size=recording.file_size,
-        error_message=recording.error_message,
-        created_at=recording.created_at
-    )
+    return _build_response(recording)
 
 
 @router.delete("/{recording_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -509,3 +510,60 @@ def batch_download_recordings(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create ZIP file: {str(e)}"
         )
+
+
+@router.get("/{recording_id}/sprite")
+def get_sprite(recording_id: int, db: Session = Depends(get_db)):
+    """Return the sprite sheet JPEG for hover-scrub preview."""
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
+    if not sprite_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprite not yet generated")
+    return FileResponse(path=str(sprite_path), media_type="image/jpeg")
+
+
+@router.get("/{recording_id}/thumbnails.vtt")
+def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
+    """Return the WebVTT file for Vidstack hover-scrub thumbnails."""
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
+    if not vtt_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VTT not yet generated")
+    content = vtt_path.read_text(encoding="utf-8")
+    return Response(content=content, media_type="text/vtt; charset=utf-8")
+
+
+@router.post("/{recording_id}/transcribe", response_model=RecordingResponse)
+def start_transcription(recording_id: int, db: Session = Depends(get_db)):
+    """Queue a transcription job for a completed or stopped recording."""
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+    if recording.status not in ("completed", "stopped"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only completed or stopped recordings can be transcribed"
+        )
+    if recording.transcript_status == "processing":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Transcription already in progress")
+
+    recording.transcript_status = "pending"
+    db.commit()
+    db.refresh(recording)
+
+    transcription_service.transcribe(recording_id)
+    return _build_response(recording)
+
+
+@router.get("/transcripts/search")
+def search_transcripts(q: str, db: Session = Depends(get_db)):
+    """Search recordings by transcript text."""
+    if not q or len(q.strip()) < 2:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query too short")
+    return transcription_service.search(q.strip(), db)

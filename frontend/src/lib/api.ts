@@ -27,6 +27,9 @@ async function fetchApi<T>(
 export interface User {
   id: number
   username: string
+  display_name: string | null
+  bio: string | null
+  follower_count: number | null
   room_id: string | null
   is_monitoring: boolean
   is_live: boolean
@@ -48,6 +51,9 @@ export interface Recording {
   file_size: number | null
   error_message: string | null
   created_at: string
+  thumbnail_ready: boolean
+  transcript_status: string | null
+  transcript_text: string | null
 }
 
 export interface RecordingListResponse {
@@ -97,6 +103,13 @@ export interface HealthStatus {
   recordings_dir_exists: boolean
 }
 
+export interface MonitorStatus {
+  is_running: boolean
+  last_check_at: string | null
+  next_check_in_seconds: number | null
+  interval_minutes: number
+}
+
 export const api = {
   users: {
     list: (monitoringOnly = false) =>
@@ -131,13 +144,34 @@ export const api = {
   },
 
   recordings: {
-    list: (page = 1, pageSize = 20, statusFilter?: string, userId?: number) => {
+    list: (
+      page = 1,
+      pageSize = 20,
+      statusFilter?: string,
+      userId?: number,
+      filters?: {
+        sortBy?: string
+        sortOrder?: string
+        usernameFilter?: string
+        minSize?: number
+        maxSize?: number
+        dateFrom?: string
+        dateTo?: string
+      }
+    ) => {
       const params = new URLSearchParams({
         page: page.toString(),
         page_size: pageSize.toString(),
       })
       if (statusFilter) params.set("status_filter", statusFilter)
       if (userId) params.set("user_id", userId.toString())
+      if (filters?.sortBy) params.set("sort_by", filters.sortBy)
+      if (filters?.sortOrder) params.set("sort_order", filters.sortOrder)
+      if (filters?.usernameFilter) params.set("username_filter", filters.usernameFilter)
+      if (filters?.minSize !== undefined) params.set("min_size", filters.minSize.toString())
+      if (filters?.maxSize !== undefined) params.set("max_size", filters.maxSize.toString())
+      if (filters?.dateFrom) params.set("date_from", filters.dateFrom)
+      if (filters?.dateTo) params.set("date_to", filters.dateTo)
       return fetchApi<RecordingListResponse>(`/recordings?${params}`)
     },
     
@@ -167,6 +201,15 @@ export const api = {
     getDownloadUrl: (id: number) => `${API_BASE}/recordings/${id}/download`,
     getStreamUrl: (id: number) => `${API_BASE}/recordings/${id}/stream`,
     getThumbnailUrl: (id: number) => `${API_BASE}/recordings/${id}/thumbnail`,
+    getSpriteVttUrl: (id: number) => `${API_BASE}/recordings/${id}/thumbnails.vtt`,
+
+    transcribe: (id: number) =>
+      fetchApi<Recording>(`/recordings/${id}/transcribe`, { method: "POST" }),
+
+    searchTranscripts: (q: string) =>
+      fetchApi<{ recording_id: number; username: string; snippet: string }[]>(
+        `/recordings/transcripts/search?q=${encodeURIComponent(q)}`
+      ),
     
     batchDelete: (ids: number[]) =>
       fetchApi<{ deleted: number; errors: string[] }>("/recordings/batch/delete", {
@@ -207,5 +250,11 @@ export const api = {
         "/settings/cleanup/run",
         { method: "POST" }
       ),
+
+    getMonitorStatus: () =>
+      fetchApi<MonitorStatus>("/settings/monitor-status"),
+
+    triggerMonitorCheck: () =>
+      fetchApi<{ triggered: boolean }>("/settings/monitor-check", { method: "POST" }),
   },
 }

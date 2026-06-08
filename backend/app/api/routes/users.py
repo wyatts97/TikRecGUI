@@ -8,7 +8,7 @@ from app.db.database import get_db
 from app.db.models import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserStatusResponse
 from app.core.recorder_service import recorder_service
-from app.core.avatar_service import avatar_service
+from app.core.user_info_service import user_info_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -50,6 +50,9 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
+
+    user_info_service.update_user_profile_async(db_user.id)
+
     return db_user
 
 
@@ -127,7 +130,11 @@ def check_user_status(user_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{user_id}/refresh", response_model=UserResponse)
-def refresh_user_status(user_id: int, db: Session = Depends(get_db)):
+def refresh_user_status(
+    user_id: int,
+    refresh_profile: bool = False,
+    db: Session = Depends(get_db)
+):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(
@@ -142,6 +149,9 @@ def refresh_user_status(user_id: int, db: Session = Depends(get_db)):
     user.last_checked = datetime.utcnow()
     db.commit()
     db.refresh(user)
+
+    if refresh_profile:
+        user_info_service.update_user_profile_async(user.id)
     
     return user
 
@@ -156,7 +166,7 @@ def get_user_avatar(user_id: int, refresh: bool = False, db: Session = Depends(g
             detail="User not found"
         )
     
-    avatar_path = avatar_service.fetch_and_cache_avatar(user.username, force=refresh)
+    avatar_path = user_info_service.fetch_and_cache_avatar(user.username, force=refresh)
     
     if avatar_path and Path(avatar_path).exists():
         return FileResponse(

@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Users, Video, Settings, Radio, Moon, Sun, Tv } from 'lucide-react'
+import { LayoutDashboard, Users, Video, Settings, Radio, Moon, Sun, Tv, RefreshCw } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
+import { api } from '@/lib/api'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -11,8 +14,46 @@ const navItems = [
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
+function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return 'Checking…'
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return m > 0 ? `${m}m ${s}s` : `${s}s`
+}
+
 export default function Layout() {
   const { theme, toggleTheme } = useTheme()
+  const queryClient = useQueryClient()
+  const [countdown, setCountdown] = useState<number | null>(null)
+
+  const { data: monitorStatus } = useQuery({
+    queryKey: ['monitorStatus'],
+    queryFn: () => api.settings.getMonitorStatus(),
+    refetchInterval: 10000,
+  })
+
+  const triggerCheckMutation = useMutation({
+    mutationFn: () => api.settings.triggerMonitorCheck(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['monitorStatus'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setCountdown(0)
+    },
+  })
+
+  useEffect(() => {
+    if (monitorStatus?.next_check_in_seconds !== undefined && monitorStatus.next_check_in_seconds !== null) {
+      setCountdown(monitorStatus.next_check_in_seconds)
+    }
+  }, [monitorStatus])
+
+  useEffect(() => {
+    if (countdown === null || countdown <= 0) return
+    const timer = setInterval(() => {
+      setCountdown((c: number | null) => (c !== null ? Math.max(0, c - 1) : null))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [countdown])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -44,6 +85,27 @@ export default function Layout() {
                   <span className="hidden sm:inline">{item.label}</span>
                 </NavLink>
               ))}
+
+              {monitorStatus?.is_running && (
+                <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-xs text-kraken-gray">
+                  <span className="tabular-nums">
+                    {countdown !== null
+                      ? `Next check: ${formatCountdown(countdown)}`
+                      : 'Waiting…'}
+                  </span>
+                </div>
+              )}
+
+              <button
+                onClick={() => triggerCheckMutation.mutate()}
+                disabled={triggerCheckMutation.isPending}
+                className="flex items-center justify-center h-9 w-9 rounded-lg transition-colors text-kraken-gray hover:bg-gray-100 disabled:opacity-50"
+                aria-label="Check live status now"
+                title="Check live status now"
+              >
+                <RefreshCw className={cn('h-4 w-4', triggerCheckMutation.isPending && 'animate-spin')} />
+              </button>
+
               <button
                 onClick={toggleTheme}
                 className="flex items-center justify-center h-9 w-9 rounded-lg transition-colors text-kraken-gray hover:bg-gray-100"

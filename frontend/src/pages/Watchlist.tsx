@@ -230,7 +230,17 @@ export default function Watchlist() {
                             {user.username[0].toUpperCase()}
                           </span>
                         </div>
-                        <span className="font-medium">@{user.username}</span>
+                        <div className="min-w-0">
+                          {user.display_name && (
+                            <p className="font-medium text-sm leading-tight">{user.display_name}</p>
+                          )}
+                          <p className={user.display_name ? "text-xs text-muted-foreground" : "font-medium text-sm"}>
+                            @{user.username}
+                          </p>
+                          {user.bio && (
+                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">{user.bio}</p>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>

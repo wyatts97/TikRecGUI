@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Play, Download, Tv } from 'lucide-react'
+import { Play, Download, Tv, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
@@ -12,6 +12,10 @@ export default function Watch() {
   const { data, isLoading } = useQuery({
     queryKey: ['recordings', 'watchable'],
     queryFn: () => api.recordings.list(1, 100, 'completed,stopped'),
+    refetchInterval: (query) => {
+      const recs = query.state.data?.recordings ?? []
+      return recs.some((r) => !r.thumbnail_ready) ? 5000 : false
+    },
   })
 
   const recordings = data?.recordings || []
@@ -46,26 +50,35 @@ export default function Watch() {
               onClick={() => navigate(`/watch/${recording.id}`)}
             >
               <div className="relative aspect-video bg-gray-200 overflow-hidden">
-                <img
-                  src={api.recordings.getThumbnailUrl(recording.id)}
-                  alt={`${recording.username} thumbnail`}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  loading="lazy"
-                  onError={(e) => {
-                    const img = e.target as HTMLImageElement
-                    img.style.display = 'none'
-                    const placeholder = img.nextElementSibling as HTMLElement
-                    if (placeholder) placeholder.style.display = 'flex'
-                  }}
-                />
+                {recording.thumbnail_ready ? (
+                  <img
+                    src={api.recordings.getThumbnailUrl(recording.id)}
+                    alt={`${recording.username} thumbnail`}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    loading="lazy"
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement
+                      img.style.display = 'none'
+                      const placeholder = img.nextElementSibling as HTMLElement
+                      if (placeholder) placeholder.style.display = 'flex'
+                    }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100">
+                    <Loader2 className="h-8 w-8 text-muted-foreground animate-spin mb-2" />
+                    <span className="text-xs text-muted-foreground font-medium">Processing…</span>
+                  </div>
+                )}
                 <div className="absolute inset-0 items-center justify-center bg-gray-200 hidden">
                   <Tv className="h-12 w-12 text-gray-400" />
                 </div>
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center">
-                    <Play className="h-5 w-5 text-primary ml-0.5" />
+                {recording.thumbnail_ready && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center">
+                      <Play className="h-5 w-5 text-primary ml-0.5" />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="p-4">

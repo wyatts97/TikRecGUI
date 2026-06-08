@@ -35,3 +35,21 @@ def init_db():
                 conn.execute(
                     text("ALTER TABLE users ADD COLUMN profile_pic_url VARCHAR(512)")
                 )
+        if "display_name" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN display_name VARCHAR(255)"))
+        if "bio" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN bio TEXT"))
+        if "follower_count" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN follower_count INTEGER"))
+
+    if "recordings" in inspector.get_table_names():
+        rec_cols = [c["name"] for c in inspector.get_columns("recordings")]
+        if "transcript_status" not in rec_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE recordings ADD COLUMN transcript_status VARCHAR(50)"))
+        if "transcript_text" not in rec_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE recordings ADD COLUMN transcript_text TEXT"))

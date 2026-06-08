@@ -12,6 +12,7 @@ from app.schemas.settings import (
 from app.core.recorder_service import recorder_service
 from app.core.settings_store import settings_store
 from app.core.cleanup_service import cleanup_service
+from app.core.task_manager import monitor_service
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -137,3 +138,16 @@ def get_cleanup_stats():
 def run_cleanup():
     """Manually trigger the cleanup process."""
     return cleanup_service.run_cleanup()
+
+
+@router.get("/monitor-status")
+def get_monitor_status():
+    """Return current monitor service timer state for the navbar countdown."""
+    return monitor_service.get_status()
+
+
+@router.post("/monitor-check")
+def trigger_monitor_check():
+    """Trigger an immediate live-status check and reset the interval timer."""
+    monitor_service.trigger_check()
+    return {"triggered": True}

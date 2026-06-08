@@ -10,6 +10,9 @@ class User(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(255), unique=True, index=True, nullable=False)
+    display_name = Column(String(255), nullable=True)
+    bio = Column(Text, nullable=True)
+    follower_count = Column(Integer, nullable=True)
     room_id = Column(String(255), nullable=True)
     is_monitoring = Column(Boolean, default=False)
     is_live = Column(Boolean, default=False)
@@ -34,6 +37,8 @@ class Recording(Base):
     duration_seconds = Column(Integer, nullable=True)
     file_size = Column(BigInteger, nullable=True)
     error_message = Column(Text, nullable=True)
+    transcript_status = Column(String(50), nullable=True)  # pending, processing, done, failed
+    transcript_text = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     user = relationship("User", back_populates="recordings")

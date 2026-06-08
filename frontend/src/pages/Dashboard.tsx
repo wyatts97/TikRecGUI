@@ -144,7 +144,12 @@ export default function Dashboard() {
                         </span>
                       </div>
                       <div>
-                        <p className="font-medium text-sm">@{user.username}</p>
+                        {user.display_name && (
+                          <p className="font-medium text-sm">{user.display_name}</p>
+                        )}
+                        <p className={user.display_name ? "text-xs text-muted-foreground" : "font-medium text-sm"}>
+                          @{user.username}
+                        </p>
                         <Badge variant="live" className="text-xs">LIVE</Badge>
                       </div>
                     </div>

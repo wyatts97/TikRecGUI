@@ -1,14 +1,70 @@
+import math
 import time
 import logging
 import threading
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.config import settings
 from app.db.database import SessionLocal
 from app.db.models import Recording, User
 from app.core.recorder_loader import get_tiktok_api_class
+
+
+def _fmt_vtt_time(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:06.3f}"
+
+
+def _generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
+    """Generate a sprite sheet and WebVTT file for hover-scrub preview."""
+    THUMB_W, THUMB_H, FRAME_INTERVAL, COLS = 160, 90, 10, 10
+    sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
+    vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
+    try:
+        probe = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(video_path),
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        duration = float(probe.stdout.strip())
+        frame_count = max(1, math.ceil(duration / FRAME_INTERVAL))
+        actual_cols = min(COLS, frame_count)
+        rows = math.ceil(frame_count / actual_cols)
+
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(video_path),
+                "-vf",
+                f"fps=1/{FRAME_INTERVAL},scale={THUMB_W}:{THUMB_H},tile={actual_cols}x{rows}",
+                str(sprite_path),
+            ],
+            capture_output=True, check=True, timeout=180,
+        )
+        if not sprite_path.exists():
+            return None, None
+
+        lines = ["WEBVTT", ""]
+        for i in range(frame_count):
+            start = i * FRAME_INTERVAL
+            end = min(start + FRAME_INTERVAL, duration)
+            col = i % actual_cols
+            row = i // actual_cols
+            lines.append(f"{_fmt_vtt_time(start)} --> {_fmt_vtt_time(end)}")
+            lines.append(f"sprite#xywh={col * THUMB_W},{row * THUMB_H},{THUMB_W},{THUMB_H}")
+            lines.append("")
+        vtt_path.write_text("\n".join(lines), encoding="utf-8")
+        return sprite_path, vtt_path
+    except Exception as exc:
+        logger.warning(f"Sprite generation failed for {video_path}: {exc}")
+        return None, None
 
 
 def _generate_thumbnail(video_path: Path) -> Path | None:
@@ -177,6 +233,7 @@ class RecordingTask:
                     recording.file_size = output_path.stat().st_size
                     db.commit()
                 threading.Thread(target=_generate_thumbnail, args=(output_path,), daemon=True).start()
+                threading.Thread(target=_generate_sprite, args=(output_path,), daemon=True).start()
 
         except Exception as e:
             logger.error(f"Recording error: {e}", exc_info=True)
@@ -268,7 +325,10 @@ class MonitorService:
 
     def __init__(self):
         self._stop_event = threading.Event()
+        self._force_check = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_check_at: datetime | None = None
+        self._next_check_at: datetime | None = None
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -280,8 +340,26 @@ class MonitorService:
 
     def stop(self):
         self._stop_event.set()
+        self._force_check.set()  # Wake the wait immediately
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=10)
+
+    def trigger_check(self):
+        """Request an immediate status check, bypassing the normal interval."""
+        self._force_check.set()
+
+    def get_status(self) -> dict:
+        now = datetime.utcnow()
+        next_check_in: int | None = None
+        if self._next_check_at is not None:
+            delta = (self._next_check_at - now).total_seconds()
+            next_check_in = max(0, int(delta))
+        return {
+            "is_running": self._thread is not None and self._thread.is_alive(),
+            "last_check_at": self._last_check_at.isoformat() if self._last_check_at else None,
+            "next_check_in_seconds": next_check_in,
+            "interval_minutes": self._interval_seconds() // 60,
+        }
 
     def _interval_seconds(self) -> int:
         from app.core.settings_store import settings_store
@@ -296,11 +374,18 @@ class MonitorService:
         if self._stop_event.wait(15):
             return
         while not self._stop_event.is_set():
+            self._last_check_at = datetime.utcnow()
             try:
                 self._check_once()
             except Exception as exc:  # pragma: no cover - defensive
                 logger.error(f"Monitor loop error: {exc}", exc_info=True)
-            if self._stop_event.wait(self._interval_seconds()):
+            interval = self._interval_seconds()
+            self._next_check_at = datetime.utcnow() + timedelta(seconds=interval)
+            self._force_check.clear()
+            # Wait for the interval or a forced check; _stop_event wakes via trigger_check in stop()
+            self._force_check.wait(timeout=interval)
+            self._force_check.clear()
+            if self._stop_event.is_set():
                 break
 
     def _check_once(self):

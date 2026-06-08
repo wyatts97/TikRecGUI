@@ -17,6 +17,9 @@ class UserUpdate(BaseModel):
 
 class UserResponse(UserBase):
     id: int
+    display_name: str | None = None
+    bio: str | None = None
+    follower_count: int | None = None
     room_id: str | None = None
     is_monitoring: bool
     is_live: bool

@@ -28,6 +28,9 @@ class RecordingResponse(BaseModel):
     file_size: int | None = None
     error_message: str | None = None
     created_at: datetime
+    thumbnail_ready: bool = False
+    transcript_status: str | None = None
+    transcript_text: str | None = None
 
     class Config:
         from_attributes = True
