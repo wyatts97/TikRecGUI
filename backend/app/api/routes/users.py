@@ -42,6 +42,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
         room_id=status_info.get("room_id"),
         is_monitoring=user.is_monitoring,
         is_live=status_info.get("is_live", False),
+        profile_pic_url=status_info.get("avatar_url"),
         last_checked=datetime.utcnow()
     )
     db.add(db_user)
@@ -103,18 +104,19 @@ def check_user_status(user_id: int, db: Session = Depends(get_db)):
         )
     
     status_info = recorder_service.check_user_live(user.username)
-    
+
     user.is_live = status_info.get("is_live", False)
     user.room_id = status_info.get("room_id")
+    user.profile_pic_url = status_info.get("avatar_url")
     user.last_checked = datetime.utcnow()
     db.commit()
-    
+
     if status_info.get("error"):
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=status_info["error"]
         )
-    
+
     return UserStatusResponse(
         username=user.username,
         is_live=user.is_live,
@@ -133,11 +135,12 @@ def refresh_user_status(user_id: int, db: Session = Depends(get_db)):
         )
     
     status_info = recorder_service.check_user_live(user.username)
-    
+
     user.is_live = status_info.get("is_live", False)
     user.room_id = status_info.get("room_id")
+    user.profile_pic_url = status_info.get("avatar_url")
     user.last_checked = datetime.utcnow()
     db.commit()
     db.refresh(user)
-    
+
     return user

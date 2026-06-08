@@ -24,3 +24,14 @@ def get_db():
 def init_db():
     from app.db import models
     Base.metadata.create_all(bind=engine)
+
+    # Auto-migrate: add profile_pic_url to users if missing (no alembic)
+    from sqlalchemy import inspect, text
+    inspector = inspect(engine)
+    if "users" in inspector.get_table_names():
+        columns = [c["name"] for c in inspector.get_columns("users")]
+        if "profile_pic_url" not in columns:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("ALTER TABLE users ADD COLUMN profile_pic_url VARCHAR(512)")
+                )
