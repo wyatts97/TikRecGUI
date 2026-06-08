@@ -36,7 +36,13 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
         )
     
     status_info = recorder_service.check_user_live(username)
-    
+
+    if status_info.get("error"):
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Live check failed: {status_info['error']}"
+        )
+
     db_user = User(
         username=username,
         room_id=status_info.get("room_id"),
