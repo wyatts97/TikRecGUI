@@ -31,6 +31,33 @@ def _generate_thumbnail(video_path: Path) -> Path | None:
         logger.warning(f"Thumbnail generation failed for {video_path}")
     return None
 
+
+def _remux_to_mp4(input_path: Path) -> bool:
+    """Remux raw stream to proper MP4 with faststart for browser seeking."""
+    if not input_path.exists():
+        return False
+    temp_path = input_path.with_suffix(".tmp.mp4")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", str(input_path),
+                "-c", "copy", "-movflags", "+faststart",
+                str(temp_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=120,
+        )
+        if temp_path.exists():
+            temp_path.replace(input_path)
+            return True
+    except Exception:
+        logger.error(f"FFmpeg remux failed for {input_path}")
+    finally:
+        if temp_path.exists():
+            temp_path.unlink(missing_ok=True)
+    return False
+
 logger = logging.getLogger("tikrec.task_manager")
 
 
@@ -146,6 +173,9 @@ class RecordingTask:
             db.commit()
 
             if output_path.exists() and recording.status in ("completed", "stopped"):
+                if _remux_to_mp4(output_path):
+                    recording.file_size = output_path.stat().st_size
+                    db.commit()
                 threading.Thread(target=_generate_thumbnail, args=(output_path,), daemon=True).start()
 
         except Exception as e:
@@ -313,7 +343,7 @@ class MonitorService:
 
                 filename = (
                     f"TK_{user.username}_"
-                    f"{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}_flv.mp4"
+                    f"{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
                 )
                 recording = Recording(
                     user_id=user.id,

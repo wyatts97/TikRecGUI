@@ -167,7 +167,7 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     
-    filename = f"TK_{username}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}_flv.mp4"
+    filename = f"TK_{username}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
     
     recording = Recording(
         user_id=user.id,
