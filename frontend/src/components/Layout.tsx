@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Users, Video, Settings, Radio, Moon, Sun } from 'lucide-react'
+import { LayoutDashboard, Users, Video, Settings, Radio, Moon, Sun, Tv } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 
@@ -7,6 +7,7 @@ const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/watchlist', icon: Users, label: 'Watchlist' },
   { to: '/recordings', icon: Video, label: 'Recordings' },
+  { to: '/watch', icon: Tv, label: 'Watch' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 

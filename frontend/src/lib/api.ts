@@ -154,8 +154,10 @@ export const api = {
       fetchApi<void>(`/recordings/${id}`, { method: "DELETE" }),
     
     getActive: () => fetchApi<ActiveRecording[]>("/recordings/active"),
-    
+
     getDownloadUrl: (id: number) => `${API_BASE}/recordings/${id}/download`,
+    getStreamUrl: (id: number) => `${API_BASE}/recordings/${id}/stream`,
+    getThumbnailUrl: (id: number) => `${API_BASE}/recordings/${id}/thumbnail`,
   },
 
   settings: {

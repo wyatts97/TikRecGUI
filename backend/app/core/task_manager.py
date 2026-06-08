@@ -1,6 +1,7 @@
 import time
 import logging
 import threading
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -8,6 +9,27 @@ from app.config import settings
 from app.db.database import SessionLocal
 from app.db.models import Recording, User
 from app.core.recorder_loader import get_tiktok_api_class
+
+
+def _generate_thumbnail(video_path: Path) -> Path | None:
+    thumb_path = video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
+    thumb_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-ss", "00:00:01", "-vframes", "1",
+                "-i", str(video_path), "-vf", "scale=480:-1",
+                str(thumb_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+        if thumb_path.exists():
+            return thumb_path
+    except Exception:
+        logger.warning(f"Thumbnail generation failed for {video_path}")
+    return None
 
 logger = logging.getLogger("tikrec.task_manager")
 
@@ -120,9 +142,12 @@ class RecordingTask:
             else:
                 recording.status = "failed"
                 recording.error_message = "Output file not created"
-            
+
             db.commit()
-            
+
+            if output_path.exists() and recording.status in ("completed", "stopped"):
+                threading.Thread(target=_generate_thumbnail, args=(output_path,), daemon=True).start()
+
         except Exception as e:
             logger.error(f"Recording error: {e}", exc_info=True)
             try:

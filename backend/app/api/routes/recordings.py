@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -19,6 +20,30 @@ from app.schemas.recording import (
 from app.core.recorder_service import recorder_service
 from app.core.task_manager import task_manager
 from app.core.settings_store import settings_store
+
+
+def _thumbnail_path(video_path: Path) -> Path:
+    return video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
+
+
+def _generate_thumbnail(video_path: Path, thumb_path: Path) -> bool:
+    if not video_path.exists():
+        return False
+    thumb_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-ss", "00:00:01", "-vframes", "1",
+                "-i", str(video_path), "-vf", "scale=480:-1",
+                str(thumb_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=30,
+        )
+        return thumb_path.exists()
+    except Exception:
+        return False
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
@@ -305,16 +330,65 @@ def download_recording(recording_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recording not found"
         )
-    
+
     file_path = Path(settings.RECORDINGS_DIR) / recording.filename
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recording file not found"
         )
-    
+
     return FileResponse(
         path=str(file_path),
         filename=recording.filename,
         media_type="video/mp4"
+    )
+
+
+@router.get("/{recording_id}/stream")
+def stream_recording(recording_id: int, db: Session = Depends(get_db)):
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording not found"
+        )
+
+    file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording file not found"
+        )
+
+    return FileResponse(
+        path=str(file_path),
+        media_type="video/mp4",
+        content_disposition_type="inline",
+    )
+
+
+@router.get("/{recording_id}/thumbnail")
+def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording not found"
+        )
+
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    thumb_path = _thumbnail_path(video_path)
+
+    if not thumb_path.exists():
+        if not _generate_thumbnail(video_path, thumb_path):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Could not generate thumbnail for this recording",
+            )
+
+    return FileResponse(
+        path=str(thumb_path),
+        media_type="image/jpeg",
+        content_disposition_type="inline",
     )
