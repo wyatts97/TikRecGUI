@@ -127,20 +127,11 @@ export default function Dashboard() {
                     className="flex items-center justify-between p-3 rounded-lg bg-gray-50"
                   >
                     <div className="flex items-center gap-3">
-                      {user.profile_pic_url ? (
-                        <img
-                          src={user.profile_pic_url}
-                          alt={user.username}
-                          className="h-8 w-8 rounded-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
-                      ) : (
-                        <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center">
-                          <span className="text-sm font-medium text-primary">
-                            {user.username[0].toUpperCase()}
-                          </span>
-                        </div>
-                      )}
+                      <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center">
+                        <span className="text-sm font-medium text-primary">
+                          {user.username[0].toUpperCase()}
+                        </span>
+                      </div>
                       <div>
                         <p className="font-medium text-sm">@{user.username}</p>
                         <Badge variant="live" className="text-xs">LIVE</Badge>
@@ -186,18 +177,9 @@ export default function Dashboard() {
                     className="flex items-center justify-between p-3 rounded-lg bg-gray-50"
                   >
                     <div className="flex items-center gap-3">
-                      {recording.profile_pic_url ? (
-                        <img
-                          src={recording.profile_pic_url}
-                          alt={recording.username}
-                          className="h-8 w-8 rounded-full object-cover"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
-                      ) : (
-                        <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
-                          <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                        </div>
-                      )}
+                      <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
+                        <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                      </div>
                       <div>
                         <p className="font-medium text-sm">@{recording.username}</p>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">

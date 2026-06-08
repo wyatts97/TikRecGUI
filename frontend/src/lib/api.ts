@@ -31,7 +31,6 @@ export interface User {
   is_monitoring: boolean
   is_live: boolean
   last_checked: string | null
-  profile_pic_url: string | null
   created_at: string
   updated_at: string
 }
@@ -40,7 +39,6 @@ export interface Recording {
   id: number
   user_id: number
   username: string
-  profile_pic_url: string | null
   filename: string
   status: string
   mode: string
@@ -62,7 +60,6 @@ export interface RecordingListResponse {
 export interface ActiveRecording {
   id: number
   username: string
-  profile_pic_url: string | null
   status: string
   started_at: string | null
   duration_seconds: number | null

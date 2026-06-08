@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,8 +7,6 @@ from app.config import settings
 from app.db.database import init_db
 from app.api.routes import users, recordings, settings as settings_routes
 from app.core.task_manager import task_manager, monitor_service
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 
 @asynccontextmanager

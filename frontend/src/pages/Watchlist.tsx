@@ -214,20 +214,11 @@ export default function Watchlist() {
                   <TableRow key={user.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        {user.profile_pic_url ? (
-                          <img
-                            src={user.profile_pic_url}
-                            alt={user.username}
-                            className="h-8 w-8 rounded-full object-cover"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                          />
-                        ) : (
-                          <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center">
-                            <span className="text-sm font-medium text-primary">
-                              {user.username[0].toUpperCase()}
-                            </span>
-                          </div>
-                        )}
+                        <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center">
+                          <span className="text-sm font-medium text-primary">
+                            {user.username[0].toUpperCase()}
+                          </span>
+                        </div>
                         <span className="font-medium">@{user.username}</span>
                       </div>
                     </TableCell>

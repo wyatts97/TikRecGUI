@@ -21,7 +21,6 @@ class UserResponse(UserBase):
     is_monitoring: bool
     is_live: bool
     last_checked: datetime | None = None
-    profile_pic_url: str | None = None
     created_at: datetime
     updated_at: datetime
 

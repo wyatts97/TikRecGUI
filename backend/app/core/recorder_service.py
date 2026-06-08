@@ -1,12 +1,9 @@
 import json
-import logging
 from typing import Any
 
 from app.config import settings
 from app.core.recorder_loader import get_tiktok_api_class, recorder_available
 from app.core.settings_store import settings_store
-
-logger = logging.getLogger(__name__)
 
 
 class RecorderService:
@@ -42,33 +39,25 @@ class RecorderService:
         api = self.get_api()
         try:
             room_id = api.get_room_id_from_user(username)
-            logger.info(f"check_user_live: room_id for {username} = {room_id}")
             if room_id:
                 is_live = api.is_room_alive(room_id)
-                logger.info(f"check_user_live: is_live for {username} = {is_live}")
-                avatar_url = api.get_avatar_url(room_id)
                 return {
                     "username": username,
                     "is_live": is_live,
                     "room_id": room_id,
-                    "avatar_url": avatar_url,
                     "error": None
                 }
-            logger.warning(f"check_user_live: no room_id for {username}, marking not live")
             return {
                 "username": username,
                 "is_live": False,
                 "room_id": None,
-                "avatar_url": None,
                 "error": None
             }
         except Exception as e:
-            logger.error(f"check_user_live: exception for {username}: {e}")
             return {
                 "username": username,
                 "is_live": False,
                 "room_id": None,
-                "avatar_url": None,
                 "error": str(e)
             }
     

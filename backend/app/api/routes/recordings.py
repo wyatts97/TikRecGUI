@@ -95,7 +95,6 @@ def list_recordings(
             id=rec.id,
             user_id=rec.user_id,
             username=rec.user.username,
-            profile_pic_url=rec.user.profile_pic_url,
             filename=rec.filename,
             status=rec.status,
             mode=rec.mode,
@@ -156,23 +155,17 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
             detail="Could not determine room_id"
         )
     
-    avatar_url = status_info.get("avatar_url") if request.username else None
     user = db.query(User).filter(User.username == username).first()
     if not user:
         user = User(
             username=username,
             room_id=room_id,
             is_live=True,
-            profile_pic_url=avatar_url,
             last_checked=datetime.utcnow()
         )
         db.add(user)
         db.commit()
         db.refresh(user)
-    else:
-        if avatar_url:
-            user.profile_pic_url = avatar_url
-            db.commit()
     
     filename = f"TK_{username}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
     
@@ -213,7 +206,6 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
         id=recording.id,
         user_id=recording.user_id,
         username=user.username,
-        profile_pic_url=user.profile_pic_url,
         filename=recording.filename,
         status=recording.status,
         mode=recording.mode,
@@ -242,7 +234,6 @@ def get_active_recordings(db: Session = Depends(get_db)):
         result.append(ActiveRecordingResponse(
             id=rec.id,
             username=rec.user.username,
-            profile_pic_url=rec.user.profile_pic_url,
             status=rec.status,
             started_at=rec.started_at,
             duration_seconds=duration
@@ -264,7 +255,6 @@ def get_recording(recording_id: int, db: Session = Depends(get_db)):
         id=recording.id,
         user_id=recording.user_id,
         username=recording.user.username,
-        profile_pic_url=recording.user.profile_pic_url,
         filename=recording.filename,
         status=recording.status,
         mode=recording.mode,
@@ -300,7 +290,6 @@ def stop_recording(recording_id: int, db: Session = Depends(get_db)):
         id=recording.id,
         user_id=recording.user_id,
         username=recording.user.username,
-        profile_pic_url=recording.user.profile_pic_url,
         filename=recording.filename,
         status=recording.status,
         mode=recording.mode,
