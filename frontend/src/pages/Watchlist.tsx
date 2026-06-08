@@ -214,8 +214,19 @@ export default function Watchlist() {
                   <TableRow key={user.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center">
-                          <span className="text-sm font-medium text-primary">
+                        <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
+                          <img
+                            src={api.users.getAvatarUrl(user.id)}
+                            alt={user.username}
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              const img = e.target as HTMLImageElement
+                              img.style.display = 'none'
+                              const fallback = img.nextElementSibling as HTMLElement
+                              if (fallback) fallback.style.display = 'flex'
+                            }}
+                          />
+                          <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
                             {user.username[0].toUpperCase()}
                           </span>
                         </div>

@@ -2,9 +2,12 @@ import os
 import json
 import time
 import subprocess
+import zipfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -30,20 +33,30 @@ def _generate_thumbnail(video_path: Path, thumb_path: Path) -> bool:
     if not video_path.exists():
         return False
     thumb_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        subprocess.run(
-            [
-                "ffmpeg", "-y", "-ss", "00:00:01", "-vframes", "1",
-                "-i", str(video_path), "-vf", "scale=480:-1",
-                str(thumb_path),
-            ],
-            capture_output=True,
-            check=True,
-            timeout=30,
-        )
-        return thumb_path.exists()
-    except Exception:
-        return False
+    
+    # Try different seek positions in case video is short or has issues at start
+    seek_positions = ["1", "0.5", "2", "0"]
+    
+    for seek_time in seek_positions:
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-i", str(video_path),
+                    "-ss", seek_time,
+                    "-vframes", "1",
+                    "-vf", "scale=480:-1",
+                    str(thumb_path),
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+            if thumb_path.exists() and thumb_path.stat().st_size > 0:
+                return True
+        except Exception:
+            continue
+    
+    return False
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
@@ -396,3 +409,103 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
         media_type="image/jpeg",
         content_disposition_type="inline",
     )
+
+
+@router.post("/batch/delete", status_code=status.HTTP_200_OK)
+def batch_delete_recordings(
+    recording_ids: List[int] = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Delete multiple recordings at once."""
+    if not recording_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No recording IDs provided"
+        )
+    
+    deleted_count = 0
+    errors = []
+    
+    for recording_id in recording_ids:
+        recording = db.query(Recording).filter(Recording.id == recording_id).first()
+        if not recording:
+            errors.append(f"Recording {recording_id} not found")
+            continue
+        
+        if task_manager.is_recording(recording_id):
+            task_manager.stop_recording(recording_id)
+        
+        file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+        if file_path.exists():
+            try:
+                os.remove(file_path)
+            except OSError as e:
+                errors.append(f"Failed to delete file for recording {recording_id}: {str(e)}")
+        
+        # Also delete thumbnail if exists
+        thumb_path = _thumbnail_path(file_path)
+        if thumb_path.exists():
+            try:
+                os.remove(thumb_path)
+            except OSError:
+                pass
+        
+        db.delete(recording)
+        deleted_count += 1
+    
+    db.commit()
+    
+    return {
+        "deleted": deleted_count,
+        "errors": errors
+    }
+
+
+@router.post("/batch/download")
+def batch_download_recordings(
+    recording_ids: List[int] = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Download multiple recordings as a ZIP file."""
+    if not recording_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No recording IDs provided"
+        )
+    
+    recordings = db.query(Recording).filter(Recording.id.in_(recording_ids)).all()
+    
+    if not recordings:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No recordings found"
+        )
+    
+    # Create a temporary ZIP file
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_path = temp_file.name
+    temp_file.close()
+    
+    try:
+        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for recording in recordings:
+                file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+                if file_path.exists():
+                    zf.write(file_path, recording.filename)
+        
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        zip_filename = f"recordings_{timestamp}.zip"
+        
+        return FileResponse(
+            path=temp_path,
+            filename=zip_filename,
+            media_type="application/zip",
+            background=None  # File will be cleaned up by OS temp cleanup
+        )
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create ZIP file: {str(e)}"
+        )

@@ -5,11 +5,13 @@ from app.config import settings
 from app.schemas.settings import (
     CookiesConfig,
     TelegramConfig,
+    AutoCleanupConfig,
     SettingsResponse,
     SettingsUpdate
 )
 from app.core.recorder_service import recorder_service
 from app.core.settings_store import settings_store
+from app.core.cleanup_service import cleanup_service
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -42,6 +44,12 @@ def get_settings():
         {"api_id": "", "api_hash": "", "chat_id": "me"}
     )
     
+    auto_cleanup_data = settings_store.get("auto_cleanup", {
+        "enabled": False,
+        "days": 7,
+        "action": "delete"
+    })
+    
     return SettingsResponse(
         cookies=CookiesConfig(
             sessionid_ss=cookies_data.get("sessionid_ss", ""),
@@ -55,7 +63,8 @@ def get_settings():
         proxy=settings_store.get("proxy", settings.DEFAULT_PROXY),
         output_dir=str(settings.RECORDINGS_DIR),
         default_bitrate=settings_store.get("default_bitrate", settings.DEFAULT_BITRATE),
-        automatic_interval=settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL)
+        automatic_interval=settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL),
+        auto_cleanup=AutoCleanupConfig(**auto_cleanup_data)
     )
 
 
@@ -90,6 +99,13 @@ def update_settings(update: SettingsUpdate):
         interval = max(1, int(update.automatic_interval))
         settings_store.set("automatic_interval", interval)
 
+    if update.auto_cleanup is not None:
+        settings_store.set("auto_cleanup", {
+            "enabled": update.auto_cleanup.enabled,
+            "days": update.auto_cleanup.days,
+            "action": update.auto_cleanup.action
+        })
+
     return get_settings()
 
 
@@ -109,3 +125,15 @@ def health_check():
         "recordings_dir": str(settings.RECORDINGS_DIR),
         "recordings_dir_exists": settings.RECORDINGS_DIR.exists()
     }
+
+
+@router.get("/cleanup/stats")
+def get_cleanup_stats():
+    """Get statistics about recordings that would be cleaned up."""
+    return cleanup_service.get_cleanup_stats()
+
+
+@router.post("/cleanup/run")
+def run_cleanup():
+    """Manually trigger the cleanup process."""
+    return cleanup_service.run_cleanup()

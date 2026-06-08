@@ -65,6 +65,12 @@ export interface ActiveRecording {
   duration_seconds: number | null
 }
 
+export interface AutoCleanupConfig {
+  enabled: boolean
+  days: number
+  action: "delete" | "compress"
+}
+
 export interface Settings {
   cookies: {
     sessionid_ss: string
@@ -79,6 +85,7 @@ export interface Settings {
   output_dir: string
   default_bitrate: string | null
   automatic_interval: number
+  auto_cleanup: AutoCleanupConfig
 }
 
 export interface HealthStatus {
@@ -119,6 +126,8 @@ export const api = {
     
     refresh: (id: number) =>
       fetchApi<User>(`/users/${id}/refresh`, { method: "POST" }),
+    
+    getAvatarUrl: (id: number) => `${API_BASE}/users/${id}/avatar`,
   },
 
   recordings: {
@@ -158,6 +167,25 @@ export const api = {
     getDownloadUrl: (id: number) => `${API_BASE}/recordings/${id}/download`,
     getStreamUrl: (id: number) => `${API_BASE}/recordings/${id}/stream`,
     getThumbnailUrl: (id: number) => `${API_BASE}/recordings/${id}/thumbnail`,
+    
+    batchDelete: (ids: number[]) =>
+      fetchApi<{ deleted: number; errors: string[] }>("/recordings/batch/delete", {
+        method: "POST",
+        body: JSON.stringify({ recording_ids: ids }),
+      }),
+    
+    batchDownload: async (ids: number[]) => {
+      const response = await fetch(`${API_BASE}/recordings/batch/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recording_ids: ids }),
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: "Download failed" }))
+        throw new Error(error.detail || "Download failed")
+      }
+      return response.blob()
+    },
   },
 
   settings: {
@@ -170,5 +198,14 @@ export const api = {
       }),
     
     health: () => fetchApi<HealthStatus>("/settings/health"),
+    
+    getCleanupStats: () => 
+      fetchApi<{ count: number; total_size: number; days: number }>("/settings/cleanup/stats"),
+    
+    runCleanup: () =>
+      fetchApi<{ status: string; deleted: number; compressed: number; backup_file?: string }>(
+        "/settings/cleanup/run",
+        { method: "POST" }
+      ),
   },
 }

@@ -1,11 +1,14 @@
 from datetime import datetime
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.db.models import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserStatusResponse
 from app.core.recorder_service import recorder_service
+from app.core.avatar_service import avatar_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -141,3 +144,28 @@ def refresh_user_status(user_id: int, db: Session = Depends(get_db)):
     db.refresh(user)
     
     return user
+
+
+@router.get("/{user_id}/avatar")
+def get_user_avatar(user_id: int, refresh: bool = False, db: Session = Depends(get_db)):
+    """Get the avatar image for a user. Fetches from TikTok if not cached."""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    avatar_path = avatar_service.fetch_and_cache_avatar(user.username, force=refresh)
+    
+    if avatar_path and Path(avatar_path).exists():
+        return FileResponse(
+            path=avatar_path,
+            media_type="image/jpeg",
+            content_disposition_type="inline",
+        )
+    
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Avatar not available"
+    )

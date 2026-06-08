@@ -45,16 +45,22 @@ export default function Watch() {
               className="group overflow-hidden cursor-pointer border border-kraken-border bg-white hover:shadow-md transition-shadow"
               onClick={() => navigate(`/watch/${recording.id}`)}
             >
-              <div className="relative aspect-video bg-gray-100 overflow-hidden">
+              <div className="relative aspect-video bg-gray-200 overflow-hidden">
                 <img
                   src={api.recordings.getThumbnailUrl(recording.id)}
                   alt={`${recording.username} thumbnail`}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
                   onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none'
+                    const img = e.target as HTMLImageElement
+                    img.style.display = 'none'
+                    const placeholder = img.nextElementSibling as HTMLElement
+                    if (placeholder) placeholder.style.display = 'flex'
                   }}
                 />
+                <div className="absolute inset-0 items-center justify-center bg-gray-200 hidden">
+                  <Tv className="h-12 w-12 text-gray-400" />
+                </div>
                 <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
                   <div className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center">
                     <Play className="h-5 w-5 text-primary ml-0.5" />
@@ -65,8 +71,19 @@ export default function Watch() {
               <div className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="h-7 w-7 rounded-full bg-primary-subtle flex items-center justify-center shrink-0">
-                      <span className="text-xs font-medium text-primary">
+                    <div className="h-7 w-7 rounded-full bg-primary-subtle flex items-center justify-center shrink-0 overflow-hidden">
+                      <img
+                        src={api.users.getAvatarUrl(recording.user_id)}
+                        alt={recording.username}
+                        className="h-full w-full object-cover"
+                        onError={(e) => {
+                          const img = e.target as HTMLImageElement
+                          img.style.display = 'none'
+                          const fallback = img.nextElementSibling as HTMLElement
+                          if (fallback) fallback.style.display = 'flex'
+                        }}
+                      />
+                      <span className="text-xs font-medium text-primary hidden items-center justify-center h-full w-full">
                         {recording.username[0].toUpperCase()}
                       </span>
                     </div>

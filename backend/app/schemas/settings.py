@@ -12,6 +12,12 @@ class TelegramConfig(BaseModel):
     chat_id: str = "me"
 
 
+class AutoCleanupConfig(BaseModel):
+    enabled: bool = False
+    days: int = 7  # 1, 3, 7, 14, 30
+    action: str = "delete"  # "delete" or "compress"
+
+
 class SettingsResponse(BaseModel):
     cookies: CookiesConfig
     telegram: TelegramConfig
@@ -19,6 +25,7 @@ class SettingsResponse(BaseModel):
     output_dir: str
     default_bitrate: str | None = None
     automatic_interval: int = 5
+    auto_cleanup: AutoCleanupConfig = AutoCleanupConfig()
 
 
 class SettingsUpdate(BaseModel):
@@ -27,3 +34,4 @@ class SettingsUpdate(BaseModel):
     proxy: str | None = None
     default_bitrate: str | None = None
     automatic_interval: int | None = None
+    auto_cleanup: AutoCleanupConfig | None = None

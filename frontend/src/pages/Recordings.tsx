@@ -7,6 +7,9 @@ import {
   Play,
   Filter,
   Video,
+  CheckSquare,
+  Square,
+  Loader2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -46,6 +49,9 @@ export default function Recordings() {
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [newUsername, setNewUsername] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
@@ -95,6 +101,22 @@ export default function Recordings() {
     },
   })
 
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => api.recordings.batchDelete(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+      setSelectedIds(new Set())
+      setDeleteConfirmOpen(false)
+      toast({ 
+        title: 'Recordings deleted', 
+        description: `${data.deleted} recording(s) deleted${data.errors.length > 0 ? `, ${data.errors.length} error(s)` : ''}` 
+      })
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+    },
+  })
+
   const handleStartRecording = (e: React.FormEvent) => {
     e.preventDefault()
     if (newUsername.trim()) {
@@ -104,6 +126,50 @@ export default function Recordings() {
 
   const handleDownload = (recording: Recording) => {
     window.open(api.recordings.getDownloadUrl(recording.id), '_blank')
+  }
+
+  const toggleSelect = (id: number) => {
+    const newSet = new Set(selectedIds)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    setSelectedIds(newSet)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === recordings.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(recordings.map(r => r.id)))
+    }
+  }
+
+  const handleBatchDownload = async () => {
+    if (selectedIds.size === 0) return
+    setIsDownloading(true)
+    try {
+      const blob = await api.recordings.batchDownload(Array.from(selectedIds))
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `recordings_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      toast({ title: 'Download started', description: 'Your recordings are being downloaded' })
+    } catch (error) {
+      toast({ title: 'Error', description: (error as Error).message, variant: 'destructive' })
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
+  const handleBatchDelete = () => {
+    if (selectedIds.size === 0) return
+    batchDeleteMutation.mutate(Array.from(selectedIds))
   }
 
   return (
@@ -189,9 +255,50 @@ export default function Recordings() {
             </div>
           ) : (
             <>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-2 mb-4 p-3 bg-primary-subtle rounded-lg">
+                  <span className="text-sm font-medium">
+                    {selectedIds.size} selected
+                  </span>
+                  <div className="flex-1" />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleBatchDownload}
+                    disabled={isDownloading}
+                  >
+                    {isDownloading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    Download ZIP
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setDeleteConfirmOpen(true)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Delete
+                  </Button>
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">
+                      <button
+                        onClick={toggleSelectAll}
+                        className="flex items-center justify-center"
+                      >
+                        {selectedIds.size === recordings.length && recordings.length > 0 ? (
+                          <CheckSquare className="h-4 w-4 text-primary" />
+                        ) : (
+                          <Square className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </button>
+                    </TableHead>
                     <TableHead>User</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Duration</TableHead>
@@ -203,6 +310,18 @@ export default function Recordings() {
                 <TableBody>
                   {recordings.map((recording: Recording) => (
                     <TableRow key={recording.id}>
+                      <TableCell>
+                        <button
+                          onClick={() => toggleSelect(recording.id)}
+                          className="flex items-center justify-center"
+                        >
+                          {selectedIds.has(recording.id) ? (
+                            <CheckSquare className="h-4 w-4 text-primary" />
+                          ) : (
+                            <Square className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      </TableCell>
                       <TableCell>
                         <div>
                           <p className="font-medium">@{recording.username}</p>
@@ -284,6 +403,29 @@ export default function Recordings() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {selectedIds.size} Recording(s)?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. The selected recordings and their files will be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBatchDelete}
+              disabled={batchDeleteMutation.isPending}
+            >
+              {batchDeleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

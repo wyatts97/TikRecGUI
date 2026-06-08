@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, AlertCircle, CheckCircle2, ExternalLink } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -360,6 +360,135 @@ export default function SettingsPage() {
                 }
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5" />
+              Auto-Cleanup
+            </CardTitle>
+            <CardDescription>
+              Automatically clean up old recordings to save disk space
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Enable Auto-Cleanup</Label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically process old recordings
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={formData.auto_cleanup?.enabled || false}
+                onClick={() =>
+                  setFormData({
+                    ...formData,
+                    auto_cleanup: {
+                      ...formData.auto_cleanup,
+                      enabled: !formData.auto_cleanup?.enabled,
+                      days: formData.auto_cleanup?.days || 7,
+                      action: formData.auto_cleanup?.action || 'delete',
+                    },
+                  })
+                }
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  formData.auto_cleanup?.enabled ? 'bg-primary' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    formData.auto_cleanup?.enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {formData.auto_cleanup?.enabled && (
+              <>
+                <div className="grid gap-2">
+                  <Label>Retention Period</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={formData.auto_cleanup?.days || 7}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        auto_cleanup: {
+                          ...formData.auto_cleanup,
+                          enabled: formData.auto_cleanup?.enabled || false,
+                          days: parseInt(e.target.value),
+                          action: formData.auto_cleanup?.action || 'delete',
+                        },
+                      })
+                    }
+                  >
+                    <option value={1}>1 day</option>
+                    <option value={3}>3 days</option>
+                    <option value={7}>7 days</option>
+                    <option value={14}>14 days</option>
+                    <option value={30}>30 days</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Recordings older than this will be processed
+                  </p>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label>Cleanup Action</Label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="cleanup_action"
+                        value="delete"
+                        checked={formData.auto_cleanup?.action === 'delete'}
+                        onChange={() =>
+                          setFormData({
+                            ...formData,
+                            auto_cleanup: {
+                              ...formData.auto_cleanup,
+                              enabled: formData.auto_cleanup?.enabled || false,
+                              days: formData.auto_cleanup?.days || 7,
+                              action: 'delete',
+                            },
+                          })
+                        }
+                        className="h-4 w-4"
+                      />
+                      <Trash2 className="h-4 w-4" />
+                      <span className="text-sm">Delete permanently</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="cleanup_action"
+                        value="compress"
+                        checked={formData.auto_cleanup?.action === 'compress'}
+                        onChange={() =>
+                          setFormData({
+                            ...formData,
+                            auto_cleanup: {
+                              ...formData.auto_cleanup,
+                              enabled: formData.auto_cleanup?.enabled || false,
+                              days: formData.auto_cleanup?.days || 7,
+                              action: 'compress',
+                            },
+                          })
+                        }
+                        className="h-4 w-4"
+                      />
+                      <Archive className="h-4 w-4" />
+                      <span className="text-sm">Compress to backup</span>
+                    </label>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
