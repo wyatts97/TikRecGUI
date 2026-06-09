@@ -10,12 +10,11 @@ from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.database import get_db, async_get_db, get_session, run_background
+from app.db.database import get_db, get_session, run_background
 from app.db.models import Recording, User
 from app.schemas.recording import (
     RecordingStart,
@@ -98,7 +97,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
 
 
 @router.get("", response_model=RecordingListResponse)
-async def list_recordings(
+def list_recordings(
     page: int = 1,
     page_size: int = 20,
     status_filter: str | None = None,
@@ -110,55 +109,49 @@ async def list_recordings(
     max_size: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-    db: AsyncSession = Depends(async_get_db)
+    db: Session = Depends(get_db)
 ):
-    from sqlalchemy import func
-
-    # --- Build base statement ---
-    stmt = select(Recording).join(User)
-    count_stmt = select(func.count()).select_from(Recording).join(User)
+    query = db.query(Recording).join(User)
+    count_query = db.query(func.count()).select_from(Recording).join(User)
 
     if status_filter:
         if "," in status_filter:
             statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
-            stmt = stmt.where(Recording.status.in_(statuses))
-            count_stmt = count_stmt.where(Recording.status.in_(statuses))
+            query = query.filter(Recording.status.in_(statuses))
+            count_query = count_query.filter(Recording.status.in_(statuses))
         else:
-            stmt = stmt.where(Recording.status == status_filter)
-            count_stmt = count_stmt.where(Recording.status == status_filter)
+            query = query.filter(Recording.status == status_filter)
+            count_query = count_query.filter(Recording.status == status_filter)
     if user_id:
-        stmt = stmt.where(Recording.user_id == user_id)
-        count_stmt = count_stmt.where(Recording.user_id == user_id)
+        query = query.filter(Recording.user_id == user_id)
+        count_query = count_query.filter(Recording.user_id == user_id)
     if username_filter:
         like_pat = f"%{username_filter}%"
-        stmt = stmt.where(User.username.ilike(like_pat))
-        count_stmt = count_stmt.where(User.username.ilike(like_pat))
+        query = query.filter(User.username.ilike(like_pat))
+        count_query = count_query.filter(User.username.ilike(like_pat))
     if min_size is not None:
-        stmt = stmt.where(Recording.file_size >= min_size)
-        count_stmt = count_stmt.where(Recording.file_size >= min_size)
+        query = query.filter(Recording.file_size >= min_size)
+        count_query = count_query.filter(Recording.file_size >= min_size)
     if max_size is not None:
-        stmt = stmt.where(Recording.file_size <= max_size)
-        count_stmt = count_stmt.where(Recording.file_size <= max_size)
+        query = query.filter(Recording.file_size <= max_size)
+        count_query = count_query.filter(Recording.file_size <= max_size)
     if date_from:
         try:
             dt = datetime.fromisoformat(date_from)
-            stmt = stmt.where(Recording.created_at >= dt)
-            count_stmt = count_stmt.where(Recording.created_at >= dt)
+            query = query.filter(Recording.created_at >= dt)
+            count_query = count_query.filter(Recording.created_at >= dt)
         except ValueError:
             pass
     if date_to:
         try:
             dt = datetime.fromisoformat(date_to)
-            stmt = stmt.where(Recording.created_at <= dt)
-            count_stmt = count_stmt.where(Recording.created_at <= dt)
+            query = query.filter(Recording.created_at <= dt)
+            count_query = count_query.filter(Recording.created_at <= dt)
         except ValueError:
             pass
 
-    # --- Count ---
-    count_result = await db.execute(count_stmt)
-    total = count_result.scalar() or 0
+    total = count_query.scalar() or 0
 
-    # --- Order & paginate ---
     sort_col_map = {
         "size": Recording.file_size,
         "duration": Recording.duration_seconds,
@@ -166,10 +159,7 @@ async def list_recordings(
     }
     sort_col = sort_col_map.get(sort_by, Recording.created_at)
     order = sort_col.asc() if sort_order == "asc" else sort_col.desc()
-    stmt = stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
-
-    result = await db.execute(stmt)
-    recordings = result.scalars().all()
+    recordings = query.order_by(order).offset((page - 1) * page_size).limit(page_size).all()
 
     return RecordingListResponse(
         recordings=[_build_response(rec) for rec in recordings],
@@ -271,16 +261,13 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
 
 
 @router.get("/active", response_model=list[ActiveRecordingResponse])
-async def get_active_recordings(db: AsyncSession = Depends(async_get_db)):
+def get_active_recordings(db: Session = Depends(get_db)):
     task_manager.cleanup_finished()
     active_ids = task_manager.get_active_recordings()
     if not active_ids:
         return []
 
-    result = await db.execute(
-        select(Recording).where(Recording.id.in_(active_ids))
-    )
-    recordings = result.scalars().all()
+    recordings = db.query(Recording).filter(Recording.id.in_(active_ids)).all()
 
     now = datetime.utcnow()
     out = []
@@ -300,9 +287,8 @@ async def get_active_recordings(db: AsyncSession = Depends(async_get_db)):
 
 
 @router.get("/{recording_id}", response_model=RecordingResponse)
-async def get_recording(recording_id: int, db: AsyncSession = Depends(async_get_db)):
-    result = await db.execute(select(Recording).where(Recording.id == recording_id))
-    recording = result.scalar_one_or_none()
+def get_recording(recording_id: int, db: Session = Depends(get_db)):
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -531,10 +517,9 @@ def batch_download_recordings(
 
 
 @router.get("/{recording_id}/sprite")
-async def get_sprite(recording_id: int, db: AsyncSession = Depends(async_get_db)):
+def get_sprite(recording_id: int, db: Session = Depends(get_db)):
     """Return the sprite sheet JPEG for hover-scrub preview."""
-    result = await db.execute(select(Recording).where(Recording.id == recording_id))
-    recording = result.scalar_one_or_none()
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
@@ -545,14 +530,13 @@ async def get_sprite(recording_id: int, db: AsyncSession = Depends(async_get_db)
 
 
 @router.get("/{recording_id}/thumbnails.vtt")
-async def get_sprite_vtt(recording_id: int, db: AsyncSession = Depends(async_get_db)):
+def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
     """Return the WebVTT file for Vidstack hover-scrub thumbnails.
 
     Rewrites the relative 'sprite' URL inside the VTT to an absolute
     API endpoint URL so vidstack can resolve it correctly.
     """
-    result = await db.execute(select(Recording).where(Recording.id == recording_id))
-    recording = result.scalar_one_or_none()
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
