@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MediaPlayer, MediaProvider } from '@vidstack/react'
@@ -66,7 +66,7 @@ export default function WatchPlayer() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'player' | 'transcript'>('player')
   const [transcriptSearch, setTranscriptSearch] = useState('')
-  const playerRef = useRef<HTMLMediaElement>(null)
+  const playerRef = useRef<HTMLDivElement>(null)
 
   const { data: recording, isLoading } = useQuery({
     queryKey: ['recording', recordingId],

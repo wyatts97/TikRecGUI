@@ -463,13 +463,6 @@ export default function Watchlist() {
     })
   }, [])
 
-  const toggleSelectAll = useCallback(() => {
-    setSelectedIds((prev) => {
-      if (prev.size === filteredUsers.length) return new Set()
-      return new Set(filteredUsers.map((u) => u.id))
-    })
-  }, [filteredUsers])
-
   const filteredUsers = useMemo(() => {
     let sorted = [...users].sort((a, b) => {
       if (a.is_live === b.is_live) return 0
@@ -483,6 +476,13 @@ export default function Watchlist() {
         (u.display_name && u.display_name.toLowerCase().includes(q))
     )
   }, [users, searchQuery])
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === filteredUsers.length) return new Set()
+      return new Set(filteredUsers.map((u) => u.id))
+    })
+  }, [filteredUsers])
 
   const selectedCount = selectedIds.size
 
