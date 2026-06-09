@@ -489,11 +489,20 @@ export default function Watchlist() {
   // Export: copy @username list to clipboard
   const handleExport = useCallback(() => {
     const list = users.map((u) => `@${u.username}`).join('\n')
-    navigator.clipboard.writeText(list).then(() => {
+    // Use textarea fallback for insecure contexts (Docker/nginx)
+    const textarea = document.createElement('textarea')
+    textarea.value = list
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    document.body.appendChild(textarea)
+    textarea.select()
+    try {
+      document.execCommand('copy')
       toast({ title: 'Exported', description: 'Usernames copied to clipboard' })
-    }).catch(() => {
+    } catch {
       toast({ title: 'Export failed', description: 'Could not copy to clipboard', variant: 'destructive' })
-    })
+    }
+    document.body.removeChild(textarea)
   }, [users, toast])
 
   // Import: parse @username list and add users

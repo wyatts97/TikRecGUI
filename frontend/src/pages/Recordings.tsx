@@ -502,14 +502,14 @@ export default function Recordings() {
             <div className="flex items-center gap-1.5">
               <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <Select
-                value={statusFilter || ''}
-                onValueChange={(v) => { setStatusFilter(v || undefined); setPage(1) }}
+                value={statusFilter || 'all'}
+                onValueChange={(v) => { setStatusFilter(v === 'all' ? undefined : v); setPage(1) }}
               >
                 <SelectTrigger className="h-8 w-32 text-sm">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Status</SelectItem>
+                  <SelectItem value="all">All Status</SelectItem>
                   <SelectItem value="recording">Recording</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="stopped">Stopped</SelectItem>
