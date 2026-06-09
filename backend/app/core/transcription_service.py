@@ -32,16 +32,47 @@ def _get_model():
 
 
 class TranscriptionService:
-    """Transcribe completed recordings using faster-whisper."""
+    """Transcribe completed recordings using faster-whisper.
 
-    def transcribe(self, recording_id: int) -> None:
-        """
-        Transcribe the recording in a background thread.
-        Updates transcript_status and transcript_text in the DB when done.
-        """
-        threading.Thread(
-            target=self._run, args=(recording_id,), daemon=True
-        ).start()
+    Only one transcription runs at a time. Additional requests are queued
+    and processed in FIFO order.
+    """
+
+    def __init__(self):
+        self._queue: list[int] = []
+        self._queue_lock = threading.Lock()
+        self._worker_event = threading.Event()
+        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self._worker_thread.start()
+
+    def enqueue(self, recording_id: int) -> None:
+        """Add a recording to the transcription queue."""
+        with self._queue_lock:
+            if recording_id not in self._queue:
+                self._queue.append(recording_id)
+                logger.info(f"Enqueued recording {recording_id} for transcription (queue len={len(self._queue)})")
+        self._worker_event.set()
+
+    def get_queue(self) -> list[int]:
+        """Return a copy of the current queue (for status/debug)."""
+        with self._queue_lock:
+            return list(self._queue)
+
+    def _worker_loop(self) -> None:
+        """Background worker: processes one transcription at a time."""
+        while True:
+            self._worker_event.wait()
+            self._worker_event.clear()
+
+            while True:
+                with self._queue_lock:
+                    if not self._queue:
+                        break
+                    recording_id = self._queue.pop(0)
+
+                logger.info(f"Starting transcription for recording {recording_id}")
+                self._run(recording_id)
+                logger.info(f"Finished transcription for recording {recording_id}")
 
     def _run(self, recording_id: int) -> None:
         from app.db.database import SessionLocal

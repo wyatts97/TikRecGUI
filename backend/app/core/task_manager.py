@@ -10,6 +10,7 @@ from app.config import settings
 from app.db.database import SessionLocal
 from app.db.models import Recording, User
 from app.core.recorder_loader import get_tiktok_api_class
+from app.core.transcription_service import transcription_service
 
 
 def _fmt_vtt_time(seconds: float) -> str:
@@ -256,6 +257,11 @@ class RecordingTask:
                     db.commit()
                 threading.Thread(target=_generate_thumbnail, args=(output_path,), daemon=True).start()
                 threading.Thread(target=_generate_sprite, args=(output_path,), daemon=True).start()
+                # Auto-queue for transcription (one at a time via transcription_service worker)
+                if recording.transcript_status is None:
+                    recording.transcript_status = "pending"
+                    db.commit()
+                transcription_service.enqueue(recording.id)
 
         except Exception as e:
             logger.error(f"Recording error: {e}", exc_info=True)

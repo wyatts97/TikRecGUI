@@ -611,7 +611,7 @@ def start_transcription(recording_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(recording)
 
-    transcription_service.transcribe(recording_id)
+    transcription_service.enqueue(recording_id)
     return _build_response(recording)
 
 
