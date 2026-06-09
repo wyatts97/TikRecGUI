@@ -96,12 +96,30 @@ def init_db():
     from app.db import models
     Base.metadata.create_all(bind=engine)
 
-    # Run Alembic migrations to bring existing databases up to date
     from pathlib import Path
     from alembic.config import Config as AlembicConfig
     from alembic import command
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import inspect, text
 
     alembic_cfg = AlembicConfig(
         str(Path(__file__).resolve().parent.parent.parent / "alembic.ini")
     )
+
+    # If alembic_version references a revision whose migration file no longer
+    # exists (e.g. after replacing an initial "create all tables" migration
+    # with an empty baseline), clear the stale entry so Alembic can start fresh.
+    inspector = inspect(engine)
+    if "alembic_version" in inspector.get_table_names():
+        with engine.begin() as conn:
+            stored = conn.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalar()
+        if stored is not None:
+            try:
+                ScriptDirectory.from_config(alembic_cfg).get_revision(stored)
+            except KeyError:
+                with engine.begin() as conn:
+                    conn.execute(text("DELETE FROM alembic_version"))
+
     command.upgrade(alembic_cfg, "head")
