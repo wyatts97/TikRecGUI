@@ -115,8 +115,8 @@ export interface MonitorStatus {
 
 export const api = {
   users: {
-    list: (monitoringOnly = false) =>
-      fetchApi<User[]>(`/users?monitoring_only=${monitoringOnly}`),
+    list: (monitoringOnly = false, watchlistOnly = true) =>
+      fetchApi<User[]>(`/users?monitoring_only=${monitoringOnly}&watchlist_only=${watchlistOnly}`),
     
     create: (username: string, isMonitoring = false) =>
       fetchApi<User>("/users", {
@@ -132,6 +132,11 @@ export const api = {
         body: JSON.stringify(data),
       }),
     
+    removeFromWatchlist: (id: number) =>
+      fetchApi<User>(`/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_on_watchlist: false }),
+      }),
     delete: (id: number) =>
       fetchApi<void>(`/users/${id}`, { method: "DELETE" }),
     

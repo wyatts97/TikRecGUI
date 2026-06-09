@@ -20,11 +20,14 @@ def list_users(
     skip: int = 0,
     limit: int = 100,
     monitoring_only: bool = False,
+    watchlist_only: bool = True,
     db: Session = Depends(get_db)
 ):
     query = db.query(User)
     if monitoring_only:
         query = query.filter(User.is_monitoring == True)
+    if watchlist_only:
+        query = query.filter(User.is_on_watchlist == True)
     users = query.offset(skip).limit(limit).all()
     # Backfill profile_pic_url for users with cached avatars
     for user in users:
@@ -52,6 +55,7 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
         room_id=status_info.get("room_id"),
         is_monitoring=user.is_monitoring,
         is_live=status_info.get("is_live", False),
+        is_on_watchlist=True,
         last_checked=datetime.utcnow()
     )
     db.add(db_user)

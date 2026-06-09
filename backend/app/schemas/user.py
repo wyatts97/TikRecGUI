@@ -12,6 +12,7 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     is_monitoring: bool | None = None
+    is_on_watchlist: bool | None = None
     room_id: str | None = None
 
 
@@ -23,6 +24,7 @@ class UserResponse(UserBase):
     room_id: str | None = None
     is_monitoring: bool
     is_live: bool
+    is_on_watchlist: bool
     last_checked: datetime | None = None
     created_at: datetime
     updated_at: datetime

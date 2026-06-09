@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse, Response
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -92,11 +93,15 @@ def _is_thumbnail_ready(recording: Recording) -> bool:
     return False
 
 
-def _is_sprite_ready(recording: Recording) -> bool:
+def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
     vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
     if sprite_path.exists() and sprite_path.stat().st_size > 0 and vtt_path.exists() and vtt_path.stat().st_size > 0:
+        # Files exist but DB may be out of sync — fix it
+        if not recording.sprite_ready and db is not None:
+            recording.sprite_ready = True
+            db.commit()
         return True
     # Kick off a background retry for completed recordings missing sprites
     if (
@@ -113,7 +118,7 @@ def _is_sprite_ready(recording: Recording) -> bool:
     return False
 
 
-def _build_response(rec: Recording) -> RecordingResponse:
+def _build_response(rec: Recording, db: Session | None = None) -> RecordingResponse:
     return RecordingResponse(
         id=rec.id,
         user_id=rec.user_id,
@@ -128,7 +133,7 @@ def _build_response(rec: Recording) -> RecordingResponse:
         error_message=rec.error_message,
         created_at=rec.created_at,
         thumbnail_ready=_is_thumbnail_ready(rec),
-        sprite_ready=_is_sprite_ready(rec),
+        sprite_ready=_is_sprite_ready(rec, db),
         transcript_status=rec.transcript_status,
         transcript_text=rec.transcript_text,
     )
@@ -206,7 +211,7 @@ def list_recordings(
     )
 
     return RecordingListResponse(
-        recordings=[_build_response(rec) for rec in recordings],
+        recordings=[_build_response(rec, db) for rec in recordings],
         total=total,
         page=page,
         page_size=page_size
@@ -301,7 +306,7 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
     
     db.refresh(recording)
     
-    return _build_response(recording)
+    return _build_response(recording, db)
 
 
 @router.get("/active", response_model=list[ActiveRecordingResponse])
@@ -337,7 +342,7 @@ def get_recording(recording_id: int, db: Session = Depends(get_db)):
             detail="Recording not found"
         )
 
-    return _build_response(recording)
+    return _build_response(recording, db)
 
 
 @router.post("/{recording_id}/stop", response_model=RecordingResponse)
@@ -359,7 +364,7 @@ def stop_recording(recording_id: int, db: Session = Depends(get_db)):
     
     db.refresh(recording)
     
-    return _build_response(recording)
+    return _build_response(recording, db)
 
 
 @router.delete("/{recording_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -612,7 +617,7 @@ def start_transcription(recording_id: int, db: Session = Depends(get_db)):
     db.refresh(recording)
 
     transcription_service.enqueue(recording_id)
-    return _build_response(recording)
+    return _build_response(recording, db)
 
 
 @router.get("/transcripts/search")
@@ -629,7 +634,7 @@ def regenerate_missing_sprites(db: Session = Depends(get_db)):
     recordings = (
         db.query(Recording)
         .filter(Recording.status.in_(("completed", "stopped")))
-        .filter(Recording.sprite_ready.is_(False))
+        .filter(or_(Recording.sprite_ready.is_(False), Recording.sprite_ready.is_(None)))
         .all()
     )
     triggered = 0

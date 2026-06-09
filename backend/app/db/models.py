@@ -16,12 +16,13 @@ class User(Base):
     room_id = Column(String(255), nullable=True)
     is_monitoring = Column(Boolean, default=False)
     is_live = Column(Boolean, default=False)
+    is_on_watchlist = Column(Boolean, default=True)
     last_checked = Column(DateTime, nullable=True)
     profile_pic_url = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    recordings = relationship("Recording", back_populates="user", cascade="all, delete-orphan")
+    recordings = relationship("Recording", back_populates="user")
 
 
 class Recording(Base):

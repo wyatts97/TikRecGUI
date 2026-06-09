@@ -44,6 +44,9 @@ def init_db():
         if "follower_count" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE users ADD COLUMN follower_count INTEGER"))
+        if "is_on_watchlist" not in columns:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_on_watchlist BOOLEAN DEFAULT 1"))
 
     if "recordings" in inspector.get_table_names():
         rec_cols = [c["name"] for c in inspector.get_columns("recordings")]

@@ -66,8 +66,8 @@ export default function Watchlist() {
     },
   })
 
-  const deleteUserMutation = useMutation({
-    mutationFn: (id: number) => api.users.delete(id),
+  const removeFromWatchlistMutation = useMutation({
+    mutationFn: (id: number) => api.users.removeFromWatchlist(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       toast({ title: 'User removed', description: 'User has been removed from your watchlist' })
@@ -346,8 +346,8 @@ export default function Watchlist() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => deleteUserMutation.mutate(user.id)}
-                          disabled={deleteUserMutation.isPending}
+                          onClick={() => removeFromWatchlistMutation.mutate(user.id)}
+                          disabled={removeFromWatchlistMutation.isPending}
                         >
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
