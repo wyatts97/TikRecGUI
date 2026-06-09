@@ -3,9 +3,6 @@ import logging
 import subprocess
 import threading
 from pathlib import Path
-from typing import Optional
-
-import httpx
 
 from app.config import settings
 
@@ -66,28 +63,6 @@ class UserInfoService:
 
         return result
 
-    def fetch_and_cache_avatar(self, username: str, force: bool = False) -> Optional[str]:
-        """Download and cache a user's avatar. Returns local path or None."""
-        avatar_path = self.AVATARS_DIR / f"{username}.jpg"
-
-        if avatar_path.exists() and not force:
-            return str(avatar_path)
-
-        info = self.fetch_user_info(username)
-        avatar_url = info.get("avatar_url")
-        if not avatar_url:
-            return None
-
-        try:
-            with httpx.Client(timeout=15.0, follow_redirects=True) as client:
-                response = client.get(avatar_url)
-                response.raise_for_status()
-                avatar_path.write_bytes(response.content)
-                return str(avatar_path)
-        except Exception as exc:
-            logger.warning(f"Failed to download avatar for @{username}: {exc}")
-            return None
-
     def update_user_profile(self, db_user, db) -> None:
         """
         Fetch profile info from TikTok and persist it on ``db_user``.
@@ -100,9 +75,6 @@ class UserInfoService:
             db_user.bio = info["bio"]
         if info.get("follower_count") is not None:
             db_user.follower_count = info["follower_count"]
-        if info.get("avatar_url"):
-            db_user.profile_pic_url = info["avatar_url"]
-            self.fetch_and_cache_avatar(db_user.username, force=True)
         db.commit()
 
     def update_user_profile_async(self, user_id: int) -> None:

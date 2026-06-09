@@ -9,6 +9,8 @@ from app.db.models import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserStatusResponse
 from app.core.recorder_service import recorder_service
 from app.core.user_info_service import user_info_service
+from app.core.unified_avatar_service import unified_avatar_service
+import threading
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -52,6 +54,11 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     db.refresh(db_user)
 
     user_info_service.update_user_profile_async(db_user.id)
+
+    # Also fetch avatar asynchronously using the new unified service
+    def _fetch_avatar():
+        unified_avatar_service.fetch_and_cache(db_user.username, db_user.room_id)
+    threading.Thread(target=_fetch_avatar, daemon=True).start()
 
     return db_user
 
@@ -152,7 +159,10 @@ def refresh_user_status(
 
     if refresh_profile:
         user_info_service.update_user_profile_async(user.id)
-    
+        def _fetch_avatar():
+            unified_avatar_service.fetch_and_cache(user.username, user.room_id, force=True)
+        threading.Thread(target=_fetch_avatar, daemon=True).start()
+
     return user
 
 
@@ -165,17 +175,21 @@ def get_user_avatar(user_id: int, refresh: bool = False, db: Session = Depends(g
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
-    avatar_path = user_info_service.AVATARS_DIR / f"{user.username}.jpg"
 
-    if refresh:
-        fetched = user_info_service.fetch_and_cache_avatar(user.username, force=True)
-        if fetched:
-            avatar_path = Path(fetched)
+    # Try to fetch (or re-fetch if refresh=true) using the unified service
+    if refresh or not unified_avatar_service.get_avatar_path(user.username):
+        fetched = unified_avatar_service.fetch_and_cache(
+            user.username, user.room_id, force=refresh
+        )
+        if fetched and not user.profile_pic_url:
+            # Persist the fact that we have an avatar so the frontend knows
+            user.profile_pic_url = f"/api/users/{user.id}/avatar"
+            db.commit()
 
-    if avatar_path.exists():
+    cached = unified_avatar_service.get_avatar_path(user.username)
+    if cached:
         return FileResponse(
-            path=str(avatar_path),
+            path=cached,
             media_type="image/jpeg",
             content_disposition_type="inline",
         )
