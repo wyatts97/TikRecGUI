@@ -24,7 +24,7 @@ from app.schemas.recording import (
     ActiveRecordingResponse
 )
 from app.core.recorder_service import recorder_service
-from app.core.task_manager import task_manager
+from app.core.task_manager import task_manager, _generate_sprite as _gen_sprite
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
 
@@ -69,6 +69,7 @@ router = APIRouter(prefix="/recordings", tags=["recordings"])
 
 
 _thumb_retry_in_progress: set[int] = set()
+_sprite_retry_in_progress: set[int] = set()
 
 
 def _is_thumbnail_ready(recording: Recording) -> bool:
@@ -91,6 +92,27 @@ def _is_thumbnail_ready(recording: Recording) -> bool:
     return False
 
 
+def _is_sprite_ready(recording: Recording) -> bool:
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
+    vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
+    if sprite_path.exists() and sprite_path.stat().st_size > 0 and vtt_path.exists() and vtt_path.stat().st_size > 0:
+        return True
+    # Kick off a background retry for completed recordings missing sprites
+    if (
+        recording.status in ("completed", "stopped")
+        and video_path.exists()
+        and recording.id not in _sprite_retry_in_progress
+    ):
+        _sprite_retry_in_progress.add(recording.id)
+        threading.Thread(
+            target=_gen_sprite,
+            args=(video_path,),
+            daemon=True,
+        ).start()
+    return False
+
+
 def _build_response(rec: Recording) -> RecordingResponse:
     return RecordingResponse(
         id=rec.id,
@@ -106,6 +128,7 @@ def _build_response(rec: Recording) -> RecordingResponse:
         error_message=rec.error_message,
         created_at=rec.created_at,
         thumbnail_ready=_is_thumbnail_ready(rec),
+        sprite_ready=_is_sprite_ready(rec),
         transcript_status=rec.transcript_status,
         transcript_text=rec.transcript_text,
     )
@@ -550,7 +573,11 @@ def get_sprite(recording_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{recording_id}/thumbnails.vtt")
 def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
-    """Return the WebVTT file for Vidstack hover-scrub thumbnails."""
+    """Return the WebVTT file for Vidstack hover-scrub thumbnails.
+
+    Rewrites the relative 'sprite' URL inside the VTT to an absolute
+    API endpoint URL so vidstack can resolve it correctly.
+    """
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
@@ -559,7 +586,11 @@ def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
     if not vtt_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VTT not yet generated")
     content = vtt_path.read_text(encoding="utf-8")
-    return Response(content=content, media_type="text/vtt; charset=utf-8")
+    # Rewrite relative sprite references to absolute API URLs so vidstack
+    # can resolve them without depending on relative URL resolution.
+    absolute_sprite_url = f"/api/recordings/{recording_id}/sprite"
+    content = content.replace("sprite#xywh=", f"{absolute_sprite_url}#xywh=")
+    return Response(content=content, media_type="text/vtt")
 
 
 @router.post("/{recording_id}/transcribe", response_model=RecordingResponse)

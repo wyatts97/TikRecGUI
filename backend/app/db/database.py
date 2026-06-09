@@ -53,3 +53,6 @@ def init_db():
         if "transcript_text" not in rec_cols:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE recordings ADD COLUMN transcript_text TEXT"))
+        if "sprite_ready" not in rec_cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE recordings ADD COLUMN sprite_ready BOOLEAN DEFAULT 0"))

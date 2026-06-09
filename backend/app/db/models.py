@@ -39,6 +39,7 @@ class Recording(Base):
     error_message = Column(Text, nullable=True)
     transcript_status = Column(String(50), nullable=True)  # pending, processing, done, failed
     transcript_text = Column(Text, nullable=True)
+    sprite_ready = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     user = relationship("User", back_populates="recordings")

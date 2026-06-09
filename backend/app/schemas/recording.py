@@ -29,6 +29,7 @@ class RecordingResponse(BaseModel):
     error_message: str | None = None
     created_at: datetime
     thumbnail_ready: bool = False
+    sprite_ready: bool = False
     transcript_status: str | None = None
     transcript_text: str | None = None
 

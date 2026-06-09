@@ -53,6 +53,7 @@ export interface Recording {
   error_message: string | null
   created_at: string
   thumbnail_ready: boolean
+  sprite_ready: boolean
   transcript_status: string | null
   transcript_text: string | null
 }

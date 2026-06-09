@@ -77,135 +77,221 @@ export default function WatchPlayer() {
         </div>
       )}
 
-      <div className="rounded-xl overflow-hidden bg-black border border-kraken-border shadow-sm">
-        {recording.thumbnail_ready ? (
-          <MediaPlayer
-            src={api.recordings.getStreamUrl(recording.id)}
-            poster={api.recordings.getThumbnailUrl(recording.id)}
-            title={`@${recording.username}`}
-            className="w-full aspect-video"
-          >
-            <MediaProvider />
-            <DefaultVideoLayout
-              icons={defaultLayoutIcons}
-              thumbnails={api.recordings.getSpriteVttUrl(recording.id)}
-            />
-          </MediaPlayer>
-        ) : (
-          <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-900">
-            <Loader2 className="h-10 w-10 text-gray-400 animate-spin mb-3" />
-            <p className="text-gray-400 text-sm">Processing video…</p>
+      <div className="flex gap-6">
+        {/* Left column — always visible */}
+        <div className="flex-1 min-w-0 space-y-6">
+          <div className="rounded-xl overflow-hidden bg-black border border-kraken-border shadow-sm">
+            {recording.thumbnail_ready ? (
+              <MediaPlayer
+                src={api.recordings.getStreamUrl(recording.id)}
+                poster={api.recordings.getThumbnailUrl(recording.id)}
+                title={`@${recording.username}`}
+                className="w-full aspect-video"
+              >
+                <MediaProvider />
+                <DefaultVideoLayout
+                  icons={defaultLayoutIcons}
+                  thumbnails={recording.sprite_ready ? api.recordings.getSpriteVttUrl(recording.id) : undefined}
+                />
+              </MediaPlayer>
+            ) : (
+              <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-900">
+                <Loader2 className="h-10 w-10 text-gray-400 animate-spin mb-3" />
+                <p className="text-gray-400 text-sm">Processing video…</p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="p-4 rounded-xl bg-white border border-kraken-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Recorded</p>
-          <p className="mt-1 font-medium text-kraken-black">
-            {fmt(recording.ended_at || recording.created_at)}
-          </p>
-        </div>
-        <div className="p-4 rounded-xl bg-white border border-kraken-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
-          <p className="mt-1 font-medium text-kraken-black">
-            {formatDuration(recording.duration_seconds)}
-          </p>
-        </div>
-        <div className="p-4 rounded-xl bg-white border border-kraken-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Size</p>
-          <p className="mt-1 font-medium text-kraken-black">
-            {formatBytes(recording.file_size)}
-          </p>
-        </div>
-        <div className="p-4 rounded-xl bg-white border border-kraken-border">
-          <p className="text-xs text-muted-foreground uppercase tracking-wider">Filename</p>
-          <p className="mt-1 font-medium text-kraken-black truncate" title={recording.filename}>
-            {recording.filename}
-          </p>
-        </div>
-      </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Recorded</p>
+              <p className="mt-1 font-medium text-kraken-black">
+                {fmt(recording.ended_at || recording.created_at)}
+              </p>
+            </div>
+            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
+              <p className="mt-1 font-medium text-kraken-black">
+                {formatDuration(recording.duration_seconds)}
+              </p>
+            </div>
+            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Size</p>
+              <p className="mt-1 font-medium text-kraken-black">
+                {formatBytes(recording.file_size)}
+              </p>
+            </div>
+            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Filename</p>
+              <p className="mt-1 font-medium text-kraken-black truncate" title={recording.filename}>
+                {recording.filename}
+              </p>
+            </div>
+          </div>
 
-      <div className="flex justify-end">
-        <Button
-          variant="outline"
-          onClick={() => window.open(api.recordings.getDownloadUrl(recording.id), '_blank')}
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Download
-        </Button>
-      </div>
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => window.open(api.recordings.getDownloadUrl(recording.id), '_blank')}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download
+            </Button>
+          </div>
 
-      <div className="border border-kraken-border rounded-xl overflow-hidden">
-        <div className="flex border-b border-kraken-border bg-gray-50">
-          <button
-            onClick={() => setActiveTab('player')}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === 'player'
-                ? 'bg-white text-primary border-b-2 border-primary -mb-px'
-                : 'text-muted-foreground hover:text-kraken-black'
-            }`}
-          >
-            Player
-          </button>
-          <button
-            onClick={() => setActiveTab('transcript')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
-              activeTab === 'transcript'
-                ? 'bg-white text-primary border-b-2 border-primary -mb-px'
-                : 'text-muted-foreground hover:text-kraken-black'
-            }`}
-          >
-            <FileText className="h-3.5 w-3.5" />
-            Transcript
-            {recording.transcript_status === 'done' && (
-              <span className="ml-1 h-1.5 w-1.5 rounded-full bg-green-500" />
+          <div className="border border-kraken-border rounded-xl overflow-hidden">
+            <div className="flex border-b border-kraken-border bg-gray-50">
+              <button
+                onClick={() => setActiveTab('player')}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors ${
+                  activeTab === 'player'
+                    ? 'bg-white text-primary border-b-2 border-primary -mb-px'
+                    : 'text-muted-foreground hover:text-kraken-black'
+                }`}
+              >
+                Player
+              </button>
+              <button
+                onClick={() => setActiveTab('transcript')}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  activeTab === 'transcript'
+                    ? 'bg-white text-primary border-b-2 border-primary -mb-px'
+                    : 'text-muted-foreground hover:text-kraken-black'
+                }`}
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Transcript
+                {recording.transcript_status === 'done' && (
+                  <span className="ml-1 h-1.5 w-1.5 rounded-full bg-green-500" />
+                )}
+              </button>
+            </div>
+
+            {activeTab === 'transcript' && (
+              <div className="p-4 space-y-3 lg:hidden">
+                {!recording.transcript_status && (
+                  <div className="flex flex-col items-center justify-center py-8 gap-3">
+                    <FileText className="h-8 w-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">No transcript yet</p>
+                    <Button
+                      size="sm"
+                      onClick={() => transcribeMutation.mutate()}
+                      disabled={transcribeMutation.isPending || recording.status === 'recording'}
+                    >
+                      {transcribeMutation.isPending ? (
+                        <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Starting…</>
+                      ) : (
+                        'Transcribe'
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {(recording.transcript_status === 'pending' || recording.transcript_status === 'processing') && (
+                  <div className="flex items-center gap-2 py-6 justify-center">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground capitalize">
+                      {recording.transcript_status}…
+                    </p>
+                  </div>
+                )}
+
+                {recording.transcript_status === 'failed' && (
+                  <div className="flex flex-col items-center gap-2 py-6">
+                    <p className="text-sm text-red-600">Transcription failed.</p>
+                    <Button size="sm" variant="outline" onClick={() => transcribeMutation.mutate()}>
+                      Retry
+                    </Button>
+                  </div>
+                )}
+
+                {recording.transcript_status === 'done' && recording.transcript_text && (
+                  <>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <Input
+                          placeholder="Search transcript…"
+                          value={transcriptSearch}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTranscriptSearch(e.target.value)}
+                          className="pl-8 h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto rounded-lg border border-kraken-border bg-gray-50 p-3 space-y-1 font-mono text-xs">
+                      {recording.transcript_text
+                        .split('\n')
+                        .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
+                        .map((line: string, i: number) => (
+                          <p
+                            key={i}
+                            className={`leading-relaxed ${
+                              transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
+                                ? 'bg-indigo-500/25 rounded px-1'
+                                : ''
+                            }`}
+                          >
+                            {line}
+                          </p>
+                        ))}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
-          </button>
+          </div>
         </div>
 
+        {/* Right column — transcript panel (lg+ only) */}
         {activeTab === 'transcript' && (
-          <div className="p-4 space-y-3">
-            {!recording.transcript_status && (
-              <div className="flex flex-col items-center justify-center py-8 gap-3">
-                <FileText className="h-8 w-8 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No transcript yet</p>
-                <Button
-                  size="sm"
-                  onClick={() => transcribeMutation.mutate()}
-                  disabled={transcribeMutation.isPending || recording.status === 'recording'}
-                >
-                  {transcribeMutation.isPending ? (
-                    <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Starting…</>
-                  ) : (
-                    'Transcribe'
-                  )}
-                </Button>
-              </div>
-            )}
+          <div className="hidden lg:flex w-80 shrink-0 flex-col border border-kraken-border rounded-xl overflow-hidden bg-gray-50">
+            <div className="px-4 py-3 border-b border-kraken-border bg-white flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Transcript</span>
+              {recording.transcript_status === 'done' && (
+                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-green-500" />
+              )}
+            </div>
+            <div className="flex-1 p-3 space-y-3 overflow-y-auto min-h-0">
+              {!recording.transcript_status && (
+                <div className="flex flex-col items-center justify-center py-8 gap-3">
+                  <FileText className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No transcript yet</p>
+                  <Button
+                    size="sm"
+                    onClick={() => transcribeMutation.mutate()}
+                    disabled={transcribeMutation.isPending || recording.status === 'recording'}
+                  >
+                    {transcribeMutation.isPending ? (
+                      <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Starting…</>
+                    ) : (
+                      'Transcribe'
+                    )}
+                  </Button>
+                </div>
+              )}
 
-            {(recording.transcript_status === 'pending' || recording.transcript_status === 'processing') && (
-              <div className="flex items-center gap-2 py-6 justify-center">
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                <p className="text-sm text-muted-foreground capitalize">
-                  {recording.transcript_status}…
-                </p>
-              </div>
-            )}
+              {(recording.transcript_status === 'pending' || recording.transcript_status === 'processing') && (
+                <div className="flex items-center gap-2 py-6 justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground capitalize">
+                    {recording.transcript_status}…
+                  </p>
+                </div>
+              )}
 
-            {recording.transcript_status === 'failed' && (
-              <div className="flex flex-col items-center gap-2 py-6">
-                <p className="text-sm text-red-600">Transcription failed.</p>
-                <Button size="sm" variant="outline" onClick={() => transcribeMutation.mutate()}>
-                  Retry
-                </Button>
-              </div>
-            )}
+              {recording.transcript_status === 'failed' && (
+                <div className="flex flex-col items-center gap-2 py-6">
+                  <p className="text-sm text-red-600">Transcription failed.</p>
+                  <Button size="sm" variant="outline" onClick={() => transcribeMutation.mutate()}>
+                    Retry
+                  </Button>
+                </div>
+              )}
 
-            {recording.transcript_status === 'done' && recording.transcript_text && (
-              <>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
+              {recording.transcript_status === 'done' && recording.transcript_text && (
+                <>
+                  <div className="relative">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input
                       placeholder="Search transcript…"
@@ -214,26 +300,26 @@ export default function WatchPlayer() {
                       className="pl-8 h-8 text-sm"
                     />
                   </div>
-                </div>
-                <div className="max-h-80 overflow-y-auto rounded-lg border border-kraken-border bg-gray-50 p-3 space-y-1 font-mono text-xs">
-                  {recording.transcript_text
-                    .split('\n')
-                    .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
-                    .map((line: string, i: number) => (
-                      <p
-                        key={i}
-                        className={`leading-relaxed ${
-                          transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
-                            ? 'bg-yellow-100 rounded px-1'
-                            : ''
-                        }`}
-                      >
-                        {line}
-                      </p>
-                    ))}
-                </div>
-              </>
-            )}
+                  <div className="space-y-1 font-mono text-xs">
+                    {recording.transcript_text
+                      .split('\n')
+                      .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
+                      .map((line: string, i: number) => (
+                        <p
+                          key={i}
+                          className={`leading-relaxed ${
+                            transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
+                              ? 'bg-indigo-500/25 rounded px-1'
+                              : ''
+                          }`}
+                        >
+                          {line}
+                        </p>
+                      ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

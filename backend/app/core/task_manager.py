@@ -35,21 +35,40 @@ def _generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
             capture_output=True, text=True, timeout=15,
         )
         duration = float(probe.stdout.strip())
-        frame_count = max(1, math.ceil(duration / FRAME_INTERVAL))
-        actual_cols = min(COLS, frame_count)
-        rows = math.ceil(frame_count / actual_cols)
 
+        # Generate sprite: fps=1/10 creates a frame every 10s.
+        # tile=10x0 lets ffmpeg auto-compute rows so no frames are lost.
         subprocess.run(
             [
                 "ffmpeg", "-y", "-i", str(video_path),
                 "-vf",
-                f"fps=1/{FRAME_INTERVAL},scale={THUMB_W}:{THUMB_H},tile={actual_cols}x{rows}",
+                f"fps=1/{FRAME_INTERVAL},scale={THUMB_W}:{THUMB_H},tile={COLS}x0",
                 str(sprite_path),
             ],
             capture_output=True, check=True, timeout=180,
         )
-        if not sprite_path.exists():
+        if not sprite_path.exists() or sprite_path.stat().st_size == 0:
             return None, None
+
+        # Verify actual sprite dimensions so VTT coordinates are exact.
+        dim_probe = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "stream=width,height",
+                "-of", "json",
+                str(sprite_path),
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        dim_data = json.loads(dim_probe.stdout)
+        streams = dim_data.get("streams", [])
+        if not streams:
+            return None, None
+        sprite_w = streams[0].get("width", 0)
+        sprite_h = streams[0].get("height", 0)
+        actual_cols = max(1, sprite_w // THUMB_W)
+        actual_rows = max(1, sprite_h // THUMB_H)
+        frame_count = actual_cols * actual_rows
 
         lines = ["WEBVTT", ""]
         for i in range(frame_count):
