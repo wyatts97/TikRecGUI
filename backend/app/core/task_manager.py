@@ -244,7 +244,17 @@ class MonitorService:
 
     Every ``automatic_interval`` minutes it checks each user flagged with
     ``is_monitoring`` and, if live and not already recording, starts a recording.
+
+    Rate-limiting: a 1.5 s delay is inserted between each user check to
+    avoid triggering TikTok's rate limiter.  Consecutive failures for a user
+    trigger exponential backoff (2×, 4×, … up to 60 s).
     """
+
+    # Delay between individual user checks (seconds)
+    _INTER_USER_DELAY = 1.5
+    # Exponential-backoff limits
+    _BACKOFF_BASE = 2          # first retry waits 2 s
+    _BACKOFF_MAX = 60          # never wait more than 60 s per user
 
     def __init__(self):
         self._stop_event = threading.Event()
@@ -252,6 +262,8 @@ class MonitorService:
         self._thread: threading.Thread | None = None
         self._last_check_at: datetime | None = None
         self._next_check_at: datetime | None = None
+        # Per-user consecutive failure count for backoff
+        self._check_failures: dict[int, int] = {}
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -340,11 +352,26 @@ class MonitorService:
             if user.id in recording_user_ids:
                 continue
 
+            # --- Exponential backoff for users with recent failures ---
+            failures = self._check_failures.get(user.id, 0)
+            if failures > 0:
+                backoff = min(self._BACKOFF_BASE ** failures, self._BACKOFF_MAX)
+                logger.debug("Backoff %d s for @%s (%d consecutive failures)",
+                             backoff, user.username, failures)
+                if self._stop_event.wait(timeout=backoff):
+                    return
+
             # --- Network calls happen with NO DB session held ---
             status_info = recorder_service.check_user_live(user.username)
             is_live = status_info.get("is_live", False)
             room_id = status_info.get("room_id")
             last_checked = datetime.utcnow()
+
+            # --- Update failure counter / log success ---
+            if status_info.get("error"):
+                self._check_failures[user.id] = failures + 1
+            else:
+                self._check_failures.pop(user.id, None)
 
             if not is_live or not room_id:
                 # --- Update user status (short session) ---
@@ -355,6 +382,9 @@ class MonitorService:
                         u.room_id = room_id
                         u.last_checked = last_checked
                         db.commit()
+                # Rate-limiting delay between users
+                if self._stop_event.wait(timeout=self._INTER_USER_DELAY):
+                    return
                 continue
 
             # --- User is live: update user and create recording (short session) ---
@@ -394,6 +424,10 @@ class MonitorService:
                         rec.status = "failed"
                         rec.error_message = "Failed to start automatic recording"
                         db.commit()
+
+            # Rate-limiting delay between users
+            if self._stop_event.wait(timeout=self._INTER_USER_DELAY):
+                return
 
 
 monitor_service = MonitorService()

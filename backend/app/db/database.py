@@ -1,10 +1,15 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import create_engine
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import NullPool
 
 from app.config import settings
+
+# ---------------------------------------------------------------------------
+# Sync engine (legacy, used by background threads & sync routes)
+# ---------------------------------------------------------------------------
 
 engine = create_engine(
     settings.DATABASE_URL,
@@ -13,6 +18,26 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# ---------------------------------------------------------------------------
+# Async engine (hot-path routes)
+# ---------------------------------------------------------------------------
+
+ASYNC_DATABASE_URL = settings.DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
+
+async_engine = create_async_engine(
+    ASYNC_DATABASE_URL,
+    connect_args={"check_same_thread": False},
+    poolclass=NullPool,
+)
+
+AsyncSessionLocal = async_sessionmaker(
+    async_engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+)
+
+# ---------------------------------------------------------------------------
 
 Base = declarative_base()
 
@@ -38,6 +63,19 @@ def get_db():
         db.close()
 
 
+@asynccontextmanager
+async def async_get_db():
+    """Async context / FastAPI dependency for hot-path endpoints.
+
+    Usage in route files::
+
+        async def list_users(db: AsyncSession = Depends(async_get_db)):
+            ...
+    """
+    async with AsyncSessionLocal() as db:
+        yield db
+
+
 @contextmanager
 def get_session():
     """Context manager for short-lived background DB sessions.
@@ -58,37 +96,12 @@ def init_db():
     from app.db import models
     Base.metadata.create_all(bind=engine)
 
-    # Auto-migrate: add profile_pic_url to users if missing (no alembic)
-    from sqlalchemy import inspect, text
-    inspector = inspect(engine)
-    if "users" in inspector.get_table_names():
-        columns = [c["name"] for c in inspector.get_columns("users")]
-        if "profile_pic_url" not in columns:
-            with engine.begin() as conn:
-                conn.execute(
-                    text("ALTER TABLE users ADD COLUMN profile_pic_url VARCHAR(512)")
-                )
-        if "display_name" not in columns:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN display_name VARCHAR(255)"))
-        if "bio" not in columns:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN bio TEXT"))
-        if "follower_count" not in columns:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN follower_count INTEGER"))
-        if "is_on_watchlist" not in columns:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE users ADD COLUMN is_on_watchlist BOOLEAN DEFAULT 1"))
+    # Run Alembic migrations to bring existing databases up to date
+    from pathlib import Path
+    from alembic.config import Config as AlembicConfig
+    from alembic import command
 
-    if "recordings" in inspector.get_table_names():
-        rec_cols = [c["name"] for c in inspector.get_columns("recordings")]
-        if "transcript_status" not in rec_cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE recordings ADD COLUMN transcript_status VARCHAR(50)"))
-        if "transcript_text" not in rec_cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE recordings ADD COLUMN transcript_text TEXT"))
-        if "sprite_ready" not in rec_cols:
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE recordings ADD COLUMN sprite_ready BOOLEAN DEFAULT 0"))
+    alembic_cfg = AlembicConfig(
+        str(Path(__file__).resolve().parent.parent.parent / "alembic.ini")
+    )
+    command.upgrade(alembic_cfg, "head")

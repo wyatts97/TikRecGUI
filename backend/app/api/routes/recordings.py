@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import or_
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.database import get_db, get_session, run_background
+from app.db.database import get_db, async_get_db, get_session, run_background
 from app.db.models import Recording, User
 from app.schemas.recording import (
     RecordingStart,
@@ -97,7 +98,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
 
 
 @router.get("", response_model=RecordingListResponse)
-def list_recordings(
+async def list_recordings(
     page: int = 1,
     page_size: int = 20,
     status_filter: str | None = None,
@@ -109,54 +110,69 @@ def list_recordings(
     max_size: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(async_get_db)
 ):
-    query = db.query(Recording).join(User)
+    from sqlalchemy import func
+
+    # --- Build base statement ---
+    stmt = select(Recording).join(User)
+    count_stmt = select(func.count()).select_from(Recording).join(User)
 
     if status_filter:
         if "," in status_filter:
             statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
-            query = query.filter(Recording.status.in_(statuses))
+            stmt = stmt.where(Recording.status.in_(statuses))
+            count_stmt = count_stmt.where(Recording.status.in_(statuses))
         else:
-            query = query.filter(Recording.status == status_filter)
+            stmt = stmt.where(Recording.status == status_filter)
+            count_stmt = count_stmt.where(Recording.status == status_filter)
     if user_id:
-        query = query.filter(Recording.user_id == user_id)
+        stmt = stmt.where(Recording.user_id == user_id)
+        count_stmt = count_stmt.where(Recording.user_id == user_id)
     if username_filter:
-        query = query.filter(User.username.ilike(f"%{username_filter}%"))
+        like_pat = f"%{username_filter}%"
+        stmt = stmt.where(User.username.ilike(like_pat))
+        count_stmt = count_stmt.where(User.username.ilike(like_pat))
     if min_size is not None:
-        query = query.filter(Recording.file_size >= min_size)
+        stmt = stmt.where(Recording.file_size >= min_size)
+        count_stmt = count_stmt.where(Recording.file_size >= min_size)
     if max_size is not None:
-        query = query.filter(Recording.file_size <= max_size)
+        stmt = stmt.where(Recording.file_size <= max_size)
+        count_stmt = count_stmt.where(Recording.file_size <= max_size)
     if date_from:
         try:
-            query = query.filter(Recording.created_at >= datetime.fromisoformat(date_from))
+            dt = datetime.fromisoformat(date_from)
+            stmt = stmt.where(Recording.created_at >= dt)
+            count_stmt = count_stmt.where(Recording.created_at >= dt)
         except ValueError:
             pass
     if date_to:
         try:
-            query = query.filter(Recording.created_at <= datetime.fromisoformat(date_to))
+            dt = datetime.fromisoformat(date_to)
+            stmt = stmt.where(Recording.created_at <= dt)
+            count_stmt = count_stmt.where(Recording.created_at <= dt)
         except ValueError:
             pass
 
-    total = query.count()
+    # --- Count ---
+    count_result = await db.execute(count_stmt)
+    total = count_result.scalar() or 0
 
+    # --- Order & paginate ---
     sort_col_map = {
         "size": Recording.file_size,
         "duration": Recording.duration_seconds,
         "username": User.username,
     }
     sort_col = sort_col_map.get(sort_by, Recording.created_at)
-    query = query.order_by(sort_col.asc() if sort_order == "asc" else sort_col.desc())
+    order = sort_col.asc() if sort_order == "asc" else sort_col.desc()
+    stmt = stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
 
-    recordings = (
-        query
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    result = await db.execute(stmt)
+    recordings = result.scalars().all()
 
     return RecordingListResponse(
-        recordings=[_build_response(rec, db) for rec in recordings],
+        recordings=[_build_response(rec) for rec in recordings],
         total=total,
         page=page,
         page_size=page_size
@@ -255,39 +271,45 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
 
 
 @router.get("/active", response_model=list[ActiveRecordingResponse])
-def get_active_recordings(db: Session = Depends(get_db)):
+async def get_active_recordings(db: AsyncSession = Depends(async_get_db)):
     task_manager.cleanup_finished()
     active_ids = task_manager.get_active_recordings()
-    
-    recordings = db.query(Recording).filter(Recording.id.in_(active_ids)).all()
-    
-    result = []
+    if not active_ids:
+        return []
+
+    result = await db.execute(
+        select(Recording).where(Recording.id.in_(active_ids))
+    )
+    recordings = result.scalars().all()
+
+    now = datetime.utcnow()
+    out = []
     for rec in recordings:
         duration = None
         if rec.started_at:
-            duration = int((datetime.utcnow() - rec.started_at).total_seconds())
-        
-        result.append(ActiveRecordingResponse(
+            duration = int((now - rec.started_at).total_seconds())
+        out.append(ActiveRecordingResponse(
             id=rec.id,
             username=rec.user.username,
             status=rec.status,
             started_at=rec.started_at,
             duration_seconds=duration
         ))
-    
-    return result
+
+    return out
 
 
 @router.get("/{recording_id}", response_model=RecordingResponse)
-def get_recording(recording_id: int, db: Session = Depends(get_db)):
-    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+async def get_recording(recording_id: int, db: AsyncSession = Depends(async_get_db)):
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
     if not recording:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recording not found"
         )
 
-    return _build_response(recording, db)
+    return _build_response(recording)
 
 
 @router.post("/{recording_id}/stop", response_model=RecordingResponse)
@@ -509,9 +531,10 @@ def batch_download_recordings(
 
 
 @router.get("/{recording_id}/sprite")
-def get_sprite(recording_id: int, db: Session = Depends(get_db)):
+async def get_sprite(recording_id: int, db: AsyncSession = Depends(async_get_db)):
     """Return the sprite sheet JPEG for hover-scrub preview."""
-    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
@@ -522,13 +545,14 @@ def get_sprite(recording_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{recording_id}/thumbnails.vtt")
-def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
+async def get_sprite_vtt(recording_id: int, db: AsyncSession = Depends(async_get_db)):
     """Return the WebVTT file for Vidstack hover-scrub thumbnails.
 
     Rewrites the relative 'sprite' URL inside the VTT to an absolute
     API endpoint URL so vidstack can resolve it correctly.
     """
-    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    result = await db.execute(select(Recording).where(Recording.id == recording_id))
+    recording = result.scalar_one_or_none()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename

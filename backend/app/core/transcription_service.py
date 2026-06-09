@@ -1,6 +1,6 @@
-import json
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -34,45 +34,48 @@ def _get_model():
 class TranscriptionService:
     """Transcribe completed recordings using faster-whisper.
 
-    Only one transcription runs at a time. Additional requests are queued
-    and processed in FIFO order.
+    Up to ``MAX_WORKERS`` transcriptions run concurrently. Additional
+    requests are queued and dispatched in FIFO order as workers become
+    available.
     """
+
+    MAX_WORKERS = 2
 
     def __init__(self):
         self._queue: list[int] = []
-        self._queue_lock = threading.Lock()
-        self._worker_event = threading.Event()
-        self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
-        self._worker_thread.start()
+        self._queue_cond = threading.Condition()
+        self._executor = ThreadPoolExecutor(
+            max_workers=self.MAX_WORKERS,
+            thread_name_prefix="transcribe",
+        )
+        self._dispatcher = threading.Thread(target=self._dispatcher_loop, daemon=True)
+        self._dispatcher.start()
 
     def enqueue(self, recording_id: int) -> None:
         """Add a recording to the transcription queue."""
-        with self._queue_lock:
+        with self._queue_cond:
             if recording_id not in self._queue:
                 self._queue.append(recording_id)
                 logger.info(f"Enqueued recording {recording_id} for transcription (queue len={len(self._queue)})")
-        self._worker_event.set()
+                self._queue_cond.notify()
 
     def get_queue(self) -> list[int]:
         """Return a copy of the current queue (for status/debug)."""
-        with self._queue_lock:
+        with self._queue_cond:
             return list(self._queue)
 
-    def _worker_loop(self) -> None:
-        """Background worker: processes one transcription at a time."""
+    def _dispatcher_loop(self) -> None:
+        """Background dispatcher: pulls from queue, submits to thread pool."""
         while True:
-            self._worker_event.wait()
-            self._worker_event.clear()
+            recording_id: int | None = None
+            with self._queue_cond:
+                while not self._queue:
+                    self._queue_cond.wait()
+                recording_id = self._queue.pop(0)
 
-            while True:
-                with self._queue_lock:
-                    if not self._queue:
-                        break
-                    recording_id = self._queue.pop(0)
-
-                logger.info(f"Starting transcription for recording {recording_id}")
-                self._run(recording_id)
-                logger.info(f"Finished transcription for recording {recording_id}")
+            logger.info("Dispatching transcription for recording %s (queue len=%s)",
+                        recording_id, len(self._queue))
+            self._executor.submit(self._run, recording_id)
 
     def _run(self, recording_id: int) -> None:
         from app.db.database import get_session

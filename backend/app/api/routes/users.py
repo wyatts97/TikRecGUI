@@ -2,9 +2,11 @@ from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import get_db, async_get_db
 from app.db.models import User
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserStatusResponse
 from app.core.recorder_service import recorder_service
@@ -80,8 +82,9 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
+async def get_user(user_id: int, db: AsyncSession = Depends(async_get_db)):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

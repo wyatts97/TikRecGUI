@@ -115,7 +115,7 @@ def update_settings(update: SettingsUpdate):
 
 
 @router.get("/health")
-def health_check():
+async def health_check():
     cookies_data = _read_json_file(settings.COOKIES_FILE, {})
     has_cookies = bool(cookies_data.get("sessionid_ss"))
 
@@ -145,7 +145,7 @@ def run_cleanup():
 
 
 @router.get("/monitor-status")
-def get_monitor_status():
+async def get_monitor_status():
     """Return current monitor service timer state for the navbar countdown."""
     return monitor_service.get_status()
 

@@ -26,6 +26,8 @@ RUN git clone --depth 1 --branch "${TIKTOK_RECORDER_REF}" \
     https://github.com/Michele0303/tiktok-live-recorder.git \
     /app/tiktok-live-recorder
 
+COPY alembic.ini ./alembic.ini
+COPY alembic/ ./alembic/
 COPY app/ ./app/
 
 # ---- Stage 2: Runtime ----

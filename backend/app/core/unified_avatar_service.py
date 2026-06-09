@@ -29,14 +29,22 @@ class UnifiedAvatarService:
 
     def __init__(self):
         self.AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+        # In-memory cache: username -> path. Avoids filesystem stat on every
+        # GET /users call. Populated lazily by get_avatar_path / has_cached_avatar.
+        self._cache: dict[str, str] = {}
 
     def _avatar_path(self, username: str) -> Path:
         return self.AVATARS_DIR / f"{username}.jpg"
 
     def has_cached_avatar(self, username: str) -> bool:
         """Check if we have a cached avatar for this user."""
+        if username in self._cache:
+            return True
         path = self._avatar_path(username)
-        return path.exists() and path.stat().st_size > 0
+        if path.exists() and path.stat().st_size > 0:
+            self._cache[username] = str(path)
+            return True
+        return False
 
     def _download_and_cache(self, username: str, url: str) -> str | None:
         """Download avatar image and save locally. Returns local path or None."""
@@ -53,6 +61,7 @@ class UnifiedAvatarService:
                 if response.headers.get("content-type", "").startswith("image/"):
                     path = self._avatar_path(username)
                     path.write_bytes(response.content)
+                    self._cache[username] = str(path)
                     logger.info(f"Cached avatar for @{username} -> {path}")
                     return str(path)
         except Exception as exc:
@@ -217,13 +226,18 @@ class UnifiedAvatarService:
 
     def get_avatar_path(self, username: str) -> str | None:
         """Return cached avatar path if it exists, else None."""
+        cached = self._cache.get(username)
+        if cached:
+            return cached
         path = self._avatar_path(username)
         if path.exists() and path.stat().st_size > 0:
+            self._cache[username] = str(path)
             return str(path)
         return None
 
     def delete_avatar(self, username: str) -> bool:
         """Delete a cached avatar. Returns True if deleted, False otherwise."""
+        self._cache.pop(username, None)
         path = self._avatar_path(username)
         if path.exists():
             try:
