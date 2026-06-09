@@ -12,6 +12,24 @@ import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 
+function _parseTimestamp(ts: string): number {
+  const parts = ts.split(':').map(Number)
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  return 0
+}
+
+function _parseTranscriptLine(line: string): { timestamp: string; text: string; seconds: number } | null {
+  const match = line.match(/^\[([\d:]+)\s*-->\s*([\d:]+)\]\s*(.*)$/)
+  if (!match) return null
+  return { timestamp: match[1], text: match[3], seconds: _parseTimestamp(match[1]) }
+}
+
+function _seekVideo(seconds: number) {
+  const video = document.querySelector('media-player video') as HTMLVideoElement | null
+  if (video) video.currentTime = seconds
+}
+
 export default function WatchPlayer() {
   const fmt = useDateFormat()
   const { id } = useParams<{ id: string }>()
@@ -49,7 +67,7 @@ export default function WatchPlayer() {
   if (!recording) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <p className="text-lg font-medium text-kraken-black">Recording not found</p>
+        <p className="text-lg font-medium text-foreground">Recording not found</p>
         <Button className="mt-4" onClick={() => navigate('/watch')}>
           Back to Watch
         </Button>
@@ -63,15 +81,15 @@ export default function WatchPlayer() {
         <Button variant="ghost" size="icon" onClick={() => navigate('/watch')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-2xl font-bold text-kraken-black tracking-tight truncate">
+        <h1 className="text-2xl font-bold text-foreground tracking-tight truncate">
           @{recording.username}
         </h1>
       </div>
 
       {!recording.thumbnail_ready && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200">
-          <Loader2 className="h-4 w-4 text-amber-600 animate-spin shrink-0" />
-          <p className="text-sm text-amber-800 font-medium">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
+          <Loader2 className="h-4 w-4 text-amber-600 dark:text-amber-400 animate-spin shrink-0" />
+          <p className="text-sm text-amber-800 dark:text-amber-200 font-medium">
             Video is still being processed. It will be available shortly.
           </p>
         </div>
@@ -80,7 +98,7 @@ export default function WatchPlayer() {
       <div className="flex gap-6">
         {/* Left column — always visible */}
         <div className="flex-1 min-w-0 space-y-6">
-          <div className="rounded-xl overflow-hidden bg-black border border-kraken-border shadow-sm">
+          <div className="rounded-xl overflow-hidden bg-black border border-border shadow-sm">
             {recording.thumbnail_ready ? (
               <MediaPlayer
                 src={api.recordings.getStreamUrl(recording.id)}
@@ -103,27 +121,27 @@ export default function WatchPlayer() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+            <div className="p-4 rounded-xl bg-card border border-border">
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Recorded</p>
-              <p className="mt-1 font-medium text-kraken-black">
+              <p className="mt-1 font-medium text-foreground">
                 {fmt(recording.ended_at || recording.created_at)}
               </p>
             </div>
-            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+            <div className="p-4 rounded-xl bg-card border border-border">
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
-              <p className="mt-1 font-medium text-kraken-black">
+              <p className="mt-1 font-medium text-foreground">
                 {formatDuration(recording.duration_seconds)}
               </p>
             </div>
-            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+            <div className="p-4 rounded-xl bg-card border border-border">
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Size</p>
-              <p className="mt-1 font-medium text-kraken-black">
+              <p className="mt-1 font-medium text-foreground">
                 {formatBytes(recording.file_size)}
               </p>
             </div>
-            <div className="p-4 rounded-xl bg-white border border-kraken-border">
+            <div className="p-4 rounded-xl bg-card border border-border">
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Filename</p>
-              <p className="mt-1 font-medium text-kraken-black truncate" title={recording.filename}>
+              <p className="mt-1 font-medium text-foreground truncate" title={recording.filename}>
                 {recording.filename}
               </p>
             </div>
@@ -139,14 +157,14 @@ export default function WatchPlayer() {
             </Button>
           </div>
 
-          <div className="border border-kraken-border rounded-xl overflow-hidden">
-            <div className="flex border-b border-kraken-border bg-gray-50">
+          <div className="border border-border rounded-xl overflow-hidden">
+            <div className="flex border-b border-border bg-muted/40">
               <button
                 onClick={() => setActiveTab('player')}
                 className={`px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'player'
-                    ? 'bg-white text-primary border-b-2 border-primary -mb-px'
-                    : 'text-muted-foreground hover:text-kraken-black'
+                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 Player
@@ -155,8 +173,8 @@ export default function WatchPlayer() {
                 onClick={() => setActiveTab('transcript')}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'transcript'
-                    ? 'bg-white text-primary border-b-2 border-primary -mb-px'
-                    : 'text-muted-foreground hover:text-kraken-black'
+                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <FileText className="h-3.5 w-3.5" />
@@ -218,22 +236,38 @@ export default function WatchPlayer() {
                         />
                       </div>
                     </div>
-                    <div className="max-h-80 overflow-y-auto rounded-lg border border-kraken-border bg-gray-50 p-3 space-y-1 font-mono text-xs">
+                    <div className="max-h-80 overflow-y-auto rounded-lg border border-border bg-muted/40 p-3 space-y-1 font-mono text-xs">
                       {recording.transcript_text
                         .split('\n')
                         .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
-                        .map((line: string, i: number) => (
-                          <p
-                            key={i}
-                            className={`leading-relaxed ${
-                              transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
-                                ? 'bg-indigo-500/25 rounded px-1'
-                                : ''
-                            }`}
-                          >
-                            {line}
-                          </p>
-                        ))}
+                        .map((line: string, i: number) => {
+                          const parsed = _parseTranscriptLine(line)
+                          return (
+                            <p
+                              key={i}
+                              className={`leading-relaxed ${
+                                transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
+                                  ? 'bg-indigo-500/25 rounded px-1'
+                                  : ''
+                              }`}
+                            >
+                              {parsed ? (
+                                <>
+                                  <button
+                                    onClick={() => _seekVideo(parsed.seconds)}
+                                    className="text-primary hover:underline cursor-pointer"
+                                    title={`Jump to ${parsed.timestamp}`}
+                                  >
+                                    [{parsed.timestamp}]
+                                  </button>
+                                  {' '}{parsed.text}
+                                </>
+                              ) : (
+                                line
+                              )}
+                            </p>
+                          )
+                        })}
                     </div>
                   </>
                 )}
@@ -244,8 +278,8 @@ export default function WatchPlayer() {
 
         {/* Right column — transcript panel (lg+ only) */}
         {activeTab === 'transcript' && (
-          <div className="hidden lg:flex w-80 shrink-0 flex-col border border-kraken-border rounded-xl overflow-hidden bg-gray-50 self-start max-h-[calc(100vh-6rem)]">
-            <div className="px-4 py-3 border-b border-kraken-border bg-white flex items-center gap-2">
+          <div className="hidden lg:flex w-80 shrink-0 flex-col border border-border rounded-xl overflow-hidden bg-muted/40 self-start max-h-[calc(100vh-6rem)]">
+            <div className="px-4 py-3 border-b border-border bg-background flex items-center gap-2">
               <FileText className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Transcript</span>
               {recording.transcript_status === 'done' && (
@@ -304,18 +338,34 @@ export default function WatchPlayer() {
                     {recording.transcript_text
                       .split('\n')
                       .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
-                      .map((line: string, i: number) => (
-                        <p
-                          key={i}
-                          className={`leading-relaxed ${
-                            transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
-                              ? 'bg-indigo-500/25 rounded px-1'
-                              : ''
-                          }`}
-                        >
-                          {line}
-                        </p>
-                      ))}
+                      .map((line: string, i: number) => {
+                        const parsed = _parseTranscriptLine(line)
+                        return (
+                          <p
+                            key={i}
+                            className={`leading-relaxed ${
+                              transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
+                                ? 'bg-indigo-500/25 rounded px-1'
+                                : ''
+                            }`}
+                          >
+                            {parsed ? (
+                              <>
+                                <button
+                                  onClick={() => _seekVideo(parsed.seconds)}
+                                  className="text-primary hover:underline cursor-pointer"
+                                  title={`Jump to ${parsed.timestamp}`}
+                                >
+                                  [{parsed.timestamp}]
+                                </button>
+                                {' '}{parsed.text}
+                              </>
+                            ) : (
+                              line
+                            )}
+                          </p>
+                        )
+                      })}
                   </div>
                 </>
               )}

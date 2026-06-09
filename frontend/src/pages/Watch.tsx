@@ -25,7 +25,7 @@ export default function Watch() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-kraken-black tracking-tight">Watch</h1>
+        <h1 className="text-3xl font-bold text-foreground tracking-tight">Watch</h1>
         <p className="text-muted-foreground mt-1">
           Browse and play your completed recordings
         </p>
@@ -38,7 +38,7 @@ export default function Watch() {
       ) : recordings.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <Tv className="h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-lg font-medium text-kraken-black">No recordings yet</p>
+          <p className="text-lg font-medium text-foreground">No recordings yet</p>
           <p className="text-muted-foreground mt-1">
             Start a recording and come back here when it finishes.
           </p>
@@ -48,10 +48,10 @@ export default function Watch() {
           {recordings.map((recording) => (
             <Card
               key={recording.id}
-              className="group overflow-hidden cursor-pointer border border-kraken-border bg-white hover:shadow-md transition-shadow"
+              className="group overflow-hidden cursor-pointer border border-border bg-card hover:shadow-md transition-shadow"
               onClick={() => navigate(`/watch/${recording.id}`)}
             >
-              <div className="relative aspect-video bg-gray-200 overflow-hidden">
+              <div className="relative aspect-video bg-muted overflow-hidden">
                 {recording.thumbnail_ready ? (
                   <img
                     src={api.recordings.getThumbnailUrl(recording.id)}
@@ -66,17 +66,17 @@ export default function Watch() {
                     }}
                   />
                 ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/60">
                     <Loader2 className="h-8 w-8 text-muted-foreground animate-spin mb-2" />
                     <span className="text-xs text-muted-foreground font-medium">Processing…</span>
                   </div>
                 )}
-                <div className="absolute inset-0 items-center justify-center bg-gray-200 hidden">
+                <div className="absolute inset-0 items-center justify-center bg-muted hidden">
                   <Tv className="h-12 w-12 text-gray-400" />
                 </div>
                 {recording.thumbnail_ready && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="h-12 w-12 rounded-full bg-white/90 flex items-center justify-center">
+                    <div className="h-12 w-12 rounded-full bg-background/90 flex items-center justify-center">
                       <Play className="h-5 w-5 text-primary ml-0.5" />
                     </div>
                   </div>
@@ -103,7 +103,7 @@ export default function Watch() {
                       </span>
                     </div>
                     <div className="min-w-0">
-                      <p className="font-medium text-kraken-black truncate">
+                      <p className="font-medium text-foreground truncate">
                         @{recording.username}
                       </p>
                       <p className="text-xs text-muted-foreground mt-0.5">

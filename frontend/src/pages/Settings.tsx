@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Globe } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Globe, Activity, Cookie, Send, Video, Clock } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,11 +55,29 @@ export default function SettingsPage() {
     )
   }
 
+  const tabs = [
+    { id: 'status', label: 'Status', icon: Activity },
+    { id: 'cookies', label: 'Cookies', icon: Cookie },
+    { id: 'telegram', label: 'Telegram', icon: Send },
+    { id: 'recording', label: 'Recording', icon: Video },
+    { id: 'cleanup', label: 'Cleanup', icon: Trash2 },
+    { id: 'timezone', label: 'Timezone', icon: Clock },
+  ]
+
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(`settings-${id}`)
+    if (el) {
+      const offset = 80
+      const top = el.getBoundingClientRect().top + window.scrollY - offset
+      window.scrollTo({ top, behavior: 'smooth' })
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-kraken-black tracking-tight">Settings</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Settings</h1>
           <p className="text-muted-foreground mt-1">
             Configure your TikTok recorder settings
           </p>
@@ -70,14 +88,30 @@ export default function SettingsPage() {
         </Button>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.id}
+              onClick={() => scrollToSection(tab.id)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border bg-card hover:bg-muted transition-colors"
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
       <div className="grid gap-6 md:grid-cols-2">
-        <Card>
+        <Card id="settings-status">
           <CardHeader>
             <CardTitle>System Status</CardTitle>
             <CardDescription>Current system health and configuration status</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
               <span className="text-sm font-medium">API Status</span>
               <div className="flex items-center gap-2">
                 {health?.status === 'healthy' ? (
@@ -94,7 +128,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
               <span className="text-sm font-medium">Recorder</span>
               <div className="flex items-center gap-2">
                 {health?.recorder_available ? (
@@ -111,7 +145,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
               <span className="text-sm font-medium">Region Status</span>
               <div className="flex items-center gap-2">
                 {health?.country_blacklisted ? (
@@ -128,7 +162,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
               <span className="text-sm font-medium">Cookies</span>
               <div className="flex items-center gap-2">
                 {health?.cookies_configured ? (
@@ -145,7 +179,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
               <span className="text-sm font-medium">Output Directory</span>
               <span className="text-sm text-muted-foreground truncate max-w-[200px]">
                 {health?.recordings_dir || settings?.output_dir}
@@ -154,7 +188,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="settings-cookies">
           <CardHeader>
             <CardTitle>TikTok Cookies</CardTitle>
             <CardDescription>
@@ -218,7 +252,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="settings-telegram">
           <CardHeader>
             <CardTitle>Telegram Integration</CardTitle>
             <CardDescription>
@@ -307,7 +341,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="settings-recording">
           <CardHeader>
             <CardTitle>Recording Settings</CardTitle>
             <CardDescription>Configure default recording behavior</CardDescription>
@@ -363,7 +397,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="settings-cleanup">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Trash2 className="h-5 w-5" />
@@ -397,11 +431,11 @@ export default function SettingsPage() {
                   })
                 }
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  formData.auto_cleanup?.enabled ? 'bg-primary' : 'bg-gray-200'
+                  formData.auto_cleanup?.enabled ? 'bg-primary' : 'bg-muted'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                     formData.auto_cleanup?.enabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -491,7 +525,7 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
-        <Card>
+        <Card id="settings-timezone">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Globe className="h-5 w-5" />
@@ -570,7 +604,7 @@ export default function SettingsPage() {
                 </optgroup>
               </select>
             </div>
-            <div className="p-3 rounded-lg bg-gray-50 text-sm">
+            <div className="p-3 rounded-lg bg-muted/40 text-sm">
               <span className="text-muted-foreground">Current time in selected zone: </span>
               <span className="font-medium tabular-nums">
                 {new Date().toLocaleString('en-US', {

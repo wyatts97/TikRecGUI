@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
-import { LayoutDashboard, Users, Video, Settings, Radio, Moon, Sun, Tv, RefreshCw } from 'lucide-react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, Users, Video, Settings, Radio, Moon, Sun, Tv, RefreshCw, Circle } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
@@ -22,6 +22,7 @@ function formatCountdown(seconds: number): string {
 }
 
 export default function Layout() {
+  const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
   const queryClient = useQueryClient()
   const [countdown, setCountdown] = useState<number | null>(null)
@@ -30,6 +31,12 @@ export default function Layout() {
     queryKey: ['monitorStatus'],
     queryFn: () => api.settings.getMonitorStatus(),
     refetchInterval: 10000,
+  })
+
+  const { data: activeRecordings = [] } = useQuery({
+    queryKey: ['activeRecordings'],
+    queryFn: () => api.recordings.getActive(),
+    refetchInterval: 5000,
   })
 
   const triggerCheckMutation = useMutation({
@@ -56,13 +63,13 @@ export default function Layout() {
   }, [countdown])
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-kraken-border">
+    <div className="min-h-screen bg-background">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-background border-b border-border">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
               <Radio className="h-6 w-6 text-primary" />
-              <span className="text-xl font-bold text-kraken-black tracking-tight">
+              <span className="text-xl font-bold text-foreground tracking-tight">
                 TikRec
               </span>
             </div>
@@ -77,7 +84,7 @@ export default function Layout() {
                       'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
                       isActive
                         ? 'bg-primary-subtle text-primary'
-                        : 'text-kraken-gray hover:bg-gray-100'
+                        : 'text-muted-foreground hover:bg-muted/60'
                     )
                   }
                 >
@@ -86,8 +93,20 @@ export default function Layout() {
                 </NavLink>
               ))}
 
+              {/* Recording indicator pill */}
+              {activeRecordings.length > 0 && (
+                <button
+                  onClick={() => navigate('/recordings')}
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs font-medium animate-pulse"
+                  title="Recording in progress"
+                >
+                  <Circle className="h-2 w-2 fill-current" />
+                  {activeRecordings.length} REC
+                </button>
+              )}
+
               {monitorStatus?.is_running && (
-                <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-100 text-xs text-kraken-gray">
+                <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-xs text-muted-foreground">
                   <span className="tabular-nums">
                     {countdown !== null
                       ? `Next check: ${formatCountdown(countdown)}`
@@ -99,7 +118,7 @@ export default function Layout() {
               <button
                 onClick={() => triggerCheckMutation.mutate()}
                 disabled={triggerCheckMutation.isPending}
-                className="flex items-center justify-center h-9 w-9 rounded-lg transition-colors text-kraken-gray hover:bg-gray-100 disabled:opacity-50"
+                className="flex items-center justify-center h-9 w-9 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60 disabled:opacity-50"
                 aria-label="Check live status now"
                 title="Check live status now"
               >
@@ -108,7 +127,7 @@ export default function Layout() {
 
               <button
                 onClick={toggleTheme}
-                className="flex items-center justify-center h-9 w-9 rounded-lg transition-colors text-kraken-gray hover:bg-gray-100"
+                className="flex items-center justify-center h-9 w-9 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60"
                 aria-label="Toggle dark mode"
                 title="Toggle dark mode"
               >

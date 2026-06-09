@@ -210,7 +210,7 @@ export default function Recordings() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-kraken-black tracking-tight">Recordings</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Recordings</h1>
           <p className="text-muted-foreground mt-1">
             View and manage your TikTok live recordings
           </p>
@@ -269,7 +269,7 @@ export default function Recordings() {
             <div className="flex items-center gap-1.5">
               <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <select
-                className="text-sm border rounded-lg px-2 py-1.5 bg-white"
+                className="text-sm border rounded-lg px-2 py-1.5 bg-background"
                 value={statusFilter || ''}
                 onChange={(e) => { setStatusFilter(e.target.value || undefined); setPage(1) }}
               >
@@ -284,7 +284,7 @@ export default function Recordings() {
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">Sort:</span>
               <select
-                className="text-sm border rounded-lg px-2 py-1.5 bg-white"
+                className="text-sm border rounded-lg px-2 py-1.5 bg-background"
                 value={sortBy}
                 onChange={(e) => { setSortBy(e.target.value); setPage(1) }}
               >
@@ -295,7 +295,7 @@ export default function Recordings() {
               </select>
               <button
                 onClick={() => { setSortOrder((o: 'asc' | 'desc') => o === 'asc' ? 'desc' : 'asc'); setPage(1) }}
-                className="flex items-center justify-center h-8 w-8 rounded-lg border bg-white hover:bg-gray-50 transition-colors"
+                className="flex items-center justify-center h-8 w-8 rounded-lg border bg-background hover:bg-muted/60 transition-colors"
                 title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
               >
                 {sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
@@ -335,14 +335,14 @@ export default function Recordings() {
                 type="date"
                 value={dateFrom}
                 onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
-                className="text-sm border rounded-lg px-2 py-1 bg-white h-8"
+                className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
               />
               <span className="text-xs text-muted-foreground">–</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
-                className="text-sm border rounded-lg px-2 py-1 bg-white h-8"
+                className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
               />
             </div>
           </div>
@@ -406,6 +406,7 @@ export default function Recordings() {
                     </TableHead>
                     <TableHead>User</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Transcript</TableHead>
                     <TableHead>Duration</TableHead>
                     <TableHead>Size</TableHead>
                     <TableHead>Date</TableHead>
@@ -439,6 +440,17 @@ export default function Recordings() {
                         <Badge variant={statusVariantMap[recording.status] || 'default'}>
                           {recording.status}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {recording.transcript_status === 'done' ? (
+                          <Badge variant="success" className="text-xs">Done</Badge>
+                        ) : recording.transcript_status === 'processing' ? (
+                          <Badge variant="warning" className="text-xs">Processing</Badge>
+                        ) : recording.transcript_status === 'pending' ? (
+                          <Badge variant="secondary" className="text-xs">Pending</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>{formatDuration(recording.duration_seconds)}</TableCell>
                       <TableCell>{formatBytes(recording.file_size)}</TableCell>

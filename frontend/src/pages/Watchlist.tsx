@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -8,6 +8,8 @@ import {
   Radio,
   Eye,
   EyeOff,
+  Search,
+  Users,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -40,6 +42,7 @@ export default function Watchlist() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [isMonitoring, setIsMonitoring] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
@@ -118,11 +121,25 @@ export default function Watchlist() {
     toast({ title: 'Refreshed', description: 'All user statuses have been updated' })
   }
 
+  const filteredUsers = useMemo(() => {
+    let sorted = [...users].sort((a, b) => {
+      if (a.is_live === b.is_live) return 0
+      return a.is_live ? -1 : 1
+    })
+    if (!searchQuery.trim()) return sorted
+    const q = searchQuery.toLowerCase()
+    return sorted.filter(
+      (u) =>
+        u.username.toLowerCase().includes(q) ||
+        (u.display_name && u.display_name.toLowerCase().includes(q))
+    )
+  }, [users, searchQuery])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-kraken-black tracking-tight">Watchlist</h1>
+          <h1 className="text-3xl font-bold text-foreground tracking-tight">Watchlist</h1>
           <p className="text-muted-foreground mt-1">
             Manage TikTok users you want to monitor and record
           </p>
@@ -186,17 +203,41 @@ export default function Watchlist() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Users ({users.length})</CardTitle>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <CardTitle>Users ({filteredUsers.length})</CardTitle>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search users…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-9 w-full sm:w-64"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading...</div>
-          ) : users.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-muted-foreground mb-4">No users in your watchlist</p>
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center gap-3 p-3">
+                  <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                    <div className="h-3 w-20 bg-muted animate-pulse rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredUsers.length === 0 ? (
+            <div className="py-12 text-center">
+              <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+              <p className="text-muted-foreground mb-4">
+                {searchQuery ? 'No users match your search' : 'No users in your watchlist'}
+              </p>
               <Button onClick={() => setAddDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add your first user
+                {searchQuery ? 'Add a new user' : 'Add your first user'}
               </Button>
             </div>
           ) : (
@@ -211,7 +252,7 @@ export default function Watchlist() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user: User) => (
+                {filteredUsers.map((user: User) => (
                   <TableRow key={user.id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
