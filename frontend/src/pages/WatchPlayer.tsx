@@ -1,33 +1,61 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import '@vidstack/react/player/styles/default/theme.css'
 import '@vidstack/react/player/styles/default/layouts/video.css'
-import { ArrowLeft, Download, Loader2, FileText, Search } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
+import TranscriptPanel from '@/components/TranscriptPanel'
 
-function _parseTimestamp(ts: string): number {
-  const parts = ts.split(':').map(Number)
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
-  if (parts.length === 2) return parts[0] * 60 + parts[1]
-  return 0
+function downloadAsFile(content: string, filename: string, mime: string) {
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
-function _parseTranscriptLine(line: string): { timestamp: string; text: string; seconds: number } | null {
-  const match = line.match(/^\[([\d:]+)\s*-->\s*([\d:]+)\]\s*(.*)$/)
-  if (!match) return null
-  return { timestamp: match[1], text: match[3], seconds: _parseTimestamp(match[1]) }
+function formatTranscriptAsSrt(transcriptText: string): string {
+  const lines = transcriptText.split('\n').filter(Boolean)
+  const entries: string[] = []
+  let index = 1
+  for (const line of lines) {
+    const match = line.match(/\[(\d{2}:\d{2}(?::\d{2})?)\]\s*(.*)/)
+    if (match) {
+      const ts = match[1]
+      const text = match[2]
+      // Pad timestamp parts to SRT format: 00:00:00,000
+      const parts = ts.split(':')
+      let hh = '00', mm = '00', ss = '00'
+      if (parts.length === 3) {
+        hh = parts[0]; mm = parts[1]; ss = parts[2]
+      } else if (parts.length === 2) {
+        mm = parts[0]; ss = parts[1]
+      }
+      const start = `${hh}:${mm}:${ss},000`
+      // Estimate end time (next entry or +3s)
+      entries.push(`${index}\n${start} --> ?\n${text}\n`)
+      index++
+    }
+  }
+  return entries.join('\n')
 }
 
-function _seekVideo(seconds: number) {
-  const video = document.querySelector('media-player video') as HTMLVideoElement | null
-  if (video) video.currentTime = seconds
+function formatTranscriptAsTxt(transcriptText: string): string {
+  return transcriptText
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => line.replace(/\[\d{2}:\d{2}(?::\d{2})?\]\s*/, ''))
+    .join('\n')
 }
 
 export default function WatchPlayer() {
@@ -38,6 +66,7 @@ export default function WatchPlayer() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'player' | 'transcript'>('player')
   const [transcriptSearch, setTranscriptSearch] = useState('')
+  const playerRef = useRef<HTMLMediaElement>(null)
 
   const { data: recording, isLoading } = useQuery({
     queryKey: ['recording', recordingId],
@@ -56,6 +85,51 @@ export default function WatchPlayer() {
     mutationFn: () => api.recordings.transcribe(recordingId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recording', recordingId] }),
   })
+
+  const handleSeek = useCallback((seconds: number) => {
+    const video = playerRef.current?.querySelector('video') as HTMLVideoElement | null
+    if (video) video.currentTime = seconds
+  }, [])
+
+  const handleDownloadSrt = useCallback(() => {
+    if (!recording?.transcript_text) return
+    const srt = formatTranscriptAsSrt(recording.transcript_text)
+    const baseName = recording.filename?.replace(/\.[^.]+$/, '') || `recording_${recording.id}`
+    downloadAsFile(srt, `${baseName}.srt`, 'text/plain')
+  }, [recording])
+
+  const handleDownloadTxt = useCallback(() => {
+    if (!recording?.transcript_text) return
+    const txt = formatTranscriptAsTxt(recording.transcript_text)
+    const baseName = recording.filename?.replace(/\.[^.]+$/, '') || `recording_${recording.id}`
+    downloadAsFile(txt, `${baseName}.txt`, 'text/plain')
+  }, [recording])
+
+  const transcriptActions = useMemo(() => {
+    if (!recording?.transcript_text || recording.transcript_status !== 'done') return null
+    return (
+      <div className="flex items-center gap-2 mt-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleDownloadSrt}
+          className="text-xs"
+        >
+          <Download className="h-3 w-3 mr-1" />
+          Download SRT
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleDownloadTxt}
+          className="text-xs"
+        >
+          <FileText className="h-3 w-3 mr-1" />
+          Download TXT
+        </Button>
+      </div>
+    )
+  }, [recording, handleDownloadSrt, handleDownloadTxt])
 
   if (isLoading) {
     return (
@@ -97,9 +171,9 @@ export default function WatchPlayer() {
       )}
 
       <div className="flex gap-6">
-        {/* Left column — always visible */}
+        {/* Left column */}
         <div className="flex-1 min-w-0 space-y-6">
-          <div className="rounded-xl overflow-hidden bg-black border border-border shadow-sm">
+          <div className="rounded-xl overflow-hidden bg-black border border-border shadow-sm" ref={playerRef}>
             {recording.thumbnail_ready ? (
               <MediaPlayer
                 src={api.recordings.getStreamUrl(recording.id)}
@@ -158,7 +232,8 @@ export default function WatchPlayer() {
             </Button>
           </div>
 
-          <div className="border border-border rounded-xl overflow-hidden">
+          {/* Mobile transcript tab */}
+          <div className="border border-border rounded-xl overflow-hidden lg:hidden">
             <div className="flex border-b border-border bg-muted/40">
               <button
                 onClick={() => setActiveTab('player')}
@@ -187,192 +262,39 @@ export default function WatchPlayer() {
             </div>
 
             {activeTab === 'transcript' && (
-              <div className="p-4 space-y-3 lg:hidden">
-                {!recording.transcript_status && (
-                  <div className="flex flex-col items-center justify-center py-8 gap-3">
-                    <FileText className="h-8 w-8 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">No transcript yet</p>
-                    <Button
-                      size="sm"
-                      onClick={() => transcribeMutation.mutate()}
-                      disabled={transcribeMutation.isPending || recording.status === 'recording'}
-                    >
-                      {transcribeMutation.isPending ? (
-                        <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Starting…</>
-                      ) : (
-                        'Transcribe'
-                      )}
-                    </Button>
-                  </div>
-                )}
-
-                {(recording.transcript_status === 'pending' || recording.transcript_status === 'processing') && (
-                  <div className="flex items-center gap-2 py-6 justify-center">
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground capitalize">
-                      {recording.transcript_status}…
-                    </p>
-                  </div>
-                )}
-
-                {recording.transcript_status === 'failed' && (
-                  <div className="flex flex-col items-center gap-2 py-6">
-                    <p className="text-sm text-red-600">Transcription failed.</p>
-                    <Button size="sm" variant="outline" onClick={() => transcribeMutation.mutate()}>
-                      Retry
-                    </Button>
-                  </div>
-                )}
-
-                {recording.transcript_status === 'done' && recording.transcript_text && (
-                  <>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                        <Input
-                          placeholder="Search transcript…"
-                          value={transcriptSearch}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTranscriptSearch(e.target.value)}
-                          className="pl-8 h-8 text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto rounded-lg border border-border bg-muted/40 p-3 space-y-1 font-mono text-xs">
-                      {recording.transcript_text
-                        .split('\n')
-                        .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
-                        .map((line: string, i: number) => {
-                          const parsed = _parseTranscriptLine(line)
-                          return (
-                            <p
-                              key={i}
-                              className={`leading-relaxed ${
-                                transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
-                                  ? 'bg-indigo-500/25 rounded px-1'
-                                  : ''
-                              }`}
-                            >
-                              {parsed ? (
-                                <>
-                                  <button
-                                    onClick={() => _seekVideo(parsed.seconds)}
-                                    className="text-primary hover:underline cursor-pointer"
-                                    title={`Jump to ${parsed.timestamp}`}
-                                  >
-                                    [{parsed.timestamp}]
-                                  </button>
-                                  {' '}{parsed.text}
-                                </>
-                              ) : (
-                                line
-                              )}
-                            </p>
-                          )
-                        })}
-                    </div>
-                  </>
-                )}
+              <div>
+                <TranscriptPanel
+                  recording={recording}
+                  transcriptSearch={transcriptSearch}
+                  onTranscriptSearchChange={setTranscriptSearch}
+                  onTranscribe={() => transcribeMutation.mutate()}
+                  isTranscribing={transcribeMutation.isPending}
+                  onSeek={handleSeek}
+                  variant="inline"
+                />
+                {transcriptActions}
               </div>
             )}
           </div>
         </div>
 
-        {/* Right column — transcript panel (lg+ only) */}
-        {activeTab === 'transcript' && (
-          <div className="hidden lg:flex w-80 shrink-0 flex-col border border-border rounded-xl overflow-hidden bg-muted/40 self-start max-h-[calc(100vh-6rem)]">
-            <div className="px-4 py-3 border-b border-border bg-background flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Transcript</span>
-              {recording.transcript_status === 'done' && (
-                <span className="ml-auto h-1.5 w-1.5 rounded-full bg-green-500" />
-              )}
+        {/* Desktop transcript panel */}
+        <div className="hidden lg:flex lg:flex-col">
+          {activeTab === 'transcript' && (
+            <div>
+              <TranscriptPanel
+                recording={recording}
+                transcriptSearch={transcriptSearch}
+                onTranscriptSearchChange={setTranscriptSearch}
+                onTranscribe={() => transcribeMutation.mutate()}
+                isTranscribing={transcribeMutation.isPending}
+                onSeek={handleSeek}
+                variant="panel"
+              />
+              {transcriptActions}
             </div>
-            <div className="flex-1 p-3 space-y-3 overflow-y-auto min-h-0">
-              {!recording.transcript_status && (
-                <div className="flex flex-col items-center justify-center py-8 gap-3">
-                  <FileText className="h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No transcript yet</p>
-                  <Button
-                    size="sm"
-                    onClick={() => transcribeMutation.mutate()}
-                    disabled={transcribeMutation.isPending || recording.status === 'recording'}
-                  >
-                    {transcribeMutation.isPending ? (
-                      <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Starting…</>
-                    ) : (
-                      'Transcribe'
-                    )}
-                  </Button>
-                </div>
-              )}
-
-              {(recording.transcript_status === 'pending' || recording.transcript_status === 'processing') && (
-                <div className="flex items-center gap-2 py-6 justify-center">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground capitalize">
-                    {recording.transcript_status}…
-                  </p>
-                </div>
-              )}
-
-              {recording.transcript_status === 'failed' && (
-                <div className="flex flex-col items-center gap-2 py-6">
-                  <p className="text-sm text-red-600">Transcription failed.</p>
-                  <Button size="sm" variant="outline" onClick={() => transcribeMutation.mutate()}>
-                    Retry
-                  </Button>
-                </div>
-              )}
-
-              {recording.transcript_status === 'done' && recording.transcript_text && (
-                <>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search transcript…"
-                      value={transcriptSearch}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTranscriptSearch(e.target.value)}
-                      className="pl-8 h-8 text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1 font-mono text-xs">
-                    {recording.transcript_text
-                      .split('\n')
-                      .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
-                      .map((line: string, i: number) => {
-                        const parsed = _parseTranscriptLine(line)
-                        return (
-                          <p
-                            key={i}
-                            className={`leading-relaxed ${
-                              transcriptSearch && line.toLowerCase().includes(transcriptSearch.toLowerCase())
-                                ? 'bg-indigo-500/25 rounded px-1'
-                                : ''
-                            }`}
-                          >
-                            {parsed ? (
-                              <>
-                                <button
-                                  onClick={() => _seekVideo(parsed.seconds)}
-                                  className="text-primary hover:underline cursor-pointer"
-                                  title={`Jump to ${parsed.timestamp}`}
-                                >
-                                  [{parsed.timestamp}]
-                                </button>
-                                {' '}{parsed.text}
-                              </>
-                            ) : (
-                              line
-                            )}
-                          </p>
-                        )
-                      })}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

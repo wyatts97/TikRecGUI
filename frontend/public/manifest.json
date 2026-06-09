@@ -1,0 +1,16 @@
+{
+  "name": "TikRec WebUI",
+  "short_name": "TikRec",
+  "description": "TikTok Live Recording Manager - Monitor, record, and manage TikTok livestreams",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#7132f5",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

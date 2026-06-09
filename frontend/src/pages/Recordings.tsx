@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo, memo, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Download,
@@ -36,6 +37,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import EmptyState from '@/components/EmptyState'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { api, API_BASE, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
@@ -49,17 +59,207 @@ const statusVariantMap: Record<string, 'default' | 'recording' | 'completed' | '
   stopped: 'stopped',
 }
 
+// Memoized recording row
+const RecordingRow = memo(function RecordingRow({
+  recording,
+  selectedIds,
+  stopPending,
+  deletePending,
+  onToggleSelect,
+  onStop,
+  onDownload,
+  onDelete,
+  fmt,
+}: {
+  recording: Recording
+  selectedIds: Set<number>
+  stopPending: boolean
+  deletePending: boolean
+  onToggleSelect: (id: number) => void
+  onStop: (id: number) => void
+  onDownload: (recording: Recording) => void
+  onDelete: (id: number) => void
+  fmt: (date: string | null | undefined) => string
+}) {
+  return (
+    <TableRow key={recording.id}>
+      <TableCell>
+        <button
+          onClick={() => onToggleSelect(recording.id)}
+          className="flex items-center justify-center"
+        >
+          {selectedIds.has(recording.id) ? (
+            <CheckSquare className="h-4 w-4 text-primary" />
+          ) : (
+            <Square className="h-4 w-4 text-muted-foreground" />
+          )}
+        </button>
+      </TableCell>
+      <TableCell>
+        <div>
+          <p className="font-medium">@{recording.username}</p>
+          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+            {recording.filename}
+          </p>
+        </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant={statusVariantMap[recording.status] || 'default'}>
+          {recording.status}
+        </Badge>
+      </TableCell>
+      <TableCell>
+        {recording.transcript_status === 'done' ? (
+          <Badge variant="success" className="text-xs">Done</Badge>
+        ) : recording.transcript_status === 'processing' ? (
+          <Badge variant="warning" className="text-xs">Processing</Badge>
+        ) : recording.transcript_status === 'pending' ? (
+          <Badge variant="secondary" className="text-xs">Pending</Badge>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )}
+      </TableCell>
+      <TableCell>{formatDuration(recording.duration_seconds)}</TableCell>
+      <TableCell>{formatBytes(recording.file_size)}</TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {fmt(recording.started_at || recording.created_at)}
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+          {recording.status === 'recording' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onStop(recording.id)}
+              disabled={stopPending}
+            >
+              <StopCircle className="h-4 w-4 text-destructive" />
+            </Button>
+          )}
+          {(recording.status === 'completed' || recording.status === 'stopped') && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onDownload(recording)}
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onDelete(recording.id)}
+            disabled={deletePending}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+})
+
+// Mobile recording card
+const RecordingCard = memo(function RecordingCard({
+  recording,
+  selectedIds,
+  onToggleSelect,
+  onStop,
+  onDownload,
+  onDelete,
+  stopPending,
+  deletePending,
+  fmt,
+}: {
+  recording: Recording
+  selectedIds: Set<number>
+  stopPending: boolean
+  deletePending: boolean
+  onToggleSelect: (id: number) => void
+  onStop: (id: number) => void
+  onDownload: (recording: Recording) => void
+  onDelete: (id: number) => void
+  fmt: (date: string | null | undefined) => string
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <button onClick={() => onToggleSelect(recording.id)} className="shrink-0">
+            {selectedIds.has(recording.id) ? (
+              <CheckSquare className="h-4 w-4 text-primary" />
+            ) : (
+              <Square className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+          <div>
+            <p className="font-medium text-sm">@{recording.username}</p>
+            <p className="text-xs text-muted-foreground truncate max-w-[180px]">
+              {recording.filename}
+            </p>
+          </div>
+        </div>
+        <Badge variant={statusVariantMap[recording.status] || 'default'} className="shrink-0">
+          {recording.status}
+        </Badge>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span>Duration: {formatDuration(recording.duration_seconds)}</span>
+        <span>Size: {formatBytes(recording.file_size)}</span>
+        <span>{fmt(recording.started_at || recording.created_at)}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          {recording.transcript_status === 'done' ? (
+            <Badge variant="success" className="text-[10px]">Transcript: Done</Badge>
+          ) : recording.transcript_status === 'processing' ? (
+            <Badge variant="warning" className="text-[10px]">Transcript: Processing</Badge>
+          ) : recording.transcript_status === 'pending' ? (
+            <Badge variant="secondary" className="text-[10px]">Transcript: Pending</Badge>
+          ) : (
+            <span className="text-[10px] text-muted-foreground">No transcript</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {recording.status === 'recording' && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onStop(recording.id)} disabled={stopPending}>
+              <StopCircle className="h-3.5 w-3.5 text-destructive" />
+            </Button>
+          )}
+          {(recording.status === 'completed' || recording.status === 'stopped') && (
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDownload(recording)}>
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDelete(recording.id)} disabled={deletePending}>
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+})
+
 export default function Recordings() {
   const fmt = useDateFormat()
-  const [page, setPage] = useState(1)
-  const [statusFilter, setStatusFilter] = useState<string | undefined>()
-  const [sortBy, setSortBy] = useState('date')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
-  const [usernameFilter, setUsernameFilter] = useState('')
-  const [minSizeMb, setMinSizeMb] = useState('')
-  const [maxSizeMb, setMaxSizeMb] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const isDesktop = useMediaQuery('(min-width: 768px)')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [page, setPage] = useState(() => {
+    const p = searchParams.get('page')
+    return p ? parseInt(p) : 1
+  })
+  const [statusFilter, setStatusFilter] = useState<string | undefined>(() => {
+    return searchParams.get('status') || undefined
+  })
+  const [sortBy, setSortBy] = useState(() => searchParams.get('sortBy') || 'date')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(() => {
+    return (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc'
+  })
+  const [usernameFilter, setUsernameFilter] = useState(() => searchParams.get('username') || '')
+  const [minSizeMb, setMinSizeMb] = useState(() => searchParams.get('minSize') || '')
+  const [maxSizeMb, setMaxSizeMb] = useState(() => searchParams.get('maxSize') || '')
+  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') || '')
+  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') || '')
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -67,6 +267,21 @@ export default function Recordings() {
   const [isDownloading, setIsDownloading] = useState(false)
   const queryClient = useQueryClient()
   const { toast } = useToast()
+
+  // Sync state to URL search params
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (page > 1) params.set('page', String(page))
+    if (statusFilter) params.set('status', statusFilter)
+    if (sortBy !== 'date') params.set('sortBy', sortBy)
+    if (sortOrder !== 'desc') params.set('sortOrder', sortOrder)
+    if (usernameFilter) params.set('username', usernameFilter)
+    if (minSizeMb) params.set('minSize', minSizeMb)
+    if (maxSizeMb) params.set('maxSize', maxSizeMb)
+    if (dateFrom) params.set('dateFrom', dateFrom)
+    if (dateTo) params.set('dateTo', dateTo)
+    setSearchParams(params, { replace: true })
+  }, [page, statusFilter, sortBy, sortOrder, usernameFilter, minSizeMb, maxSizeMb, dateFrom, dateTo, setSearchParams])
 
   const { data, isLoading } = useQuery({
     queryKey: ['recordings', page, statusFilter, sortBy, sortOrder, usernameFilter, minSizeMb, maxSizeMb, dateFrom, dateTo],
@@ -83,7 +298,7 @@ export default function Recordings() {
 
   const hasActiveFilters = usernameFilter || minSizeMb || maxSizeMb || dateFrom || dateTo || statusFilter
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setStatusFilter(undefined)
     setUsernameFilter('')
     setMinSizeMb('')
@@ -93,7 +308,7 @@ export default function Recordings() {
     setSortBy('date')
     setSortOrder('desc')
     setPage(1)
-  }
+  }, [])
 
   const recordings = data?.recordings || []
   const total = data?.total || 0
@@ -163,23 +378,21 @@ export default function Recordings() {
     window.open(api.recordings.getDownloadUrl(recording.id), '_blank')
   }
 
-  const toggleSelect = (id: number) => {
-    const newSet = new Set(selectedIds)
-    if (newSet.has(id)) {
-      newSet.delete(id)
-    } else {
-      newSet.add(id)
-    }
-    setSelectedIds(newSet)
-  }
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(id)) newSet.delete(id)
+      else newSet.add(id)
+      return newSet
+    })
+  }, [])
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === recordings.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(recordings.map(r => r.id)))
-    }
-  }
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === recordings.length) return new Set()
+      return new Set(recordings.map(r => r.id))
+    })
+  }, [recordings])
 
   const handleBatchDownload = async () => {
     if (selectedIds.size === 0) return
@@ -288,31 +501,39 @@ export default function Recordings() {
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <div className="flex items-center gap-1.5">
               <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <select
-                className="text-sm border rounded-lg px-2 py-1.5 bg-background"
+              <Select
                 value={statusFilter || ''}
-                onChange={(e) => { setStatusFilter(e.target.value || undefined); setPage(1) }}
+                onValueChange={(v) => { setStatusFilter(v || undefined); setPage(1) }}
               >
-                <option value="">All Status</option>
-                <option value="recording">Recording</option>
-                <option value="completed">Completed</option>
-                <option value="stopped">Stopped</option>
-                <option value="failed">Failed</option>
-              </select>
+                <SelectTrigger className="h-8 w-32 text-sm">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Status</SelectItem>
+                  <SelectItem value="recording">Recording</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="stopped">Stopped</SelectItem>
+                  <SelectItem value="failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex items-center gap-1.5">
               <span className="text-xs text-muted-foreground">Sort:</span>
-              <select
-                className="text-sm border rounded-lg px-2 py-1.5 bg-background"
+              <Select
                 value={sortBy}
-                onChange={(e) => { setSortBy(e.target.value); setPage(1) }}
+                onValueChange={(v) => { setSortBy(v); setPage(1) }}
               >
-                <option value="date">Date</option>
-                <option value="size">Size</option>
-                <option value="duration">Duration</option>
-                <option value="username">User</option>
-              </select>
+                <SelectTrigger className="h-8 w-28 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="date">Date</SelectItem>
+                  <SelectItem value="size">Size</SelectItem>
+                  <SelectItem value="duration">Duration</SelectItem>
+                  <SelectItem value="username">User</SelectItem>
+                </SelectContent>
+              </Select>
               <button
                 onClick={() => { setSortOrder((o: 'asc' | 'desc') => o === 'asc' ? 'desc' : 'asc'); setPage(1) }}
                 className="flex items-center justify-center h-8 w-8 rounded-lg border bg-background hover:bg-muted/60 transition-colors"
@@ -371,13 +592,13 @@ export default function Recordings() {
           {isLoading ? (
             <div className="py-8 text-center text-muted-foreground">Loading...</div>
           ) : recordings.length === 0 ? (
-            <div className="py-8 text-center">
-              <p className="text-muted-foreground mb-4">No recordings found</p>
-              <Button onClick={() => setRecordDialogOpen(true)}>
-                <Play className="h-4 w-4 mr-2" />
-                Start your first recording
-              </Button>
-            </div>
+            <EmptyState
+              icon={Video}
+              title="No recordings found"
+              description="Start a recording to capture TikTok live streams"
+              actionLabel="Start your first recording"
+              onAction={() => setRecordDialogOpen(true)}
+            />
           ) : (
             <>
               {selectedIds.size > 0 && (
@@ -409,109 +630,69 @@ export default function Recordings() {
                   </Button>
                 </div>
               )}
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-12">
-                      <button
-                        onClick={toggleSelectAll}
-                        className="flex items-center justify-center"
-                      >
-                        {selectedIds.size === recordings.length && recordings.length > 0 ? (
-                          <CheckSquare className="h-4 w-4 text-primary" />
-                        ) : (
-                          <Square className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </button>
-                    </TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Transcript</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recordings.map((recording: Recording) => (
-                    <TableRow key={recording.id}>
-                      <TableCell>
+
+              {/* Desktop table */}
+              {isDesktop ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">
                         <button
-                          onClick={() => toggleSelect(recording.id)}
+                          onClick={toggleSelectAll}
                           className="flex items-center justify-center"
                         >
-                          {selectedIds.has(recording.id) ? (
+                          {selectedIds.size === recordings.length && recordings.length > 0 ? (
                             <CheckSquare className="h-4 w-4 text-primary" />
                           ) : (
                             <Square className="h-4 w-4 text-muted-foreground" />
                           )}
                         </button>
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">@{recording.username}</p>
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {recording.filename}
-                          </p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariantMap[recording.status] || 'default'}>
-                          {recording.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {recording.transcript_status === 'done' ? (
-                          <Badge variant="success" className="text-xs">Done</Badge>
-                        ) : recording.transcript_status === 'processing' ? (
-                          <Badge variant="warning" className="text-xs">Processing</Badge>
-                        ) : recording.transcript_status === 'pending' ? (
-                          <Badge variant="secondary" className="text-xs">Pending</Badge>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell>{formatDuration(recording.duration_seconds)}</TableCell>
-                      <TableCell>{formatBytes(recording.file_size)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {fmt(recording.started_at || recording.created_at)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {recording.status === 'recording' && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => stopRecordingMutation.mutate(recording.id)}
-                              disabled={stopRecordingMutation.isPending}
-                            >
-                              <StopCircle className="h-4 w-4 text-destructive" />
-                            </Button>
-                          )}
-                          {(recording.status === 'completed' || recording.status === 'stopped') && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDownload(recording)}
-                            >
-                              <Download className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteRecordingMutation.mutate(recording.id)}
-                            disabled={deleteRecordingMutation.isPending}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
+                      </TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Transcript</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Size</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {recordings.map((recording: Recording) => (
+                      <RecordingRow
+                        key={recording.id}
+                        recording={recording}
+                        selectedIds={selectedIds}
+                        stopPending={stopRecordingMutation.isPending}
+                        deletePending={deleteRecordingMutation.isPending}
+                        onToggleSelect={toggleSelect}
+                        onStop={(id) => stopRecordingMutation.mutate(id)}
+                        onDownload={handleDownload}
+                        onDelete={(id) => deleteRecordingMutation.mutate(id)}
+                        fmt={fmt}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                /* Mobile cards */
+                <div className="space-y-3">
+                  {recordings.map((recording: Recording) => (
+                    <RecordingCard
+                      key={recording.id}
+                      recording={recording}
+                      selectedIds={selectedIds}
+                      stopPending={stopRecordingMutation.isPending}
+                      deletePending={deleteRecordingMutation.isPending}
+                      onToggleSelect={toggleSelect}
+                      onStop={(id) => stopRecordingMutation.mutate(id)}
+                      onDownload={handleDownload}
+                      onDelete={(id) => deleteRecordingMutation.mutate(id)}
+                      fmt={fmt}
+                    />
                   ))}
-                </TableBody>
-              </Table>
+                </div>
+              )}
 
               {totalPages > 1 && (
                 <div className="flex items-center justify-center gap-2 mt-4">

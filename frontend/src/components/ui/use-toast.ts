@@ -131,7 +131,18 @@ function dispatch(action: Action) {
   })
 }
 
-type Toast = Omit<ToasterToast, "id">
+type Toast = Omit<ToasterToast, "id"> & { duration?: number }
+
+const DEFAULT_DURATION = 5000
+const DESTRUCTIVE_DURATION = 10000
+const SUCCESS_DURATION = 4000
+
+function getDuration(props: Toast): number {
+  if (props.duration !== undefined) return props.duration
+  if (props.variant === "destructive") return DESTRUCTIVE_DURATION
+  if (props.variant === "success") return SUCCESS_DURATION
+  return DEFAULT_DURATION
+}
 
 function toast({ ...props }: Toast) {
   const id = genId()
@@ -155,10 +166,9 @@ function toast({ ...props }: Toast) {
     },
   })
 
-  // Auto-dismiss after 5 seconds
   const timeout = setTimeout(() => {
     dismiss()
-  }, 5000)
+  }, getDuration(props))
 
   return {
     id: id,

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback, memo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -10,6 +10,14 @@ import {
   EyeOff,
   Search,
   Users,
+  ExternalLink,
+  Film,
+  Loader2,
+  Ban,
+  Upload,
+  ClipboardList,
+  Check,
+  X,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,6 +34,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet'
+import {
   Table,
   TableBody,
   TableCell,
@@ -33,22 +48,326 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { api, type User } from '@/lib/api'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { api, type User, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
 import { useToast } from '@/components/ui/use-toast'
+import EmptyState from '@/components/EmptyState'
+
+// Memoized user table row
+const UserRow = memo(function UserRow({
+  user,
+  selectedIds,
+  isRefreshing,
+  isRecording,
+  isRemoving,
+  onToggleSelect,
+  onRowClick,
+  onRefresh,
+  onStartRecording,
+  onToggleMonitoring,
+  onRemove,
+  fmt,
+}: {
+  user: User
+  selectedIds: Set<number>
+  isRefreshing: boolean
+  isRecording: boolean
+  isRemoving: boolean
+  onToggleSelect: (id: number) => void
+  onRowClick: (id: number) => void
+  onRefresh: (id: number) => void
+  onStartRecording: (username: string) => void
+  onToggleMonitoring: (id: number, isMonitoring: boolean) => void
+  onRemove: (id: number) => void
+  fmt: (date: string | null | undefined) => string
+}) {
+  return (
+    <TableRow
+      key={user.id}
+      className="cursor-pointer"
+      onClick={() => onRowClick(user.id)}
+    >
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selectedIds.has(user.id)}
+          onChange={() => onToggleSelect(user.id)}
+          className="h-4 w-4 rounded border-gray-300"
+        />
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
+            <img
+              src={api.users.getAvatarUrl(user.id)}
+              alt={user.username}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement
+                img.style.display = 'none'
+                const fallback = img.nextElementSibling as HTMLElement
+                if (fallback) fallback.style.display = 'flex'
+              }}
+            />
+            <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
+              {user.username[0].toUpperCase()}
+            </span>
+          </div>
+          <div className="min-w-0">
+            {user.display_name && (
+              <p className="font-medium text-sm leading-tight">{user.display_name}</p>
+            )}
+            <p className={user.display_name ? "text-xs text-muted-foreground" : "font-medium text-sm"}>
+              @{user.username}
+            </p>
+            {user.bio && (
+              <p className="text-xs text-muted-foreground truncate max-w-[200px]">{user.bio}</p>
+            )}
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        {user.is_live ? (
+          <Badge variant="live" className="gap-1">
+            <Radio className="h-3 w-3" />
+            LIVE
+          </Badge>
+        ) : (
+          <Badge variant="secondary">Offline</Badge>
+        )}
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleMonitoring(user.id, !user.is_monitoring)
+          }}
+        >
+          {user.is_monitoring ? (
+            <>
+              <Eye className="h-4 w-4 mr-1 text-success" />
+              <span className="text-success">On</span>
+            </>
+          ) : (
+            <>
+              <EyeOff className="h-4 w-4 mr-1 text-muted-foreground" />
+              <span className="text-muted-foreground">Off</span>
+            </>
+          )}
+        </Button>
+      </TableCell>
+      <TableCell className="text-muted-foreground text-sm">
+        {fmt(user.last_checked)}
+      </TableCell>
+      <TableCell className="text-right">
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRefresh(user.id)
+            }}
+            disabled={isRefreshing}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          {user.is_live && (
+            <Button
+              variant="subtle"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                onStartRecording(user.username)
+              }}
+              disabled={isRecording}
+            >
+              <Play className="h-3 w-3 mr-1" />
+              Record
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation()
+              onRemove(user.id)
+            }}
+            disabled={isRemoving}
+          >
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+})
+
+// Mobile user card
+const UserCard = memo(function UserCard({
+  user,
+  selectedIds,
+  isRefreshing,
+  isRecording,
+  isRemoving,
+  onToggleSelect,
+  onRowClick,
+  onRefresh,
+  onStartRecording,
+  onToggleMonitoring,
+  onRemove,
+  fmt,
+}: {
+  user: User
+  selectedIds: Set<number>
+  isRefreshing: boolean
+  isRecording: boolean
+  isRemoving: boolean
+  onToggleSelect: (id: number) => void
+  onRowClick: (id: number) => void
+  onRefresh: (id: number) => void
+  onStartRecording: (username: string) => void
+  onToggleMonitoring: (id: number, isMonitoring: boolean) => void
+  onRemove: (id: number) => void
+  fmt: (date: string | null | undefined) => string
+}) {
+  return (
+    <div
+      className="rounded-lg border border-border bg-card p-4 space-y-3 cursor-pointer hover:bg-muted/20 transition-colors"
+      onClick={() => onRowClick(user.id)}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+            <input
+              type="checkbox"
+              checked={selectedIds.has(user.id)}
+              onChange={() => onToggleSelect(user.id)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+          </div>
+          <div className="h-9 w-9 rounded-full bg-primary-subtle overflow-hidden shrink-0">
+            <img
+              src={api.users.getAvatarUrl(user.id)}
+              alt={user.username}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement
+                img.style.display = 'none'
+                const fallback = img.nextElementSibling as HTMLElement
+                if (fallback) fallback.style.display = 'flex'
+              }}
+            />
+            <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
+              {user.username[0].toUpperCase()}
+            </span>
+          </div>
+          <div className="min-w-0">
+            {user.display_name && (
+              <p className="font-medium text-sm leading-tight truncate">{user.display_name}</p>
+            )}
+            <p className="text-sm truncate">@{user.username}</p>
+          </div>
+        </div>
+        {user.is_live ? (
+          <Badge variant="live" className="gap-1 shrink-0">
+            <Radio className="h-3 w-3" />
+            LIVE
+          </Badge>
+        ) : (
+          <Badge variant="secondary" className="shrink-0">Offline</Badge>
+        )}
+      </div>
+
+      {user.bio && (
+        <p className="text-xs text-muted-foreground line-clamp-2">{user.bio}</p>
+      )}
+
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>Monitoring: {user.is_monitoring ? 'On' : 'Off'}</span>
+        <span>{fmt(user.last_checked)}</span>
+      </div>
+
+      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onToggleMonitoring(user.id, !user.is_monitoring)}
+        >
+          {user.is_monitoring ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+          {user.is_monitoring ? 'Disable' : 'Enable'}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 text-xs"
+          onClick={() => onRefresh(user.id)}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className="h-3 w-3 mr-1" />
+          Refresh
+        </Button>
+        {user.is_live && (
+          <Button
+            variant="subtle"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => onStartRecording(user.username)}
+            disabled={isRecording}
+          >
+            <Play className="h-3 w-3 mr-1" />
+            Record
+          </Button>
+        )}
+        <div className="flex-1" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7"
+          onClick={() => onRemove(user.id)}
+          disabled={isRemoving}
+        >
+          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+        </Button>
+      </div>
+    </div>
+  )
+})
 
 export default function Watchlist() {
   const fmt = useDateFormat()
+  const isDesktop = useMediaQuery('(min-width: 768px)')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importStatus, setImportStatus] = useState<string | null>(null)
   const [newUsername, setNewUsername] = useState('')
   const [isMonitoring, setIsMonitoring] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.users.list(),
+  })
+
+  const { data: detailUser } = useQuery({
+    queryKey: ['user', detailUserId],
+    queryFn: () => api.users.get(detailUserId!),
+    enabled: detailUserId !== null,
+  })
+
+  const { data: userRecordings } = useQuery({
+    queryKey: ['recordings', 'user', detailUserId],
+    queryFn: () => api.recordings.list(1, 20, undefined, detailUserId!),
+    enabled: detailUserId !== null,
   })
 
   const addUserMutation = useMutation({
@@ -70,6 +389,7 @@ export default function Watchlist() {
     mutationFn: (id: number) => api.users.removeFromWatchlist(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      setSelectedIds(new Set())
       toast({ title: 'User removed', description: 'User has been removed from your watchlist' })
     },
     onError: (error: Error) => {
@@ -107,6 +427,19 @@ export default function Watchlist() {
     },
   })
 
+  const batchToggleMonitoring = useMutation({
+    mutationFn: ({ ids, monitoring }: { ids: number[]; monitoring: boolean }) =>
+      Promise.all(ids.map((id) => api.users.update(id, { is_monitoring: monitoring }))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setSelectedIds(new Set())
+      toast({ title: 'Updated', description: 'Monitoring settings updated for selected users' })
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+    },
+  })
+
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault()
     if (newUsername.trim()) {
@@ -120,6 +453,22 @@ export default function Watchlist() {
     }
     toast({ title: 'Refreshed', description: 'All user statuses have been updated' })
   }
+
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === filteredUsers.length) return new Set()
+      return new Set(filteredUsers.map((u) => u.id))
+    })
+  }, [filteredUsers])
 
   const filteredUsers = useMemo(() => {
     let sorted = [...users].sort((a, b) => {
@@ -135,6 +484,54 @@ export default function Watchlist() {
     )
   }, [users, searchQuery])
 
+  const selectedCount = selectedIds.size
+
+  // Export: copy @username list to clipboard
+  const handleExport = useCallback(() => {
+    const list = users.map((u) => `@${u.username}`).join('\n')
+    navigator.clipboard.writeText(list).then(() => {
+      toast({ title: 'Exported', description: 'Usernames copied to clipboard' })
+    }).catch(() => {
+      toast({ title: 'Export failed', description: 'Could not copy to clipboard', variant: 'destructive' })
+    })
+  }, [users, toast])
+
+  // Import: parse @username list and add users
+  const handleImport = useCallback(() => {
+    if (!importText.trim()) return
+    setImportStatus(null)
+    const usernames = importText
+      .split('\n')
+      .map((line) => line.trim().replace(/^@/, '').replace(/\s.*$/, ''))
+      .filter(Boolean)
+    if (usernames.length === 0) {
+      setImportStatus('No valid usernames found')
+      return
+    }
+    let completed = 0
+    let failed = 0
+    const run = async () => {
+      for (const username of usernames) {
+        try {
+          await api.users.create(username, true)
+          completed++
+        } catch {
+          failed++
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setImportStatus(`Added ${completed} user(s)${failed > 0 ? `, ${failed} failed` : ''}`)
+      if (failed === 0) {
+        setTimeout(() => {
+          setImportDialogOpen(false)
+          setImportText('')
+          setImportStatus(null)
+        }, 1500)
+      }
+    }
+    run()
+  }, [importText, queryClient])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -145,6 +542,49 @@ export default function Watchlist() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Import
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Import Users</DialogTitle>
+                <DialogDescription>
+                  Paste a list of @usernames, one per line, to add them to your watchlist with monitoring enabled.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <textarea
+                  className="w-full min-h-[160px] rounded-lg border border-input bg-background p-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder={`@user1\n@user2\n@user3`}
+                  value={importText}
+                  onChange={(e) => { setImportText(e.target.value); setImportStatus(null) }}
+                />
+                {importStatus && (
+                  <div className={`mt-2 text-sm flex items-center gap-1.5 ${importStatus.includes('failed') ? 'text-destructive' : 'text-success'}`}>
+                    {importStatus.includes('failed') ? <X className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+                    {importStatus}
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setImportDialogOpen(false); setImportText(''); setImportStatus(null) }}>
+                  Cancel
+                </Button>
+                <Button onClick={handleImport} disabled={!importText.trim()}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import {importText.trim() ? `(${importText.split('\n').filter(Boolean).length})` : ''}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" onClick={handleExport} disabled={users.length === 0}>
+            <ClipboardList className="h-4 w-4 mr-2" />
+            Export
+          </Button>
           <Button variant="outline" onClick={handleRefreshAll} disabled={users.length === 0}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh All
@@ -230,136 +670,320 @@ export default function Watchlist() {
               ))}
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="py-12 text-center">
-              <Users className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-50" />
-              <p className="text-muted-foreground mb-4">
-                {searchQuery ? 'No users match your search' : 'No users in your watchlist'}
-              </p>
-              <Button onClick={() => setAddDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                {searchQuery ? 'Add a new user' : 'Add your first user'}
-              </Button>
-            </div>
+            <EmptyState
+              icon={Users}
+              title={searchQuery ? 'No users match your search' : 'No users in your watchlist'}
+              description={searchQuery ? 'Try a different search term' : 'Add TikTok users to start monitoring their livestreams'}
+              actionLabel={searchQuery ? undefined : 'Add your first user'}
+              onAction={searchQuery ? undefined : () => setAddDialogOpen(true)}
+            />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Monitoring</TableHead>
-                  <TableHead>Last Checked</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user: User) => (
-                  <TableRow key={user.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
-                          <img
-                            src={api.users.getAvatarUrl(user.id)}
-                            alt={user.username}
-                            className="h-full w-full object-cover"
-                            onError={(e) => {
-                              const img = e.target as HTMLImageElement
-                              img.style.display = 'none'
-                              const fallback = img.nextElementSibling as HTMLElement
-                              if (fallback) fallback.style.display = 'flex'
-                            }}
-                          />
-                          <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
-                            {user.username[0].toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="min-w-0">
-                          {user.display_name && (
-                            <p className="font-medium text-sm leading-tight">{user.display_name}</p>
-                          )}
-                          <p className={user.display_name ? "text-xs text-muted-foreground" : "font-medium text-sm"}>
-                            @{user.username}
-                          </p>
-                          {user.bio && (
-                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">{user.bio}</p>
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {user.is_live ? (
-                        <Badge variant="live" className="gap-1">
-                          <Radio className="h-3 w-3" />
-                          LIVE
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">Offline</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          toggleMonitoringMutation.mutate({
-                            id: user.id,
-                            isMonitoring: !user.is_monitoring,
-                          })
-                        }
-                      >
-                        {user.is_monitoring ? (
-                          <>
-                            <Eye className="h-4 w-4 mr-1 text-success" />
-                            <span className="text-success">On</span>
-                          </>
-                        ) : (
-                          <>
-                            <EyeOff className="h-4 w-4 mr-1 text-muted-foreground" />
-                            <span className="text-muted-foreground">Off</span>
-                          </>
-                        )}
-                      </Button>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {fmt(user.last_checked)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => refreshUserMutation.mutate(user.id)}
-                          disabled={refreshUserMutation.isPending}
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </Button>
-                        {user.is_live && (
-                          <Button
-                            variant="subtle"
-                            size="sm"
-                            onClick={() => startRecordingMutation.mutate(user.username)}
-                            disabled={startRecordingMutation.isPending}
-                          >
-                            <Play className="h-3 w-3 mr-1" />
-                            Record
-                          </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeFromWatchlistMutation.mutate(user.id)}
-                          disabled={removeFromWatchlistMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <>
+              {/* Batch action bar */}
+              {selectedCount > 0 && (
+                <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-muted/40">
+                  <span className="text-sm font-medium mr-2">{selectedCount} selected</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      batchToggleMonitoring.mutate({
+                        ids: Array.from(selectedIds),
+                        monitoring: true,
+                      })
+                    }
+                  >
+                    <Eye className="h-3 w-3 mr-1" />
+                    Enable Monitoring
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      batchToggleMonitoring.mutate({
+                        ids: Array.from(selectedIds),
+                        monitoring: false,
+                      })
+                    }
+                  >
+                    <EyeOff className="h-3 w-3 mr-1" />
+                    Disable Monitoring
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      Array.from(selectedIds).forEach((id) =>
+                        removeFromWatchlistMutation.mutate(id)
+                      )
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Remove
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setSelectedIds(new Set())}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              )}
+
+              {/* Desktop table */}
+              {isDesktop ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10">
+                        <input
+                          type="checkbox"
+                          checked={filteredUsers.length > 0 && selectedIds.size === filteredUsers.length}
+                          onChange={toggleSelectAll}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                      </TableHead>
+                      <TableHead>User</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Monitoring</TableHead>
+                      <TableHead>Last Checked</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredUsers.map((user: User) => (
+                      <UserRow
+                        key={user.id}
+                        user={user}
+                        selectedIds={selectedIds}
+                        isRefreshing={refreshUserMutation.isPending}
+                        isRecording={startRecordingMutation.isPending}
+                        isRemoving={removeFromWatchlistMutation.isPending}
+                        onToggleSelect={toggleSelect}
+                        onRowClick={(id) => setDetailUserId(id)}
+                        onRefresh={(id) => refreshUserMutation.mutate(id)}
+                        onStartRecording={(username) => startRecordingMutation.mutate(username)}
+                        onToggleMonitoring={(id, monitoring) => toggleMonitoringMutation.mutate({ id, isMonitoring: monitoring })}
+                        onRemove={(id) => removeFromWatchlistMutation.mutate(id)}
+                        fmt={fmt}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                /* Mobile cards */
+                <div className="space-y-3">
+                  {filteredUsers.map((user: User) => (
+                    <UserCard
+                      key={user.id}
+                      user={user}
+                      selectedIds={selectedIds}
+                      isRefreshing={refreshUserMutation.isPending}
+                      isRecording={startRecordingMutation.isPending}
+                      isRemoving={removeFromWatchlistMutation.isPending}
+                      onToggleSelect={toggleSelect}
+                      onRowClick={(id) => setDetailUserId(id)}
+                      onRefresh={(id) => refreshUserMutation.mutate(id)}
+                      onStartRecording={(username) => startRecordingMutation.mutate(username)}
+                      onToggleMonitoring={(id, monitoring) => toggleMonitoringMutation.mutate({ id, isMonitoring: monitoring })}
+                      onRemove={(id) => removeFromWatchlistMutation.mutate(id)}
+                      fmt={fmt}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
+
+      {/* User Detail Sheet */}
+      <Sheet open={detailUserId !== null} onOpenChange={(open) => { if (!open) setDetailUserId(null) }}>
+        <SheetContent className="overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>
+              {detailUser ? `@${detailUser.username}` : 'User Details'}
+            </SheetTitle>
+            <SheetDescription>
+              {detailUser?.display_name || ''}
+            </SheetDescription>
+          </SheetHeader>
+
+          {detailUser ? (
+            <div className="mt-6 space-y-6">
+              {/* Avatar */}
+              <div className="flex justify-center">
+                <div className="h-24 w-24 rounded-full bg-primary-subtle overflow-hidden">
+                  <img
+                    src={api.users.getAvatarUrl(detailUser.id)}
+                    alt={detailUser.username}
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement
+                      img.style.display = 'none'
+                      const fallback = img.nextElementSibling as HTMLElement
+                      if (fallback) fallback.style.display = 'flex'
+                    }}
+                  />
+                  <span className="hidden h-full w-full items-center justify-center text-2xl font-medium text-primary fallback-initial">
+                    {detailUser.username[0].toUpperCase()}
+                  </span>
+                </div>
+              </div>
+
+              {/* User info */}
+              <div className="space-y-3">
+                <div className="text-center">
+                  {detailUser.display_name && (
+                    <p className="font-semibold text-lg">{detailUser.display_name}</p>
+                  )}
+                  <p className="text-muted-foreground">@{detailUser.username}</p>
+                </div>
+
+                {detailUser.bio && (
+                  <p className="text-sm text-center text-muted-foreground">{detailUser.bio}</p>
+                )}
+
+                <div className="flex justify-center gap-4 text-sm">
+                  <div className="text-center">
+                    <p className="font-semibold">{detailUser.follower_count?.toLocaleString() || 'N/A'}</p>
+                    <p className="text-muted-foreground text-xs">Followers</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold">{detailUser.is_live ? 'Live' : 'Offline'}</p>
+                    <p className="text-muted-foreground text-xs">Status</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick actions */}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => {
+                    window.open(`https://www.tiktok.com/@${detailUser.username}`, '_blank')
+                  }}
+                >
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  TikTok Profile
+                </Button>
+                {detailUser.is_live && (
+                  <Button
+                    size="sm"
+                    variant="subtle"
+                    className="flex-1"
+                    onClick={() => startRecordingMutation.mutate(detailUser.username)}
+                  >
+                    <Play className="h-3 w-3 mr-1" />
+                    Record Now
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() =>
+                    toggleMonitoringMutation.mutate({
+                      id: detailUser.id,
+                      isMonitoring: !detailUser.is_monitoring,
+                    })
+                  }
+                >
+                  {detailUser.is_monitoring ? (
+                    <><Ban className="h-3 w-3 mr-1" /> Stop Monitoring</>
+                  ) : (
+                    <><Eye className="h-3 w-3 mr-1" /> Monitor</>
+                  )}
+                </Button>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => refreshUserMutation.mutate(detailUser.id)}
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Refresh
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="flex-1"
+                  onClick={() => {
+                    removeFromWatchlistMutation.mutate(detailUser.id)
+                    setDetailUserId(null)
+                  }}
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Remove
+                </Button>
+              </div>
+
+              {/* Recent Recordings */}
+              <div>
+                <h4 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <Film className="h-4 w-4" />
+                  Recent Recordings
+                </h4>
+                {!userRecordings ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  </div>
+                ) : userRecordings.recordings.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No recordings for this user yet
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {userRecordings.recordings.slice(0, 10).map((rec: Recording) => (
+                      <div
+                        key={rec.id}
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/40 cursor-pointer transition-colors"
+                        onClick={() => {
+                          window.open(`/watch/${rec.id}`, '_blank')
+                        }}
+                      >
+                        <div className="h-10 w-14 rounded bg-muted overflow-hidden shrink-0">
+                          {rec.thumbnail_ready ? (
+                            <img
+                              src={api.recordings.getThumbnailUrl(rec.id)}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center">
+                              <Film className="h-3 w-3 text-muted-foreground" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium truncate">
+                            {rec.filename || `Recording #${rec.id}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {fmt(rec.ended_at || rec.created_at)}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] capitalize">
+                          {rec.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

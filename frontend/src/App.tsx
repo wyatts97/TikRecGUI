@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from './hooks/useTheme'
+import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Watchlist from './pages/Watchlist'
@@ -12,6 +13,7 @@ import { TimezoneProvider } from './lib/timezone-context'
 
 function App() {
   return (
+    <ErrorBoundary>
     <ThemeProvider>
       <TimezoneProvider>
       <Routes>
@@ -27,6 +29,7 @@ function App() {
       </TimezoneProvider>
       <Toaster />
     </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 
