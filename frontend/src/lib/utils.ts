@@ -26,7 +26,16 @@ export function formatDuration(seconds: number | null | undefined): string {
 
 export function formatDate(date: string | Date | null | undefined, timeZone = "UTC"): string {
   if (!date) return "--"
-  const d = new Date(date)
+  let input = date
+  if (typeof input === "string") {
+    // Backend stores naive UTC datetimes; JS treats "2024-01-01T12:00:00" as
+    // local time. Append Z so it is parsed as UTC before converting to the
+    // target timezone.
+    if (!input.endsWith("Z") && !/[-+]\d{2}:\d{2}$/.test(input)) {
+      input = input + "Z"
+    }
+  }
+  const d = new Date(input)
   return d.toLocaleDateString("en-US", {
     timeZone,
     month: "short",
