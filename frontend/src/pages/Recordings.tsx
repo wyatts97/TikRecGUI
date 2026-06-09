@@ -13,6 +13,7 @@ import {
   ArrowUp,
   ArrowDown,
   X,
+  Images,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -35,7 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { api, type Recording } from '@/lib/api'
+import { api, API_BASE, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { useToast } from '@/components/ui/use-toast'
@@ -257,12 +258,31 @@ export default function Recordings() {
               <Video className="h-5 w-5" />
               Recordings ({total})
             </CardTitle>
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs">
-                <X className="h-3 w-3 mr-1" />
-                Clear filters
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={async () => {
+                  try {
+                    const res = await fetch(`${API_BASE}/recordings/sprites/regenerate`, { method: 'POST' })
+                    const data = await res.json()
+                    alert(`Triggered sprite generation for ${data.triggered} missing recordings`)
+                  } catch {
+                    alert('Failed to trigger sprite regeneration')
+                  }
+                }}
+              >
+                <Images className="h-3 w-3 mr-1" />
+                Regenerate Sprites
               </Button>
-            )}
+              {hasActiveFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs">
+                  <X className="h-3 w-3 mr-1" />
+                  Clear filters
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-2">

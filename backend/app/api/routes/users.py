@@ -26,6 +26,11 @@ def list_users(
     if monitoring_only:
         query = query.filter(User.is_monitoring == True)
     users = query.offset(skip).limit(limit).all()
+    # Backfill profile_pic_url for users with cached avatars
+    for user in users:
+        if not user.profile_pic_url and unified_avatar_service.get_avatar_path(user.username):
+            user.profile_pic_url = f"/api/users/{user.id}/avatar"
+    db.commit()
     return users
 
 
@@ -57,7 +62,17 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
     # Also fetch avatar asynchronously using the new unified service
     def _fetch_avatar():
-        unified_avatar_service.fetch_and_cache(db_user.username, db_user.room_id)
+        fetched = unified_avatar_service.fetch_and_cache(db_user.username, db_user.room_id)
+        if fetched:
+            from app.db.database import SessionLocal
+            db2 = SessionLocal()
+            try:
+                u = db2.query(User).filter(User.id == db_user.id).first()
+                if u:
+                    u.profile_pic_url = f"/api/users/{u.id}/avatar"
+                    db2.commit()
+            finally:
+                db2.close()
     threading.Thread(target=_fetch_avatar, daemon=True).start()
 
     return db_user

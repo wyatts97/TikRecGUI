@@ -47,6 +47,7 @@ export default function WatchPlayer() {
       const rec = query.state.data
       if (!rec) return false
       if (rec.transcript_status === 'processing' || rec.transcript_status === 'pending') return 3000
+      if (!rec.sprite_ready) return 5000
       return false
     },
   })

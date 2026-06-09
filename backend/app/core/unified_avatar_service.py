@@ -1,13 +1,15 @@
 """Unified avatar fetching service.
 
-Primary: uses the bundled TikTok live recorder API (get_avatar_url via room_id).
-Fallback: scrapes TikTok profile page HTML for avatar URLs.
+Primary: scrapes TikTok profile page HTML for avatar URLs.
+Fallback: tiktok-scraper CLI (same tool used for profile info).
 """
+import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional
 
-import httpx
+from curl_cffi import requests
 
 from app.config import settings
 from app.core.avatar_service import avatar_service
@@ -39,8 +41,13 @@ class UnifiedAvatarService:
         """Download avatar image and save locally. Returns local path or None."""
         try:
             headers = {"User-Agent": self.USER_AGENT}
-            with httpx.Client(follow_redirects=True, timeout=15.0) as client:
-                response = client.get(url, headers=headers)
+            with requests.Session() as client:
+                response = client.get(
+                    url,
+                    headers=headers,
+                    timeout=15,
+                    impersonate="chrome120",
+                )
                 response.raise_for_status()
                 if response.headers.get("content-type", "").startswith("image/"):
                     path = self._avatar_path(username)
@@ -52,19 +59,17 @@ class UnifiedAvatarService:
         return None
 
     def _fetch_via_recorder(self, room_id: str) -> Optional[str]:
-        """Use the bundled TikTokAPI to get avatar URL from room info."""
-        try:
-            api = recorder_service.get_api()
-            avatar_url = api.get_avatar_url(room_id)
-            if avatar_url:
-                logger.info(f"Got avatar URL via recorder API for room_id={room_id}")
-                return avatar_url
-        except Exception as exc:
-            logger.warning(f"Recorder avatar fetch failed for room_id={room_id}: {exc}")
+        """Use the bundled TikTokAPI to get avatar URL from room info.
+
+        NOTE: The bundled TikTokAPI does not expose a get_avatar_url method,
+        so this path is currently disabled. The HTML scraper and tiktok-scraper
+        CLI handle avatar fetching instead.
+        """
+        # The bundled recorder API has no avatar method; skip this path.
         return None
 
     def _fetch_via_html_scraper(self, username: str) -> Optional[str]:
-        """Fallback: use avatar_service HTML scraper."""
+        """Use avatar_service HTML scraper."""
         try:
             url = avatar_service.fetch_avatar_url(username)
             if url:
@@ -72,6 +77,25 @@ class UnifiedAvatarService:
                 return url
         except Exception as exc:
             logger.warning(f"HTML scraper avatar fetch failed for @{username}: {exc}")
+        return None
+
+    def _fetch_via_tiktok_scraper(self, username: str) -> Optional[str]:
+        """Run tiktok-scraper CLI to get avatar URL."""
+        try:
+            proc = subprocess.run(
+                ["tiktok-scraper", "user", username, "-t", "json"],
+                capture_output=True, text=True, timeout=20,
+            )
+            if proc.returncode != 0:
+                logger.debug(f"tiktok-scraper stderr for @{username}: {proc.stderr[:200]}")
+                return None
+            data = json.loads(proc.stdout)
+            avatar_url = data.get("avatar_url") or data.get("avatar")
+            if avatar_url:
+                logger.info(f"Got avatar URL via tiktok-scraper for @{username}")
+                return avatar_url
+        except (json.JSONDecodeError, subprocess.TimeoutExpired, Exception) as exc:
+            logger.debug(f"tiktok-scraper avatar fetch failed for @{username}: {exc}")
         return None
 
     def fetch_and_cache(self, username: str, room_id: Optional[str] = None, force: bool = False) -> Optional[str]:
@@ -89,14 +113,16 @@ class UnifiedAvatarService:
         if not force and self._has_cached(username):
             return str(self._avatar_path(username))
 
-        # Try bundled recorder API first (most reliable, uses same auth as recordings)
-        avatar_url: Optional[str] = None
-        if room_id:
-            avatar_url = self._fetch_via_recorder(room_id)
+        # Try HTML profile page scraper first (fast, no external deps)
+        avatar_url: Optional[str] = self._fetch_via_html_scraper(username)
 
-        # Fallback to HTML profile page scraper
+        # Fallback to tiktok-scraper CLI (reliable, already used for profiles)
         if not avatar_url:
-            avatar_url = self._fetch_via_html_scraper(username)
+            avatar_url = self._fetch_via_tiktok_scraper(username)
+
+        # Attempt recorder API (disabled — see note in _fetch_via_recorder)
+        if not avatar_url and room_id:
+            avatar_url = self._fetch_via_recorder(room_id)
 
         if avatar_url:
             return self._download_and_cache(username, avatar_url)

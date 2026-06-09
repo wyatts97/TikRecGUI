@@ -21,10 +21,23 @@ def _fmt_vtt_time(seconds: float) -> str:
 
 
 def _generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
-    """Generate a sprite sheet and WebVTT file for hover-scrub preview."""
-    THUMB_W, THUMB_H, FRAME_INTERVAL, COLS = 160, 90, 10, 10
+    """Generate a sprite sheet and WebVTT file for hover-scrub preview.
+    Also persist sprite_ready=True on the corresponding Recording row.
+
+    Uses a two-step process (extract frames to temp dir, then tile) and caps
+    the total frame count to avoid memory allocation failures on long videos.
+    """
+    import tempfile
+    import shutil
+
+    THUMB_W, THUMB_H = 160, 90
+    COLS = 10
+    MAX_FRAMES = 120          # Hard cap to keep memory usage low
+    BASE_INTERVAL = 10        # Default: one frame every 10s
+
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
     vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
+
     try:
         probe = subprocess.run(
             [
@@ -37,50 +50,91 @@ def _generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
         )
         duration = float(probe.stdout.strip())
 
-        # Generate sprite: fps=1/10 creates a frame every 10s.
-        # tile=10x0 lets ffmpeg auto-compute rows so no frames are lost.
-        subprocess.run(
-            [
-                "ffmpeg", "-y", "-i", str(video_path),
-                "-vf",
-                f"fps=1/{FRAME_INTERVAL},scale={THUMB_W}:{THUMB_H},tile={COLS}x0",
-                str(sprite_path),
-            ],
-            capture_output=True, check=True, timeout=180,
-        )
-        if not sprite_path.exists() or sprite_path.stat().st_size == 0:
-            return None, None
+        # Dynamically adjust interval so we never exceed MAX_FRAMES
+        interval = max(BASE_INTERVAL, duration / MAX_FRAMES)
+        expected_frames = int(duration / interval) + 1
 
-        # Verify actual sprite dimensions so VTT coordinates are exact.
-        dim_probe = subprocess.run(
-            [
-                "ffprobe", "-v", "error",
-                "-show_entries", "stream=width,height",
-                "-of", "json",
-                str(sprite_path),
-            ],
-            capture_output=True, text=True, timeout=15,
-        )
-        dim_data = json.loads(dim_probe.stdout)
-        streams = dim_data.get("streams", [])
-        if not streams:
-            return None, None
-        sprite_w = streams[0].get("width", 0)
-        sprite_h = streams[0].get("height", 0)
-        actual_cols = max(1, sprite_w // THUMB_W)
-        actual_rows = max(1, sprite_h // THUMB_H)
-        frame_count = actual_cols * actual_rows
+        temp_dir = tempfile.mkdtemp(prefix="sprite_frames_")
+        try:
+            frame_pattern = Path(temp_dir) / "frame_%03d.jpg"
 
-        lines = ["WEBVTT", ""]
-        for i in range(frame_count):
-            start = i * FRAME_INTERVAL
-            end = min(start + FRAME_INTERVAL, duration)
-            col = i % actual_cols
-            row = i // actual_cols
-            lines.append(f"{_fmt_vtt_time(start)} --> {_fmt_vtt_time(end)}")
-            lines.append(f"sprite#xywh={col * THUMB_W},{row * THUMB_H},{THUMB_W},{THUMB_H}")
-            lines.append("")
-        vtt_path.write_text("\n".join(lines), encoding="utf-8")
+            # Step 1: extract scaled frames at the calculated interval
+            extract_result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-i", str(video_path),
+                    "-vf", f"fps=1/{interval},scale={THUMB_W}:{THUMB_H}",
+                    str(frame_pattern),
+                ],
+                capture_output=True, timeout=180,
+            )
+            if extract_result.returncode != 0:
+                logger.warning(
+                    f"Sprite frame extraction failed for {video_path}: "
+                    f"{extract_result.stderr.decode('utf-8', errors='replace')[:200]}"
+                )
+                return None, None
+
+            frames = sorted(Path(temp_dir).glob("frame_*.jpg"))
+            if not frames:
+                return None, None
+
+            frame_count = len(frames)
+            rows = (frame_count + COLS - 1) // COLS  # ceil division
+
+            # Step 2: tile extracted frames into a single sprite sheet
+            tile_result = subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-i", str(frame_pattern),
+                    "-vf", f"tile={COLS}x{rows}",
+                    str(sprite_path),
+                ],
+                capture_output=True, timeout=60,
+            )
+            if tile_result.returncode != 0:
+                logger.warning(
+                    f"Sprite tiling failed for {video_path}: "
+                    f"{tile_result.stderr.decode('utf-8', errors='replace')[:200]}"
+                )
+                return None, None
+
+            if not sprite_path.exists() or sprite_path.stat().st_size == 0:
+                return None, None
+
+            # Build VTT using the actual frame count and interval
+            lines = ["WEBVTT", ""]
+            for i in range(frame_count):
+                start = i * interval
+                end = min(start + interval, duration)
+                col = i % COLS
+                row = i // COLS
+                lines.append(f"{_fmt_vtt_time(start)} --> {_fmt_vtt_time(end)}")
+                lines.append(f"sprite#xywh={col * THUMB_W},{row * THUMB_H},{THUMB_W},{THUMB_H}")
+                lines.append("")
+            vtt_path.write_text("\n".join(lines), encoding="utf-8")
+
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+        # Persist sprite_ready flag in DB
+        try:
+            from app.db.database import SessionLocal
+            from app.db.models import Recording
+            db = SessionLocal()
+            try:
+                rec = db.query(Recording).filter(Recording.filename == video_path.name).first()
+                if rec:
+                    rec.sprite_ready = True
+                    db.commit()
+            finally:
+                db.close()
+        except Exception as db_exc:
+            logger.warning(f"Failed to persist sprite_ready for {video_path}: {db_exc}")
+
+        logger.info(
+            f"Sprite generated for {video_path.name}: "
+            f"{frame_count} frames ({COLS}x{rows}) @ {interval:.1f}s interval"
+        )
         return sprite_path, vtt_path
     except Exception as exc:
         logger.warning(f"Sprite generation failed for {video_path}: {exc}")

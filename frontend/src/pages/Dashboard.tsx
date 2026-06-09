@@ -180,20 +180,18 @@ export default function Dashboard() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
-                        {user.profile_pic_url ? (
-                          <img
-                            src={api.users.getAvatarUrl(user.id)}
-                            alt={user.username}
-                            className="h-full w-full object-cover"
-                            onError={(e) => {
-                              const img = e.target as HTMLImageElement
-                              img.style.display = 'none'
-                              const fallback = img.nextElementSibling as HTMLElement
-                              if (fallback) fallback.style.display = 'flex'
-                            }}
-                          />
-                        ) : null}
-                        <span className={`text-sm font-medium text-primary ${user.profile_pic_url ? 'hidden' : 'flex'} items-center justify-center h-full w-full`}>
+                        <img
+                          src={api.users.getAvatarUrl(user.id)}
+                          alt={user.username}
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            const img = e.target as HTMLImageElement
+                            img.style.display = 'none'
+                            const fallback = img.nextElementSibling as HTMLElement
+                            if (fallback) fallback.style.display = 'flex'
+                          }}
+                        />
+                        <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full fallback-initial">
                           {user.username[0].toUpperCase()}
                         </span>
                       </div>

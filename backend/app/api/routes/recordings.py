@@ -621,3 +621,22 @@ def search_transcripts(q: str, db: Session = Depends(get_db)):
     if not q or len(q.strip()) < 2:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query too short")
     return transcription_service.search(q.strip(), db)
+
+
+@router.post("/sprites/regenerate")
+def regenerate_missing_sprites(db: Session = Depends(get_db)):
+    """Trigger sprite generation for all completed/stopped recordings missing sprites."""
+    recordings = (
+        db.query(Recording)
+        .filter(Recording.status.in_(("completed", "stopped")))
+        .filter(Recording.sprite_ready.is_(False))
+        .all()
+    )
+    triggered = 0
+    for rec in recordings:
+        video_path = Path(settings.RECORDINGS_DIR) / rec.filename
+        if video_path.exists() and rec.id not in _sprite_retry_in_progress:
+            _sprite_retry_in_progress.add(rec.id)
+            threading.Thread(target=_gen_sprite, args=(video_path,), daemon=True).start()
+            triggered += 1
+    return {"total_missing": len(recordings), "triggered": triggered}

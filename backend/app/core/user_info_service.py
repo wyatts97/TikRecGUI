@@ -16,6 +16,9 @@ class UserInfoService:
 
     def __init__(self):
         self.AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+        # Delayed import to avoid circular dependency at module load time
+        from app.core.unified_avatar_service import unified_avatar_service
+        self._avatar_service = unified_avatar_service
 
     def fetch_user_info(self, username: str) -> dict:
         """
@@ -66,6 +69,7 @@ class UserInfoService:
     def update_user_profile(self, db_user, db) -> None:
         """
         Fetch profile info from TikTok and persist it on ``db_user``.
+        Also fetches and caches the avatar if available.
         Commits the session when done.
         """
         info = self.fetch_user_info(db_user.username)
@@ -75,6 +79,17 @@ class UserInfoService:
             db_user.bio = info["bio"]
         if info.get("follower_count") is not None:
             db_user.follower_count = info["follower_count"]
+
+        # Cache avatar from tiktok-scraper result if available
+        avatar_url = info.get("avatar_url")
+        if avatar_url:
+            try:
+                cached = self._avatar_service._download_and_cache(db_user.username, avatar_url)
+                if cached and not db_user.profile_pic_url:
+                    db_user.profile_pic_url = f"/api/users/{db_user.id}/avatar"
+            except Exception as exc:
+                logger.warning(f"Avatar cache failed for @{db_user.username}: {exc}")
+
         db.commit()
 
     def update_user_profile_async(self, user_id: int) -> None:
