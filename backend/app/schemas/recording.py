@@ -2,10 +2,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class RecordingBase(BaseModel):
-    pass
-
-
 class RecordingStart(BaseModel):
     username: str | None = None
     url: str | None = None

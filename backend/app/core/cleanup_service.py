@@ -3,11 +3,11 @@ import zipfile
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+
 
 from app.config import settings
 from app.core.settings_store import settings_store
-from app.db.database import SessionLocal
+from app.db.database import get_session
 from app.db.models import Recording
 
 
@@ -30,15 +30,12 @@ class CleanupService:
     def get_old_recordings(self, days: int) -> list[Recording]:
         """Get recordings older than specified days."""
         cutoff = datetime.utcnow() - timedelta(days=days)
-        db = SessionLocal()
-        try:
+        with get_session() as db:
             recordings = db.query(Recording).filter(
                 Recording.status.in_(["completed", "stopped", "failed"]),
                 Recording.created_at < cutoff
             ).all()
             return recordings
-        finally:
-            db.close()
     
     def delete_recording(self, recording: Recording) -> bool:
         """Delete a recording file and its thumbnail."""
@@ -62,7 +59,7 @@ class CleanupService:
         
         return deleted
     
-    def compress_recordings(self, recordings: list[Recording]) -> Optional[str]:
+    def compress_recordings(self, recordings: list[Recording]) -> str | None:
         """Compress recordings into a ZIP file in the backups folder."""
         if not recordings:
             return None
@@ -101,8 +98,7 @@ class CleanupService:
         
         result = {"status": "completed", "deleted": 0, "compressed": 0}
         
-        db = SessionLocal()
-        try:
+        with get_session() as db:
             if action == "compress":
                 zip_path = self.compress_recordings(recordings)
                 if zip_path:
@@ -121,8 +117,6 @@ class CleanupService:
                         result["deleted"] += 1
                     db.delete(recording)
                 db.commit()
-        finally:
-            db.close()
         
         return result
     

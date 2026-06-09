@@ -1,195 +1,28 @@
-import math
 import time
 import logging
 import threading
-import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.config import settings
-from app.db.database import SessionLocal
+from app.db.database import get_session, run_background
 from app.db.models import Recording, User
+from app.core.media_utils import generate_recording_filename, generate_sprite, generate_thumbnail, remux_to_mp4
 from app.core.recorder_loader import get_tiktok_api_class
 from app.core.transcription_service import transcription_service
 
 
-def _fmt_vtt_time(seconds: float) -> str:
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = seconds % 60
-    return f"{h:02d}:{m:02d}:{s:06.3f}"
+def _update_recording_status(recording_id: int, status: str, error_message: str | None = None) -> None:
+    with get_session() as db:
+        recording = db.query(Recording).filter(Recording.id == recording_id).first()
+        if recording:
+            recording.status = status
+            if error_message is not None:
+                recording.error_message = error_message
+            if status in ("failed", "completed", "stopped"):
+                recording.ended_at = datetime.utcnow()
+            db.commit()
 
-
-def _generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
-    """Generate a sprite sheet and WebVTT file for hover-scrub preview.
-    Also persist sprite_ready=True on the corresponding Recording row.
-
-    Uses a two-step process (extract frames to temp dir, then tile) and caps
-    the total frame count to avoid memory allocation failures on long videos.
-    """
-    import tempfile
-    import shutil
-
-    THUMB_W, THUMB_H = 160, 90
-    COLS = 10
-    MAX_FRAMES = 120          # Hard cap to keep memory usage low
-    BASE_INTERVAL = 10        # Default: one frame every 10s
-
-    sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
-    vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
-
-    try:
-        probe = subprocess.run(
-            [
-                "ffprobe", "-v", "error", "-select_streams", "v:0",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(video_path),
-            ],
-            capture_output=True, text=True, timeout=15,
-        )
-        duration = float(probe.stdout.strip())
-
-        # Dynamically adjust interval so we never exceed MAX_FRAMES
-        interval = max(BASE_INTERVAL, duration / MAX_FRAMES)
-        expected_frames = int(duration / interval) + 1
-
-        temp_dir = tempfile.mkdtemp(prefix="sprite_frames_")
-        try:
-            frame_pattern = Path(temp_dir) / "frame_%03d.jpg"
-
-            # Step 1: extract scaled frames at the calculated interval
-            extract_result = subprocess.run(
-                [
-                    "ffmpeg", "-y", "-i", str(video_path),
-                    "-vf", f"fps=1/{interval},scale={THUMB_W}:{THUMB_H}",
-                    str(frame_pattern),
-                ],
-                capture_output=True, timeout=180,
-            )
-            if extract_result.returncode != 0:
-                logger.warning(
-                    f"Sprite frame extraction failed for {video_path}: "
-                    f"{extract_result.stderr.decode('utf-8', errors='replace')[:200]}"
-                )
-                return None, None
-
-            frames = sorted(Path(temp_dir).glob("frame_*.jpg"))
-            if not frames:
-                return None, None
-
-            frame_count = len(frames)
-            rows = (frame_count + COLS - 1) // COLS  # ceil division
-
-            # Step 2: tile extracted frames into a single sprite sheet
-            tile_result = subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-i", str(frame_pattern),
-                    "-vf", f"tile={COLS}x{rows}",
-                    str(sprite_path),
-                ],
-                capture_output=True, timeout=60,
-            )
-            if tile_result.returncode != 0:
-                logger.warning(
-                    f"Sprite tiling failed for {video_path}: "
-                    f"{tile_result.stderr.decode('utf-8', errors='replace')[:200]}"
-                )
-                return None, None
-
-            if not sprite_path.exists() or sprite_path.stat().st_size == 0:
-                return None, None
-
-            # Build VTT using the actual frame count and interval
-            lines = ["WEBVTT", ""]
-            for i in range(frame_count):
-                start = i * interval
-                end = min(start + interval, duration)
-                col = i % COLS
-                row = i // COLS
-                lines.append(f"{_fmt_vtt_time(start)} --> {_fmt_vtt_time(end)}")
-                lines.append(f"sprite#xywh={col * THUMB_W},{row * THUMB_H},{THUMB_W},{THUMB_H}")
-                lines.append("")
-            vtt_path.write_text("\n".join(lines), encoding="utf-8")
-
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-        # Persist sprite_ready flag in DB
-        try:
-            from app.db.database import SessionLocal
-            from app.db.models import Recording
-            db = SessionLocal()
-            try:
-                rec = db.query(Recording).filter(Recording.filename == video_path.name).first()
-                if rec:
-                    rec.sprite_ready = True
-                    db.commit()
-            finally:
-                db.close()
-        except Exception as db_exc:
-            logger.warning(f"Failed to persist sprite_ready for {video_path}: {db_exc}")
-
-        logger.info(
-            f"Sprite generated for {video_path.name}: "
-            f"{frame_count} frames ({COLS}x{rows}) @ {interval:.1f}s interval"
-        )
-        return sprite_path, vtt_path
-    except Exception as exc:
-        logger.warning(f"Sprite generation failed for {video_path}: {exc}")
-        return None, None
-
-
-def _generate_thumbnail(video_path: Path) -> Path | None:
-    thumb_path = video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
-    thumb_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        result = subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-ss", "00:00:01",
-                "-i", str(video_path),
-                "-vframes", "1",
-                "-vf", "scale=480:-2",
-                str(thumb_path),
-            ],
-            capture_output=True,
-            check=True,
-            timeout=30,
-        )
-        if thumb_path.exists() and thumb_path.stat().st_size > 0:
-            return thumb_path
-    except Exception as exc:
-        logger.warning(f"Thumbnail generation failed for {video_path}: {exc}")
-    return None
-
-
-def _remux_to_mp4(input_path: Path) -> bool:
-    """Remux raw stream to proper MP4 with faststart for browser seeking."""
-    if not input_path.exists():
-        return False
-    temp_path = input_path.with_suffix(".tmp.mp4")
-    try:
-        subprocess.run(
-            [
-                "ffmpeg", "-y", "-i", str(input_path),
-                "-c", "copy", "-movflags", "+faststart",
-                str(temp_path),
-            ],
-            capture_output=True,
-            check=True,
-            timeout=120,
-        )
-        if temp_path.exists():
-            temp_path.replace(input_path)
-            return True
-    except Exception:
-        logger.error(f"FFmpeg remux failed for {input_path}")
-    finally:
-        if temp_path.exists():
-            temp_path.unlink(missing_ok=True)
-    return False
 
 logger = logging.getLogger("tikrec.task_manager")
 
@@ -216,7 +49,7 @@ class RecordingTask:
         self._thread: threading.Thread | None = None
     
     def start(self):
-        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread = threading.Thread(target=self._run_with_error_handling, daemon=True)
         self._thread.start()
     
     def stop(self):
@@ -228,75 +61,81 @@ class RecordingTask:
         return self._thread is not None and self._thread.is_alive()
     
     def _run(self):
-        db = SessionLocal()
-        try:
+        # --- Phase 1: mark as recording (short-lived session) ---
+        with get_session() as db:
             recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
             if not recording:
                 return
-            
+            filename = recording.filename
             recording.status = "recording"
             recording.started_at = datetime.utcnow()
             db.commit()
-            
-            api_cls = get_tiktok_api_class()
-            api = api_cls(proxy=self.proxy, cookies=self.cookies)
-            
-            if not api.is_room_alive(self.room_id):
-                recording.status = "failed"
-                recording.error_message = "User is not live"
-                recording.ended_at = datetime.utcnow()
-                db.commit()
-                return
-            
-            live_url = api.get_live_url(self.room_id)
-            if not live_url:
-                recording.status = "failed"
-                recording.error_message = "Could not get live stream URL"
-                recording.ended_at = datetime.utcnow()
-                db.commit()
-                return
-            
-            output_path = Path(settings.RECORDINGS_DIR) / recording.filename
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            buffer_size = 512 * 1024
-            buffer = bytearray()
-            start_time = time.time()
-            
-            with open(output_path, "wb") as out_file:
-                while not self._stop_event.is_set():
-                    try:
-                        if not api.is_room_alive(self.room_id):
-                            break
-                        
-                        for chunk in api.download_live_stream(live_url):
-                            if self._stop_event.is_set():
-                                break
-                            
-                            buffer.extend(chunk)
-                            if len(buffer) >= buffer_size:
-                                out_file.write(buffer)
-                                buffer.clear()
-                            
-                            elapsed = time.time() - start_time
-                            if self.duration and elapsed >= self.duration:
-                                self._stop_event.set()
-                                break
-                    
-                    except Exception as e:
-                        logger.warning(f"Stream error, retrying: {e}")
-                        time.sleep(2)
+
+        # --- Phase 2: validate room and get stream URL (no DB) ---
+        api_cls = get_tiktok_api_class()
+        api = api_cls(proxy=self.proxy, cookies=self.cookies)
+
+        if not api.is_room_alive(self.room_id):
+            _update_recording_status(self.recording_id, "failed", "User is not live")
+            return
+
+        live_url = api.get_live_url(self.room_id)
+        if not live_url:
+            _update_recording_status(self.recording_id, "failed", "Could not get live stream URL")
+            return
+
+        # --- Phase 3: download stream (no DB session held) ---
+        output_path = Path(settings.RECORDINGS_DIR) / filename
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        buffer_size = 512 * 1024
+        buffer = bytearray()
+        start_time = time.time()
+
+        with open(output_path, "wb") as out_file:
+            while not self._stop_event.is_set():
+                try:
+                    if not api.is_room_alive(self.room_id):
+                        break
+
+                    for chunk in api.download_live_stream(live_url):
                         if self._stop_event.is_set():
                             break
-                
-                if buffer:
-                    out_file.write(buffer)
-                    buffer.clear()
-            
-            recording.ended_at = datetime.utcnow()
-            recording.duration_seconds = int(time.time() - start_time)
-            
-            if output_path.exists():
+
+                        buffer.extend(chunk)
+                        if len(buffer) >= buffer_size:
+                            out_file.write(buffer)
+                            buffer.clear()
+
+                        elapsed = time.time() - start_time
+                        if self.duration and elapsed >= self.duration:
+                            self._stop_event.set()
+                            break
+
+                except Exception as e:
+                    logger.warning(f"Stream error, retrying: {e}")
+                    time.sleep(2)
+                    if self._stop_event.is_set():
+                        break
+
+            if buffer:
+                out_file.write(buffer)
+                buffer.clear()
+
+        # --- Phase 4: finalize recording (short-lived session) ---
+        ended_at = datetime.utcnow()
+        duration_seconds = int(time.time() - start_time)
+        file_existed = output_path.exists()
+
+        with get_session() as db:
+            recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+            if not recording:
+                return
+
+            recording.ended_at = ended_at
+            recording.duration_seconds = duration_seconds
+
+            if file_existed:
                 recording.file_size = output_path.stat().st_size
                 recording.status = "completed" if not self._stop_event.is_set() else "stopped"
             else:
@@ -305,31 +144,33 @@ class RecordingTask:
 
             db.commit()
 
-            if output_path.exists() and recording.status in ("completed", "stopped"):
-                if _remux_to_mp4(output_path):
-                    recording.file_size = output_path.stat().st_size
-                    db.commit()
-                threading.Thread(target=_generate_thumbnail, args=(output_path,), daemon=True).start()
-                threading.Thread(target=_generate_sprite, args=(output_path,), daemon=True).start()
-                # Auto-queue for transcription (one at a time via transcription_service worker)
-                if recording.transcript_status is None:
+        # --- Phase 5: post-processing (remux, thumbnails, sprites, transcription) ---
+        if file_existed:
+            if remux_to_mp4(output_path):
+                with get_session() as db:
+                    recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+                    if recording:
+                        recording.file_size = output_path.stat().st_size
+                        db.commit()
+
+            run_background(generate_thumbnail, output_path)
+            run_background(generate_sprite, output_path)
+
+            with get_session() as db:
+                recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+                if recording and recording.transcript_status is None:
                     recording.transcript_status = "pending"
                     db.commit()
-                transcription_service.enqueue(recording.id)
+                transcription_service.enqueue(self.recording_id)
 
+        # --- Exception handler uses its own short-lived session ---
+    # (moved to outer try/except below)
+    def _run_with_error_handling(self):
+        try:
+            self._run()
         except Exception as e:
             logger.error(f"Recording error: {e}", exc_info=True)
-            try:
-                recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
-                if recording:
-                    recording.status = "failed"
-                    recording.error_message = str(e)
-                    recording.ended_at = datetime.utcnow()
-                    db.commit()
-            except Exception:
-                pass
-        finally:
-            db.close()
+            _update_recording_status(self.recording_id, "failed", str(e))
 
 
 class TaskManager:
@@ -477,8 +318,8 @@ class MonitorService:
         if not recorder_service.is_available():
             return
 
-        db = SessionLocal()
-        try:
+        # --- Phase 1: fetch monitored users and active recordings (short session) ---
+        with get_session() as db:
             monitored = db.query(User).filter(User.is_monitoring == True).all()  # noqa: E712
             if not monitored:
                 return
@@ -489,29 +330,41 @@ class MonitorService:
                 for rec in db.query(Recording).filter(Recording.id.in_(active_ids)).all()
             } if active_ids else set()
 
-            cookies = recorder_service._load_cookies()
-            proxy = settings_store.get("proxy", settings.DEFAULT_PROXY)
-            bitrate = settings_store.get("default_bitrate", settings.DEFAULT_BITRATE)
+        cookies = recorder_service.load_cookies()
+        proxy = settings_store.get("proxy", settings.DEFAULT_PROXY)
+        bitrate = settings_store.get("default_bitrate", settings.DEFAULT_BITRATE)
 
-            for user in monitored:
-                if self._stop_event.is_set():
-                    break
-                if user.id in recording_user_ids:
-                    continue
+        for user in monitored:
+            if self._stop_event.is_set():
+                break
+            if user.id in recording_user_ids:
+                continue
 
-                status_info = recorder_service.check_user_live(user.username)
-                user.is_live = status_info.get("is_live", False)
-                user.room_id = status_info.get("room_id")
-                user.last_checked = datetime.utcnow()
-                db.commit()
+            # --- Network calls happen with NO DB session held ---
+            status_info = recorder_service.check_user_live(user.username)
+            is_live = status_info.get("is_live", False)
+            room_id = status_info.get("room_id")
+            last_checked = datetime.utcnow()
 
-                if not user.is_live or not user.room_id:
-                    continue
+            if not is_live or not room_id:
+                # --- Update user status (short session) ---
+                with get_session() as db:
+                    u = db.query(User).filter(User.id == user.id).first()
+                    if u:
+                        u.is_live = is_live
+                        u.room_id = room_id
+                        u.last_checked = last_checked
+                        db.commit()
+                continue
 
-                filename = (
-                    f"TK_{user.username}_"
-                    f"{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
-                )
+            # --- User is live: update user and create recording (short session) ---
+            filename = generate_recording_filename(user.username)
+            with get_session() as db:
+                u = db.query(User).filter(User.id == user.id).first()
+                if u:
+                    u.is_live = True
+                    u.room_id = room_id
+                    u.last_checked = last_checked
                 recording = Recording(
                     user_id=user.id,
                     filename=filename,
@@ -521,23 +374,26 @@ class MonitorService:
                 db.add(recording)
                 db.commit()
                 db.refresh(recording)
+                recording_id = recording.id
 
-                started = task_manager.start_recording(
-                    recording_id=recording.id,
-                    username=user.username,
-                    room_id=user.room_id,
-                    cookies=cookies,
-                    proxy=proxy,
-                    bitrate=bitrate,
-                )
-                if started:
-                    logger.info(f"Auto-started recording for @{user.username}")
-                else:
-                    recording.status = "failed"
-                    recording.error_message = "Failed to start automatic recording"
-                    db.commit()
-        finally:
-            db.close()
+            started = task_manager.start_recording(
+                recording_id=recording_id,
+                username=user.username,
+                room_id=room_id,
+                cookies=cookies,
+                proxy=proxy,
+                bitrate=bitrate,
+            )
+            if started:
+                logger.info(f"Auto-started recording for @{user.username}")
+            else:
+                # --- Mark recording as failed (short session) ---
+                with get_session() as db:
+                    rec = db.query(Recording).filter(Recording.id == recording_id).first()
+                    if rec:
+                        rec.status = "failed"
+                        rec.error_message = "Failed to start automatic recording"
+                        db.commit()
 
 
 monitor_service = MonitorService()

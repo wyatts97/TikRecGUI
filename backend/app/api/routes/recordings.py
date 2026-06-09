@@ -2,8 +2,6 @@ import os
 import json
 import time
 import logging
-import subprocess
-import threading
 import zipfile
 import tempfile
 
@@ -16,7 +14,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db.database import get_db
+from app.db.database import get_db, get_session, run_background
 from app.db.models import Recording, User
 from app.schemas.recording import (
     RecordingStart,
@@ -25,46 +23,13 @@ from app.schemas.recording import (
     ActiveRecordingResponse
 )
 from app.core.recorder_service import recorder_service
-from app.core.task_manager import task_manager, _generate_sprite as _gen_sprite
+from app.core.task_manager import task_manager
+from app.core.media_utils import generate_recording_filename, generate_sprite, generate_thumbnail, thumbnail_path
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
 
 logger = logging.getLogger("tikrec.recordings")
 
-
-def _thumbnail_path(video_path: Path) -> Path:
-    return video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
-
-
-def _generate_thumbnail(video_path: Path, thumb_path: Path) -> bool:
-    if not video_path.exists():
-        return False
-    thumb_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Try different seek positions in case video is short or has issues at start
-    seek_positions = ["1", "0.5", "2", "0"]
-    
-    for seek_time in seek_positions:
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-y",
-                    "-ss", seek_time,
-                    "-i", str(video_path),
-                    "-vframes", "1",
-                    "-vf", "scale=480:-2",
-                    str(thumb_path),
-                ],
-                capture_output=True,
-                timeout=30,
-            )
-            if thumb_path.exists() and thumb_path.stat().st_size > 0:
-                return True
-        except Exception as exc:
-            logger.warning(f"Thumbnail seek={seek_time} failed for {video_path}: {exc}")
-            continue
-
-    return False
 
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
@@ -75,7 +40,7 @@ _sprite_retry_in_progress: set[int] = set()
 
 def _is_thumbnail_ready(recording: Recording) -> bool:
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
-    thumb_path = _thumbnail_path(video_path)
+    thumb_path = thumbnail_path(video_path)
     if thumb_path.exists() and thumb_path.stat().st_size > 0:
         return True
     # Kick off a background retry for completed recordings that lost their thumbnail
@@ -85,11 +50,7 @@ def _is_thumbnail_ready(recording: Recording) -> bool:
         and recording.id not in _thumb_retry_in_progress
     ):
         _thumb_retry_in_progress.add(recording.id)
-        threading.Thread(
-            target=_generate_thumbnail,
-            args=(video_path, thumb_path),
-            daemon=True,
-        ).start()
+        run_background(generate_thumbnail, video_path, thumb_path)
     return False
 
 
@@ -110,11 +71,7 @@ def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
         and recording.id not in _sprite_retry_in_progress
     ):
         _sprite_retry_in_progress.add(recording.id)
-        threading.Thread(
-            target=_gen_sprite,
-            args=(video_path,),
-            daemon=True,
-        ).start()
+        run_background(generate_sprite, video_path)
     return False
 
 
@@ -137,18 +94,6 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
         transcript_status=rec.transcript_status,
         transcript_text=rec.transcript_text,
     )
-
-
-def _load_cookies() -> dict | None:
-    if settings.COOKIES_FILE.exists():
-        try:
-            with open(settings.COOKIES_FILE, "r") as f:
-                cookies = json.load(f)
-                if cookies.get("sessionid_ss"):
-                    return cookies
-        except (json.JSONDecodeError, IOError):
-            pass
-    return None
 
 
 @router.get("", response_model=RecordingListResponse)
@@ -271,7 +216,7 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     
-    filename = f"TK_{username}_{time.strftime('%Y.%m.%d_%H-%M-%S', time.localtime())}.mp4"
+    filename = generate_recording_filename(username)
     
     recording = Recording(
         user_id=user.id,
@@ -283,7 +228,7 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(recording)
     
-    cookies = _load_cookies()
+    cookies = recorder_service.load_cookies()
     
     success = task_manager.start_recording(
         recording_id=recording.id,
@@ -447,10 +392,10 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
         )
 
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
-    thumb_path = _thumbnail_path(video_path)
+    thumb_path = thumbnail_path(video_path)
 
     if not thumb_path.exists():
-        if not _generate_thumbnail(video_path, thumb_path):
+        if not generate_thumbnail(video_path, thumb_path):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Could not generate thumbnail for this recording",
@@ -495,7 +440,7 @@ def batch_delete_recordings(
                 errors.append(f"Failed to delete file for recording {recording_id}: {str(e)}")
         
         # Also delete thumbnail if exists
-        thumb_path = _thumbnail_path(file_path)
+        thumb_path = thumbnail_path(file_path)
         if thumb_path.exists():
             try:
                 os.remove(thumb_path)
@@ -642,6 +587,6 @@ def regenerate_missing_sprites(db: Session = Depends(get_db)):
         video_path = Path(settings.RECORDINGS_DIR) / rec.filename
         if video_path.exists() and rec.id not in _sprite_retry_in_progress:
             _sprite_retry_in_progress.add(rec.id)
-            threading.Thread(target=_gen_sprite, args=(video_path,), daemon=True).start()
+            run_background(generate_sprite, video_path)
             triggered += 1
     return {"total_missing": len(recordings), "triggered": triggered}

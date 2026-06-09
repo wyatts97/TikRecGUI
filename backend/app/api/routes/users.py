@@ -10,7 +10,6 @@ from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserStatusRes
 from app.core.recorder_service import recorder_service
 from app.core.user_info_service import user_info_service
 from app.core.unified_avatar_service import unified_avatar_service
-import threading
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -65,19 +64,17 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
     user_info_service.update_user_profile_async(db_user.id)
 
     # Also fetch avatar asynchronously using the new unified service
+    from app.db.database import get_session, run_background
+
     def _fetch_avatar():
         fetched = unified_avatar_service.fetch_and_cache(db_user.username, db_user.room_id)
         if fetched:
-            from app.db.database import SessionLocal
-            db2 = SessionLocal()
-            try:
-                u = db2.query(User).filter(User.id == db_user.id).first()
+            with get_session() as db:
+                u = db.query(User).filter(User.id == db_user.id).first()
                 if u:
                     u.profile_pic_url = f"/api/users/{u.id}/avatar"
-                    db2.commit()
-            finally:
-                db2.close()
-    threading.Thread(target=_fetch_avatar, daemon=True).start()
+                    db.commit()
+    run_background(_fetch_avatar)
 
     return db_user
 
@@ -178,9 +175,8 @@ def refresh_user_status(
 
     if refresh_profile:
         user_info_service.update_user_profile_async(user.id)
-        def _fetch_avatar():
-            unified_avatar_service.fetch_and_cache(user.username, user.room_id, force=True)
-        threading.Thread(target=_fetch_avatar, daemon=True).start()
+        from app.db.database import run_background
+        run_background(unified_avatar_service.fetch_and_cache, user.username, user.room_id, force=True)
 
     return user
 

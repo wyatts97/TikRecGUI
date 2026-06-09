@@ -1,7 +1,6 @@
 import json
 import logging
 import subprocess
-import threading
 from pathlib import Path
 
 from app.config import settings
@@ -84,7 +83,7 @@ class UserInfoService:
         avatar_url = info.get("avatar_url")
         if avatar_url:
             try:
-                cached = self._avatar_service._download_and_cache(db_user.username, avatar_url)
+                cached = self._avatar_service.download_and_cache(db_user.username, avatar_url)
                 if cached and not db_user.profile_pic_url:
                     db_user.profile_pic_url = f"/api/users/{db_user.id}/avatar"
             except Exception as exc:
@@ -93,21 +92,17 @@ class UserInfoService:
         db.commit()
 
     def update_user_profile_async(self, user_id: int) -> None:
-        """Fire-and-forget: update profile in a daemon thread."""
+        """Fire-and-forget: update profile in the background thread pool."""
+        from app.db.database import get_session, run_background
+
         def _run():
-            from app.db.database import SessionLocal
-            db = SessionLocal()
-            try:
-                from app.db.models import User
+            from app.db.models import User
+            with get_session() as db:
                 user = db.query(User).filter(User.id == user_id).first()
                 if user:
                     self.update_user_profile(user, db)
-            except Exception as exc:
-                logger.warning(f"Async profile update failed for id={user_id}: {exc}")
-            finally:
-                db.close()
 
-        threading.Thread(target=_run, daemon=True).start()
+        run_background(_run)
 
 
 user_info_service = UserInfoService()

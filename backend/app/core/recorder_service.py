@@ -8,10 +8,10 @@ from app.core.settings_store import settings_store
 
 class RecorderService:
     def __init__(self):
-        self._cookies = self._load_cookies()
+        self._cookies = self.load_cookies()
         self._proxy = settings_store.get("proxy", settings.DEFAULT_PROXY)
     
-    def _load_cookies(self) -> dict | None:
+    def load_cookies(self) -> dict | None:
         if settings.COOKIES_FILE.exists():
             try:
                 with open(settings.COOKIES_FILE, "r") as f:
@@ -23,7 +23,7 @@ class RecorderService:
         return None
     
     def reload_cookies(self):
-        self._cookies = self._load_cookies()
+        self._cookies = self.load_cookies()
     
     def set_proxy(self, proxy: str | None):
         self._proxy = proxy

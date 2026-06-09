@@ -2,7 +2,7 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Optional
+
 
 from app.config import settings
 
@@ -75,55 +75,54 @@ class TranscriptionService:
                 logger.info(f"Finished transcription for recording {recording_id}")
 
     def _run(self, recording_id: int) -> None:
-        from app.db.database import SessionLocal
+        from app.db.database import get_session
         from app.db.models import Recording
 
-        db = SessionLocal()
         try:
-            recording = db.query(Recording).filter(Recording.id == recording_id).first()
-            if not recording:
-                return
-            if recording.status not in ("completed", "stopped"):
-                return
+            with get_session() as db:
+                recording = db.query(Recording).filter(Recording.id == recording_id).first()
+                if not recording:
+                    return
+                if recording.status not in ("completed", "stopped"):
+                    return
 
-            recording.transcript_status = "processing"
-            db.commit()
-
-            video_path = Path(settings.RECORDINGS_DIR) / recording.filename
-            if not video_path.exists():
-                recording.transcript_status = "failed"
+                recording.transcript_status = "processing"
                 db.commit()
-                return
 
-            model = _get_model()
-            if model is None:
-                recording.transcript_status = "failed"
+                video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+                if not video_path.exists():
+                    recording.transcript_status = "failed"
+                    db.commit()
+                    return
+
+                model = _get_model()
+                if model is None:
+                    recording.transcript_status = "failed"
+                    db.commit()
+                    return
+
+                segments, _info = model.transcribe(str(video_path), beam_size=5)
+                parts = []
+                for seg in segments:
+                    start = _fmt_timestamp(seg.start)
+                    end = _fmt_timestamp(seg.end)
+                    parts.append(f"[{start} --> {end}] {seg.text.strip()}")
+
+                recording.transcript_text = "\n".join(parts)
+                recording.transcript_status = "done"
                 db.commit()
-                return
-
-            segments, _info = model.transcribe(str(video_path), beam_size=5)
-            parts = []
-            for seg in segments:
-                start = _fmt_timestamp(seg.start)
-                end = _fmt_timestamp(seg.end)
-                parts.append(f"[{start} --> {end}] {seg.text.strip()}")
-
-            recording.transcript_text = "\n".join(parts)
-            recording.transcript_status = "done"
-            db.commit()
-            logger.info(f"Transcription done for recording {recording_id}")
+                logger.info(f"Transcription done for recording {recording_id}")
 
         except Exception as exc:
             logger.error(f"Transcription failed for recording {recording_id}: {exc}", exc_info=True)
             try:
-                recording = db.query(Recording).filter(Recording.id == recording_id).first()
-                if recording:
-                    recording.transcript_status = "failed"
-                    db.commit()
+                with get_session() as db:
+                    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+                    if recording:
+                        recording.transcript_status = "failed"
+                        db.commit()
             except Exception:
                 pass
-        finally:
-            db.close()
 
     def search(self, query: str, db) -> list[dict]:
         """Return recording IDs and snippet matches for a transcript text search."""

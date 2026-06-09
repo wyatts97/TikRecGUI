@@ -1,19 +1,52 @@
+from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.pool import NullPool
 
 from app.config import settings
 
 engine = create_engine(
     settings.DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False},
+    poolclass=NullPool,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
+# -- Shared thread pool for fire-and-forget background tasks ----------
+background_executor = ThreadPoolExecutor(
+    max_workers=4,
+    thread_name_prefix="bg",
+)
+
+
+def run_background(fn, *args, **kwargs):
+    """Submit a fire-and-forget callable to the shared background pool."""
+    return background_executor.submit(fn, *args, **kwargs)
+
+
+# -- DB session management --------------------------------------------
 
 def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@contextmanager
+def get_session():
+    """Context manager for short-lived background DB sessions.
+
+    Usage::
+
+        with get_session() as db:
+            db.query(...)
+    """
     db = SessionLocal()
     try:
         yield db
