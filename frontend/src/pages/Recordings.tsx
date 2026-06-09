@@ -457,7 +457,7 @@ export default function Recordings() {
                               <StopCircle className="h-4 w-4 text-destructive" />
                             </Button>
                           )}
-                          {recording.status === 'completed' && (
+                          {(recording.status === 'completed' || recording.status === 'stopped') && (
                             <Button
                               variant="ghost"
                               size="icon"

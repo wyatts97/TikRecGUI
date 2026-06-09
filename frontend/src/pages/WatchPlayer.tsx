@@ -244,7 +244,7 @@ export default function WatchPlayer() {
 
         {/* Right column — transcript panel (lg+ only) */}
         {activeTab === 'transcript' && (
-          <div className="hidden lg:flex w-80 shrink-0 flex-col border border-kraken-border rounded-xl overflow-hidden bg-gray-50">
+          <div className="hidden lg:flex w-80 shrink-0 flex-col border border-kraken-border rounded-xl overflow-hidden bg-gray-50 self-start max-h-[calc(100vh-6rem)]">
             <div className="px-4 py-3 border-b border-kraken-border bg-white flex items-center gap-2">
               <FileText className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Transcript</span>
