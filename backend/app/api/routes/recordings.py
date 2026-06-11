@@ -45,6 +45,35 @@ _thumb_retry_in_progress: set[int] = set()
 _sprite_retry_in_progress: set[int] = set()
 
 
+def _delete_recording_files(recording: Recording) -> list[str]:
+    """Delete all on-disk assets for a recording.
+
+    Removes the main video file, thumbnail, sprite sheet, and sprite VTT.
+    Returns a list of error messages (empty iff all deletions succeeded).
+    """
+    errors: list[str] = []
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+
+    assets = [
+        ("video", video_path),
+        ("thumbnail", thumbnail_path(video_path)),
+        ("sprite", video_path.with_name(video_path.stem + "_sprite.jpg")),
+        ("sprite VTT", video_path.with_name(video_path.stem + "_sprite.vtt")),
+    ]
+
+    for label, path in assets:
+        if path.exists():
+            try:
+                os.remove(path)
+                logger.info("Deleted %s file: %s", label, path)
+            except OSError as e:
+                msg = f"Failed to delete {label} for recording {recording.id} ({path.name}): {e}"
+                errors.append(msg)
+                logger.warning(msg)
+
+    return errors
+
+
 def _is_thumbnail_ready(recording: Recording) -> bool:
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
     thumb_path = thumbnail_path(video_path)
@@ -335,7 +364,7 @@ def stop_recording(recording_id: int, db: Session = Depends(get_db)):
     return _build_response(recording, db)
 
 
-@router.delete("/{recording_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{recording_id}")
 def delete_recording(recording_id: int, db: Session = Depends(get_db)):
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
@@ -347,16 +376,18 @@ def delete_recording(recording_id: int, db: Session = Depends(get_db)):
     if task_manager.is_recording(recording_id):
         task_manager.stop_recording(recording_id)
     
-    file_path = Path(settings.RECORDINGS_DIR) / recording.filename
-    if file_path.exists():
-        try:
-            os.remove(file_path)
-        except OSError:
-            pass
+    errors = _delete_recording_files(recording)
     
     db.delete(recording)
     db.commit()
-    return None
+    
+    if errors:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"deleted": True, "errors": errors},
+        )
+    
+    return {"deleted": True, "errors": []}
 
 
 @router.get("/{recording_id}/download")
@@ -455,20 +486,7 @@ def batch_delete_recordings(
         if task_manager.is_recording(recording_id):
             task_manager.stop_recording(recording_id)
         
-        file_path = Path(settings.RECORDINGS_DIR) / recording.filename
-        if file_path.exists():
-            try:
-                os.remove(file_path)
-            except OSError as e:
-                errors.append(f"Failed to delete file for recording {recording_id}: {str(e)}")
-        
-        # Also delete thumbnail if exists
-        thumb_path = thumbnail_path(file_path)
-        if thumb_path.exists():
-            try:
-                os.remove(thumb_path)
-            except OSError:
-                pass
+        errors.extend(_delete_recording_files(recording))
         
         db.delete(recording)
         deleted_count += 1
