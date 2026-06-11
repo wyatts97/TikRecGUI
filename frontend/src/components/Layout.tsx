@@ -155,7 +155,7 @@ export default function Layout() {
               onClick={() => handleNav(item.to)}
               className={cn(
                 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left',
-                location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to))
+                location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to + '/'))
                   ? 'bg-primary-subtle text-primary'
                   : 'text-muted-foreground hover:bg-muted/60',
               )}
@@ -181,7 +181,7 @@ export default function Layout() {
             <SidebarList>
               {navItems.map((item) => {
                 const Icon = item.icon
-                const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to))
+                const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to + '/'))
                 return (
                   <SidebarItem key={item.to}>
                     <SidebarItemButton
@@ -211,7 +211,12 @@ export default function Layout() {
             )}
 
             {monitorStatus?.is_running && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-xs text-muted-foreground">
+              <div className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs',
+                countdown !== null && countdown > 0
+                  ? 'bg-amber-100/70 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
+                  : 'bg-emerald-100/70 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300',
+              )}>
                 <span className="tabular-nums">
                   {countdown !== null
                     ? `Next check: ${formatCountdown(countdown)}`

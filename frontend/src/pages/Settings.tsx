@@ -81,15 +81,6 @@ export default function SettingsPage() {
     { id: 'timezone', label: 'Timezone', icon: Clock },
   ]
 
-  const scrollToSection = (id: string) => {
-    const el = document.getElementById(`settings-${id}`)
-    if (el) {
-      const offset = 80
-      const top = el.getBoundingClientRect().top + window.scrollY - offset
-      window.scrollTo({ top, behavior: 'smooth' })
-    }
-  }
-
   const sectionContent = (
     <>
       <Card id="settings-status">
@@ -622,22 +613,6 @@ export default function SettingsPage() {
 
       {isDesktop ? (
         <>
-          <div className="flex flex-wrap gap-2">
-            {tabs.map((tab) => {
-              const Icon = tab.icon
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => scrollToSection(tab.id)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border bg-card hover:bg-muted transition-colors"
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-
           <div className="grid gap-6 md:grid-cols-2">
             {sectionContent}
           </div>

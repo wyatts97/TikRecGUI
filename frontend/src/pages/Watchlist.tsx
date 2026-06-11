@@ -534,13 +534,13 @@ export default function Watchlist() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      setImportStatus(`Added ${completed} user(s)${failed > 0 ? `, ${failed} failed` : ''}`)
+      setImportDialogOpen(false)
+      setImportText('')
+      setImportStatus(null)
       if (failed === 0) {
-        setTimeout(() => {
-          setImportDialogOpen(false)
-          setImportText('')
-          setImportStatus(null)
-        }, 1500)
+        toast('Import complete', { description: `Added ${completed} user(s) to your watchlist` })
+      } else {
+        toast(`Import complete`, { description: `Added ${completed} user(s), ${failed} failed` })
       }
     }
     run()
