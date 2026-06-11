@@ -4,6 +4,7 @@ import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Badge } from 'components/selia/badge'
 import { Button } from 'components/selia/button'
 import { Item, ItemContent, ItemTitle, ItemDescription, ItemMedia, ItemAction } from 'components/selia/item'
+import { IconBox } from 'components/selia/icon-box'
 import { Avatar, AvatarImage, AvatarFallback, AvatarIndicator } from 'components/selia/avatar'
 import { Meter, MeterValue, MeterTrack, MeterIndicator } from 'components/selia/meter'
 import EmptyState from '@/components/EmptyState'
@@ -172,7 +173,9 @@ export default function Dashboard() {
             size="sm"
             onClick={() => navigate('/settings')}
           >
-            <Settings className="h-3 w-3" />
+            <IconBox variant="secondary-subtle" size="sm">
+              <Settings className="h-3.5 w-3.5" />
+            </IconBox>
           </Button>
         </CardHeader>
         <CardBody>
@@ -216,15 +219,15 @@ export default function Dashboard() {
       {/* Quick actions */}
       <div className="flex flex-wrap gap-3">
         <Button onClick={() => navigate('/watchlist')}>
-          <Plus className="h-4 w-4 mr-2" />
+          <Plus className="h-4 w-4" />
           Add User
         </Button>
-        <Button variant="outline" onClick={() => navigate('/recordings')}>
-          <Film className="h-4 w-4 mr-2" />
+        <Button variant="secondary" onClick={() => navigate('/recordings')}>
+          <Film className="h-4 w-4" />
           New Recording
         </Button>
-        <Button variant="outline" onClick={() => navigate('/settings')}>
-          <Settings className="h-4 w-4 mr-2" />
+        <Button variant="secondary" onClick={() => navigate('/settings')}>
+          <Settings className="h-4 w-4" />
           Settings
         </Button>
       </div>
@@ -382,22 +385,24 @@ export default function Dashboard() {
               <div className="space-y-1">
                 {activityItems.map((item) => {
                   const Icon = item.icon
+                  const iconVariant =
+                    item.type === 'recording' ? 'success-subtle' : 'danger-subtle'
                   return (
-                    <div
+                    <Item
                       key={item.id}
-                      className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 cursor-pointer transition-colors"
+                      className="cursor-pointer hover:bg-accent transition-colors"
                       onClick={item.onClick}
                     >
-                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
-                        <Icon className={`h-4 w-4 ${item.iconClass}`} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm truncate">{item.label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {fmt(item.timestamp)}
-                        </p>
-                      </div>
-                    </div>
+                      <ItemMedia>
+                        <IconBox variant={iconVariant} size="md" circle>
+                          <Icon className="h-4 w-4" />
+                        </IconBox>
+                      </ItemMedia>
+                      <ItemContent>
+                        <ItemTitle className="font-normal truncate">{item.label}</ItemTitle>
+                        <ItemDescription>{fmt(item.timestamp)}</ItemDescription>
+                      </ItemContent>
+                    </Item>
                   )
                 })}
               </div>

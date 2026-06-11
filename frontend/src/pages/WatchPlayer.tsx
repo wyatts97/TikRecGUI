@@ -5,12 +5,14 @@ import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import '@vidstack/react/player/styles/default/theme.css'
 import '@vidstack/react/player/styles/default/layouts/video.css'
-import { ArrowLeft, Download, Loader2, FileText, PanelRightOpen, Calendar, Clock, HardDrive, FileVideo } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, Loader2, FileText, PanelRightOpen, Calendar, Clock, HardDrive, FileVideo } from 'lucide-react'
 import { Button } from '@/components/selia/button'
+import { IconBox } from '@/components/selia/icon-box'
 import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import TranscriptPanel from '@/components/TranscriptPanel'
+import { toast } from 'sonner'
 
 function downloadAsFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime })
@@ -87,6 +89,18 @@ export default function WatchPlayer() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['recording', recordingId] }),
   })
 
+  const deleteMutation = useMutation({
+    mutationFn: () => api.recordings.delete(recordingId),
+    onSuccess: () => {
+      toast('Recording deleted')
+      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+      navigate('/watch')
+    },
+    onError: () => {
+      toast('Failed to delete recording')
+    },
+  })
+
   const handleSeek = useCallback((seconds: number) => {
     const video = playerRef.current?.querySelector('video') as HTMLVideoElement | null
     if (video) video.currentTime = seconds
@@ -116,7 +130,7 @@ export default function WatchPlayer() {
           onClick={handleDownloadSrt}
           className="text-xs"
         >
-          <Download className="h-3 w-3 mr-1" />
+          <Download className="h-3 w-3" />
           Download SRT
         </Button>
         <Button
@@ -125,7 +139,7 @@ export default function WatchPlayer() {
           onClick={handleDownloadTxt}
           className="text-xs"
         >
-          <FileText className="h-3 w-3 mr-1" />
+          <FileText className="h-3 w-3" />
           Download TXT
         </Button>
       </div>
@@ -166,7 +180,7 @@ export default function WatchPlayer() {
           className="hidden lg:inline-flex"
           onClick={() => setShowSidebar((s) => !s)}
         >
-          <PanelRightOpen className="h-4 w-4 mr-2" />
+          <PanelRightOpen className="h-4 w-4" />
           {showSidebar ? 'Hide Transcript' : 'Show Transcript'}
         </Button>
       </div>
@@ -208,7 +222,9 @@ export default function WatchPlayer() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="p-4 rounded-xl bg-card border border-border">
               <div className="flex items-center gap-2 mb-1">
-                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                <IconBox variant="secondary-subtle" size="sm">
+                  <Calendar className="h-3.5 w-3.5" />
+                </IconBox>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Recorded</p>
               </div>
               <p className="mt-1 font-medium text-foreground">
@@ -217,7 +233,9 @@ export default function WatchPlayer() {
             </div>
             <div className="p-4 rounded-xl bg-card border border-border">
               <div className="flex items-center gap-2 mb-1">
-                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <IconBox variant="secondary-subtle" size="sm">
+                  <Clock className="h-3.5 w-3.5" />
+                </IconBox>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
               </div>
               <p className="mt-1 font-medium text-foreground">
@@ -226,7 +244,9 @@ export default function WatchPlayer() {
             </div>
             <div className="p-4 rounded-xl bg-card border border-border">
               <div className="flex items-center gap-2 mb-1">
-                <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+                <IconBox variant="secondary-subtle" size="sm">
+                  <HardDrive className="h-3.5 w-3.5" />
+                </IconBox>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Size</p>
               </div>
               <p className="mt-1 font-medium text-foreground">
@@ -235,7 +255,9 @@ export default function WatchPlayer() {
             </div>
             <div className="p-4 rounded-xl bg-card border border-border">
               <div className="flex items-center gap-2 mb-1">
-                <FileVideo className="h-3.5 w-3.5 text-muted-foreground" />
+                <IconBox variant="secondary-subtle" size="sm">
+                  <FileVideo className="h-3.5 w-3.5" />
+                </IconBox>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Filename</p>
               </div>
               <p className="mt-1 font-medium text-foreground truncate" title={recording.filename}>
@@ -244,13 +266,27 @@ export default function WatchPlayer() {
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
             <Button
               variant="outline"
               onClick={() => window.open(api.recordings.getDownloadUrl(recording.id), '_blank')}
             >
-              <Download className="h-4 w-4 mr-2" />
+              <Download className="h-4 w-4" />
               Download
+            </Button>
+            <Button
+              variant="plain"
+              size="icon"
+              onClick={() => {
+                if (window.confirm('Delete this recording?')) {
+                  deleteMutation.mutate()
+                }
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              <IconBox variant="danger-subtle" size="md">
+                <Trash2 className="h-4 w-4" />
+              </IconBox>
             </Button>
           </div>
 

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Globe, Activity, Cookie, Send, Video, Clock } from 'lucide-react'
 import { Card, CardBody, CardDescription, CardHeader, CardTitle } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
+import { IconBox } from '@/components/selia/icon-box'
 import { Input } from '@/components/selia/input'
 import { Label } from '@/components/selia/label'
 import { Switch } from '@/components/selia/switch'
@@ -94,12 +95,16 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               {health?.status === 'healthy' ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <IconBox variant="success-subtle" size="sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-success">Healthy</span>
                 </>
               ) : (
                 <>
-                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <IconBox variant="warning-subtle" size="sm">
+                    <AlertCircle className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-yellow-600">Unknown</span>
                 </>
               )}
@@ -111,12 +116,16 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               {health?.recorder_available ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <IconBox variant="success-subtle" size="sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-success">Ready</span>
                 </>
               ) : (
                 <>
-                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <IconBox variant="warning-subtle" size="sm">
+                    <AlertCircle className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-yellow-600">Unavailable</span>
                 </>
               )}
@@ -128,12 +137,16 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               {health?.country_blacklisted ? (
                 <>
-                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <IconBox variant="warning-subtle" size="sm">
+                    <AlertCircle className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-yellow-600">Restricted</span>
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <IconBox variant="success-subtle" size="sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-success">OK</span>
                 </>
               )}
@@ -145,12 +158,16 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               {health?.cookies_configured ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <IconBox variant="success-subtle" size="sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-success">Configured</span>
                 </>
               ) : (
                 <>
-                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                  <IconBox variant="secondary-subtle" size="sm">
+                    <AlertCircle className="h-4 w-4" />
+                  </IconBox>
                   <span className="text-sm text-muted-foreground">Not Set</span>
                 </>
               )}

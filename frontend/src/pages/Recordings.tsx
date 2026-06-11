@@ -14,7 +14,6 @@ import {
   ArrowUp,
   ArrowDown,
   X,
-  Images,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
@@ -49,7 +48,7 @@ import {
 } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { api, API_BASE, type Recording } from '@/lib/api'
+import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { toast } from 'sonner'
@@ -130,24 +129,38 @@ const RecordingRow = memo(function RecordingRow({
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
           {recording.status === 'recording' && (
-            <button onClick={() => onStop(recording.id)} disabled={stopPending}>
+            <Button
+              variant="plain"
+              size="icon"
+              onClick={() => onStop(recording.id)}
+              disabled={stopPending}
+            >
               <IconBox variant="danger-subtle" size="sm">
                 <StopCircle className="h-4 w-4" />
               </IconBox>
-            </button>
+            </Button>
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <button onClick={() => onDownload(recording)}>
+            <Button
+              variant="plain"
+              size="icon"
+              onClick={() => onDownload(recording)}
+            >
               <IconBox variant="primary-subtle" size="sm">
                 <Download className="h-4 w-4" />
               </IconBox>
-            </button>
+            </Button>
           )}
-          <button onClick={() => onDelete(recording.id)} disabled={deletePending}>
+          <Button
+            variant="plain"
+            size="icon"
+            onClick={() => onDelete(recording.id)}
+            disabled={deletePending}
+          >
             <IconBox variant="danger-subtle" size="sm">
               <Trash2 className="h-4 w-4" />
             </IconBox>
-          </button>
+          </Button>
         </div>
       </TableCell>
     </TableRow>
@@ -217,24 +230,38 @@ const RecordingCard = memo(function RecordingCard({
         </div>
         <div className="flex items-center gap-1">
           {recording.status === 'recording' && (
-            <button onClick={() => onStop(recording.id)} disabled={stopPending}>
+            <Button
+              variant="plain"
+              size="icon"
+              onClick={() => onStop(recording.id)}
+              disabled={stopPending}
+            >
               <IconBox variant="danger-subtle" size="sm">
                 <StopCircle className="h-3.5 w-3.5" />
               </IconBox>
-            </button>
+            </Button>
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <button onClick={() => onDownload(recording)}>
+            <Button
+              variant="plain"
+              size="icon"
+              onClick={() => onDownload(recording)}
+            >
               <IconBox variant="primary-subtle" size="sm">
                 <Download className="h-3.5 w-3.5" />
               </IconBox>
-            </button>
+            </Button>
           )}
-          <button onClick={() => onDelete(recording.id)} disabled={deletePending}>
+          <Button
+            variant="plain"
+            size="icon"
+            onClick={() => onDelete(recording.id)}
+            disabled={deletePending}
+          >
             <IconBox variant="danger-subtle" size="sm">
               <Trash2 className="h-3.5 w-3.5" />
             </IconBox>
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -434,7 +461,7 @@ export default function Recordings() {
         <Dialog open={recordDialogOpen} onOpenChange={setRecordDialogOpen}>
           <DialogTrigger>
             <Button>
-              <Play className="h-4 w-4 mr-2" />
+              <Play className="h-4 w-4" />
               New Recording
             </Button>
           </DialogTrigger>
@@ -476,26 +503,9 @@ export default function Recordings() {
               Recordings ({total})
             </CardTitle>
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                onClick={async () => {
-                  try {
-                    const res = await fetch(`${API_BASE}/recordings/sprites/regenerate`, { method: 'POST' })
-                    const data = await res.json()
-                    alert(`Triggered sprite generation for ${data.triggered} missing recordings`)
-                  } catch {
-                    alert('Failed to trigger sprite regeneration')
-                  }
-                }}
-              >
-                <Images className="h-3 w-3 mr-1" />
-                Regenerate Sprites
-              </Button>
               {hasActiveFilters && (
                 <Button variant="plain" size="sm" onClick={clearFilters} className="text-xs">
-                  <X className="h-3 w-3 mr-1" />
+                  <X className="h-3 w-3" />
                   Clear filters
                 </Button>
               )}
@@ -507,7 +517,7 @@ export default function Recordings() {
               <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
               <Select
                 value={statusFilter || 'all'}
-                onValueChange={(v) => { setStatusFilter(v === 'all' ? undefined : v); setPage(1) }}
+                onValueChange={(v) => { const val = v as string; setStatusFilter(val === 'all' ? undefined : val); setPage(1) }}
               >
                 <SelectTrigger className="h-8 w-32 text-sm">
                   <SelectValue placeholder="All Status" />
@@ -528,7 +538,7 @@ export default function Recordings() {
               <span className="text-xs text-muted-foreground">Sort:</span>
               <Select
                 value={sortBy}
-                onValueChange={(v) => { setSortBy(v); setPage(1) }}
+                onValueChange={(v) => { setSortBy(v as string); setPage(1) }}
               >
                 <SelectTrigger className="h-8 w-28 text-sm">
                   <SelectValue />
@@ -557,7 +567,7 @@ export default function Recordings() {
               className="h-8 text-xs relative"
               onClick={() => setShowAdvancedFilters((s) => !s)}
             >
-              <Filter className="h-3.5 w-3.5 mr-1" />
+              <Filter className="h-3.5 w-3.5" />
               Filters
               {advancedFilterCount > 0 && (
                 <span className="ml-1.5 h-4 min-w-[1rem] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-medium flex items-center justify-center">
@@ -641,18 +651,18 @@ export default function Recordings() {
                     disabled={isDownloading}
                   >
                     {isDownloading ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Download className="h-4 w-4 mr-2" />
+                      <Download className="h-4 w-4" />
                     )}
                     Download ZIP
                   </Button>
                   <Button
                     size="sm"
-                    variant="destructive"
+                    variant="danger"
                     onClick={() => setDeleteConfirmOpen(true)}
                   >
-                    <Trash2 className="h-4 w-4 mr-2" />
+                    <Trash2 className="h-4 w-4" />
                     Delete
                   </Button>
                 </div>

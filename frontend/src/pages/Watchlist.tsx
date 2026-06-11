@@ -170,7 +170,9 @@ const UserRow = memo(function UserRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <button
+          <Button
+            variant="plain"
+            size="icon"
             onClick={(e) => {
               e.stopPropagation()
               onRefresh(user.id)
@@ -180,7 +182,7 @@ const UserRow = memo(function UserRow({
             <IconBox variant="secondary-subtle" size="sm">
               <RefreshCw className="h-4 w-4" />
             </IconBox>
-          </button>
+          </Button>
           {user.is_live && (
             <Button
               variant="secondary"
@@ -191,11 +193,13 @@ const UserRow = memo(function UserRow({
               }}
               disabled={isRecording}
             >
-              <Play className="h-3 w-3 mr-1" />
+              <Play className="h-3 w-3" />
               Record
             </Button>
           )}
-          <button
+          <Button
+            variant="plain"
+            size="icon"
             onClick={(e) => {
               e.stopPropagation()
               onRemove(user.id)
@@ -205,7 +209,7 @@ const UserRow = memo(function UserRow({
             <IconBox variant="danger-subtle" size="sm">
               <Trash2 className="h-4 w-4" />
             </IconBox>
-          </button>
+          </Button>
         </div>
       </TableCell>
     </TableRow>

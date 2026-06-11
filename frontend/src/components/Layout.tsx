@@ -199,7 +199,7 @@ export default function Layout() {
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="space-y-2 border-t border-border pt-3">
+          <div className="space-y-3 border-t border-border pt-4">
             {activeRecordings.length > 0 && (
               <button
                 onClick={() => navigate('/recordings')}
@@ -225,21 +225,22 @@ export default function Layout() {
               </div>
             )}
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 rounded-lg border border-border p-1 bg-muted/30">
               <button
                 onClick={() => triggerCheckMutation.mutate()}
                 disabled={triggerCheckMutation.isPending}
-                className="flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60 disabled:opacity-50"
+                className="flex items-center justify-center h-7 w-7 rounded-md transition-colors text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
                 aria-label="Check live status now"
                 title="Check live status now"
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', triggerCheckMutation.isPending && 'animate-spin')} />
               </button>
+              <div className="w-px h-4 bg-border" />
               <DarkModeSwitch
                 checked={theme === 'dark'}
                 onChange={() => toggleTheme()}
-                size={18}
-                className="flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60"
+                size={16}
+                className="flex items-center justify-center h-7 w-7 rounded-md transition-colors text-muted-foreground hover:bg-muted/80"
                 aria-label="Toggle dark mode"
                 title="Toggle dark mode"
               />
