@@ -964,13 +964,24 @@ export default function Watchlist() {
                           window.open(`/watch/${rec.id}`, '_blank')
                         }}
                       >
-                        <div className="h-10 w-14 rounded bg-muted overflow-hidden shrink-0">
+                        <div className="h-10 w-14 rounded bg-muted overflow-hidden shrink-0 relative">
                           {rec.thumbnail_ready ? (
-                            <img
-                              src={api.recordings.getThumbnailUrl(rec.id)}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
+                            <>
+                              <img
+                                src={api.recordings.getThumbnailUrl(rec.id)}
+                                alt=""
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  const img = e.target as HTMLImageElement
+                                  img.style.display = 'none'
+                                  const fallback = img.nextElementSibling as HTMLElement
+                                  if (fallback) fallback.classList.remove('hidden')
+                                }}
+                              />
+                              <div className="hidden h-full w-full flex items-center justify-center absolute inset-0">
+                                <Film className="h-3 w-3 text-muted-foreground" />
+                              </div>
+                            </>
                           ) : (
                             <div className="h-full w-full flex items-center justify-center">
                               <Film className="h-3 w-3 text-muted-foreground" />

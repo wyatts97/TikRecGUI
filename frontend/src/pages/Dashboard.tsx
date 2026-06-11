@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, CheckCircle2, XCircle, Activity } from 'lucide-react'
+import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Badge } from 'components/selia/badge'
 import { Button } from 'components/selia/button'
 import EmptyState from '@/components/EmptyState'
 import { api, type ActiveRecording } from '@/lib/api'
-import { formatDuration } from '@/lib/utils'
+import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -157,39 +157,59 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Storage card */}
+      {/* Storage indicator card */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-2 text-sm font-medium">
             <HardDrive className="h-4 w-4 text-muted-foreground" />
             Storage
           </CardTitle>
-          {dirExists === true && (
-            <Badge variant="outline" className="text-xs">Directory OK</Badge>
-          )}
-          {dirExists === false && (
-            <Badge variant="destructive" className="text-xs">Missing</Badge>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/settings')}
+          >
+            <Settings className="h-3 w-3" />
+          </Button>
         </CardHeader>
         <CardBody>
-          <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted-foreground truncate">{recordingsDir}</p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate('/settings')}
-            >
-              <Settings className="h-3 w-3 mr-1" />
-              Configure
-            </Button>
-          </div>
-          {dirExists === false && (
-            <p className="text-xs text-destructive mt-2 flex items-center gap-1">
-              <XCircle className="h-3 w-3" />
+          {health?.disk_usage ? (() => {
+            const { total, used, free, percent } = health.disk_usage
+            const freePercent = 100 - percent
+            const barColor = freePercent > 20 ? 'bg-success' : freePercent > 10 ? 'bg-warning' : 'bg-danger'
+            const textColor = freePercent > 20 ? 'text-success' : freePercent > 10 ? 'text-warning' : 'text-danger'
+            return (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{formatBytes(used)} used</span>
+                  <span className="text-muted-foreground">{formatBytes(total)} total</span>
+                </div>
+                {/* Progress bar */}
+                <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${barColor}`}
+                    style={{ width: `${Math.min(percent, 100)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className={textColor}>
+                    {formatBytes(free)} free ({freePercent.toFixed(1)}%)
+                  </span>
+                  {freePercent <= 20 && (
+                    <Badge variant="danger" size="sm" className="text-[10px]">
+                      Low space
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )
+          })() : dirExists === false ? (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              {/* Keep using a simple text indicator */}
               Recordings directory does not exist. Check your settings.
             </p>
+          ) : (
+            <p className="text-sm text-muted-foreground truncate">{recordingsDir}</p>
           )}
         </CardBody>
       </Card>

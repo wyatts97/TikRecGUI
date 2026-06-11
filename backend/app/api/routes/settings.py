@@ -1,4 +1,5 @@
 import json
+import shutil
 from fastapi import APIRouter, HTTPException, status
 
 from app.config import settings
@@ -122,13 +123,27 @@ async def health_check():
     recorder_ready = recorder_service.is_available()
     is_blacklisted = recorder_service.is_country_blacklisted() if recorder_ready else False
 
+    # Disk usage of the filesystem hosting the recordings directory
+    disk_target = settings.RECORDINGS_DIR if settings.RECORDINGS_DIR.exists() else settings.RECORDINGS_DIR.parent
+    try:
+        du = shutil.disk_usage(disk_target)
+        disk_usage = {
+            "total": du.total,
+            "used": du.used,
+            "free": du.free,
+            "percent": round(du.used / du.total * 100, 1),
+        }
+    except OSError:
+        disk_usage = None
+
     return {
         "status": "healthy",
         "recorder_available": recorder_ready,
         "country_blacklisted": is_blacklisted,
         "cookies_configured": has_cookies,
         "recordings_dir": str(settings.RECORDINGS_DIR),
-        "recordings_dir_exists": settings.RECORDINGS_DIR.exists()
+        "recordings_dir_exists": settings.RECORDINGS_DIR.exists(),
+        "disk_usage": disk_usage,
     }
 
 

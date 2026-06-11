@@ -97,6 +97,13 @@ export interface Settings {
   timezone: string
 }
 
+export interface DiskUsage {
+  total: number
+  used: number
+  free: number
+  percent: number
+}
+
 export interface HealthStatus {
   status: string
   recorder_available: boolean
@@ -104,6 +111,7 @@ export interface HealthStatus {
   cookies_configured: boolean
   recordings_dir: string
   recordings_dir_exists: boolean
+  disk_usage: DiskUsage | null
 }
 
 export interface MonitorStatus {
