@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -24,7 +24,14 @@ from app.schemas.recording import (
 )
 from app.core.recorder_service import recorder_service
 from app.core.task_manager import task_manager
-from app.core.media_utils import generate_recording_filename, generate_sprite, generate_thumbnail, thumbnail_path
+from app.core.media_utils import (
+    generate_recording_filename,
+    generate_sprite,
+    generate_thumbnail,
+    thumbnail_path,
+    analyze_video_health,
+    repair_video,
+)
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
 
@@ -76,6 +83,13 @@ def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
 
 
 def _build_response(rec: Recording, db: Session | None = None) -> RecordingResponse:
+    # Only check corruption status for finished files (avoid probing mid-write)
+    is_corrupt: bool | None = None
+    if rec.status in ("completed", "stopped", "failed"):
+        video_path = Path(settings.RECORDINGS_DIR) / rec.filename
+        health = analyze_video_health(video_path)
+        is_corrupt = health.get("is_corrupt", True)
+
     return RecordingResponse(
         id=rec.id,
         user_id=rec.user_id,
@@ -93,6 +107,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
         sprite_ready=_is_sprite_ready(rec, db),
         transcript_status=rec.transcript_status,
         transcript_text=rec.transcript_text,
+        is_corrupt=is_corrupt,
     )
 
 
@@ -598,3 +613,55 @@ def regenerate_missing_sprites(db: Session = Depends(get_db)):
             run_background(generate_sprite, video_path)
             triggered += 1
     return {"total_missing": len(recordings), "triggered": triggered}
+
+
+@router.get("/{recording_id}/health")
+def get_recording_health(recording_id: int, db: Session = Depends(get_db)):
+    """Check the structural integrity of a recording file.
+
+    Returns ``ffprobe`` diagnostics so the frontend can display a warning
+    when a recording is corrupt and offer the repair action.
+    """
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    if not video_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording file not found")
+    return analyze_video_health(video_path)
+
+
+@router.post("/{recording_id}/repair", response_model=RecordingResponse)
+def repair_recording(recording_id: int, db: Session = Depends(get_db)):
+    """Attempt to repair a corrupted recording.
+
+    Runs error-tolerant ffmpeg commands (stream-copy first, full re-encode
+    as fallback) to recover playback from recordings damaged by TikTok's
+    mid-stream codec/resolution switches.
+
+    The repaired file **replaces** the original in-place.
+    """
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+    if recording.status not in ("completed", "stopped", "failed"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only finished recordings can be repaired",
+        )
+
+    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    if not video_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording file not found")
+
+    if repair_video(video_path):
+        recording.file_size = video_path.stat().st_size
+        recording.error_message = "Recording was repaired"
+        db.commit()
+        db.refresh(recording)
+        return _build_response(recording, db)
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Repair failed — recording may be beyond recovery",
+    )

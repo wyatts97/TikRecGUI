@@ -7,7 +7,14 @@ from pathlib import Path
 from app.config import settings
 from app.db.database import get_session, run_background
 from app.db.models import Recording, User
-from app.core.media_utils import generate_recording_filename, generate_sprite, generate_thumbnail, remux_to_mp4
+from app.core.media_utils import (
+    generate_recording_filename,
+    generate_sprite,
+    generate_thumbnail,
+    remux_to_mp4,
+    repair_video,
+    analyze_video_health,
+)
 from app.core.recorder_loader import get_tiktok_api_class
 from app.core.transcription_service import transcription_service
 
@@ -146,12 +153,38 @@ class RecordingTask:
 
         # --- Phase 5: post-processing (remux, thumbnails, sprites, transcription) ---
         if file_existed:
-            if remux_to_mp4(output_path):
+            # Log video health before processing
+            health = analyze_video_health(output_path)
+            if health.get("is_corrupt"):
+                logger.warning(
+                    "Recording %d (%s) may be corrupt: %s",
+                    self.recording_id, output_path.name, health.get("error"),
+                )
+            else:
+                logger.info(
+                    "Recording %d (%s) healthy — %.1fs, video=%s audio=%s",
+                    self.recording_id, output_path.name,
+                    health.get("duration"), health.get("has_video"), health.get("has_audio"),
+                )
+
+            remux_ok = remux_to_mp4(output_path)
+            if remux_ok:
                 with get_session() as db:
                     recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
                     if recording:
                         recording.file_size = output_path.stat().st_size
                         db.commit()
+            elif health.get("is_corrupt"):
+                # Remux with error-tolerant flags failed — try full repair
+                logger.info("Attempting full repair for corrupt recording %d", self.recording_id)
+                if repair_video(output_path):
+                    with get_session() as db:
+                        recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+                        if recording:
+                            recording.file_size = output_path.stat().st_size
+                            recording.error_message = "Recording was repaired (was corrupt)"
+                            db.commit()
+                    logger.info("Repair successful for recording %d", self.recording_id)
 
             run_background(generate_thumbnail, output_path)
             run_background(generate_sprite, output_path)
