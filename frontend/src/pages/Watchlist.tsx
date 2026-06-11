@@ -22,6 +22,7 @@ import {
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Button } from 'components/selia/button'
 import { Badge } from 'components/selia/badge'
+import { IconBox } from 'components/selia/icon-box'
 import { Input } from 'components/selia/input'
 import { Label } from 'components/selia/label'
 import {
@@ -169,17 +170,17 @@ const UserRow = memo(function UserRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="plain"
-            size="icon"
+          <button
             onClick={(e) => {
               e.stopPropagation()
               onRefresh(user.id)
             }}
             disabled={isRefreshing}
           >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+            <IconBox variant="secondary-subtle" size="sm">
+              <RefreshCw className="h-4 w-4" />
+            </IconBox>
+          </button>
           {user.is_live && (
             <Button
               variant="secondary"
@@ -194,17 +195,17 @@ const UserRow = memo(function UserRow({
               Record
             </Button>
           )}
-          <Button
-            variant="plain"
-            size="icon"
+          <button
             onClick={(e) => {
               e.stopPropagation()
               onRemove(user.id)
             }}
             disabled={isRemoving}
           >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
+            <IconBox variant="danger-subtle" size="sm">
+              <Trash2 className="h-4 w-4" />
+            </IconBox>
+          </button>
         </div>
       </TableCell>
     </TableRow>

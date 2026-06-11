@@ -20,6 +20,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
 import { Badge } from '@/components/selia/badge'
 import { Input } from '@/components/selia/input'
+import { IconBox } from '@/components/selia/icon-box'
 import {
   Dialog,
   DialogPopup,
@@ -129,32 +130,24 @@ const RecordingRow = memo(function RecordingRow({
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
           {recording.status === 'recording' && (
-            <Button
-              variant="plain"
-              size="icon"
-              onClick={() => onStop(recording.id)}
-              disabled={stopPending}
-            >
-              <StopCircle className="h-4 w-4 text-destructive" />
-            </Button>
+            <button onClick={() => onStop(recording.id)} disabled={stopPending}>
+              <IconBox variant="danger-subtle" size="sm">
+                <StopCircle className="h-4 w-4" />
+              </IconBox>
+            </button>
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <Button
-              variant="plain"
-              size="icon"
-              onClick={() => onDownload(recording)}
-            >
-              <Download className="h-4 w-4" />
-            </Button>
+            <button onClick={() => onDownload(recording)}>
+              <IconBox variant="primary-subtle" size="sm">
+                <Download className="h-4 w-4" />
+              </IconBox>
+            </button>
           )}
-          <Button
-            variant="plain"
-            size="icon"
-            onClick={() => onDelete(recording.id)}
-            disabled={deletePending}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
+          <button onClick={() => onDelete(recording.id)} disabled={deletePending}>
+            <IconBox variant="danger-subtle" size="sm">
+              <Trash2 className="h-4 w-4" />
+            </IconBox>
+          </button>
         </div>
       </TableCell>
     </TableRow>
@@ -224,18 +217,24 @@ const RecordingCard = memo(function RecordingCard({
         </div>
         <div className="flex items-center gap-1">
           {recording.status === 'recording' && (
-            <Button variant="plain" size="icon" className="h-7 w-7" onClick={() => onStop(recording.id)} disabled={stopPending}>
-              <StopCircle className="h-3.5 w-3.5 text-destructive" />
-            </Button>
+            <button onClick={() => onStop(recording.id)} disabled={stopPending}>
+              <IconBox variant="danger-subtle" size="sm">
+                <StopCircle className="h-3.5 w-3.5" />
+              </IconBox>
+            </button>
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <Button variant="plain" size="icon" className="h-7 w-7" onClick={() => onDownload(recording)}>
-              <Download className="h-3.5 w-3.5" />
-            </Button>
+            <button onClick={() => onDownload(recording)}>
+              <IconBox variant="primary-subtle" size="sm">
+                <Download className="h-3.5 w-3.5" />
+              </IconBox>
+            </button>
           )}
-          <Button variant="plain" size="icon" className="h-7 w-7" onClick={() => onDelete(recording.id)} disabled={deletePending}>
-            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-          </Button>
+          <button onClick={() => onDelete(recording.id)} disabled={deletePending}>
+            <IconBox variant="danger-subtle" size="sm">
+              <Trash2 className="h-3.5 w-3.5" />
+            </IconBox>
+          </button>
         </div>
       </div>
     </div>

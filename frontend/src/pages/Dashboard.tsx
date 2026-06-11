@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity } from 'lucide-react'
+import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity, CheckCircle2 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Badge } from 'components/selia/badge'
 import { Button } from 'components/selia/button'
+import { Item, ItemContent, ItemTitle, ItemDescription, ItemMedia, ItemAction } from 'components/selia/item'
+import { Avatar, AvatarImage, AvatarFallback, AvatarIndicator } from 'components/selia/avatar'
+import { Meter, MeterValue, MeterTrack, MeterIndicator } from 'components/selia/meter'
 import EmptyState from '@/components/EmptyState'
 import { api, type ActiveRecording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
@@ -165,7 +168,7 @@ export default function Dashboard() {
             Storage
           </CardTitle>
           <Button
-            variant="ghost"
+            variant="plain"
             size="sm"
             onClick={() => navigate('/settings')}
           >
@@ -176,21 +179,17 @@ export default function Dashboard() {
           {health?.disk_usage ? (() => {
             const { total, used, free, percent } = health.disk_usage
             const freePercent = 100 - percent
-            const barColor = freePercent > 20 ? 'bg-success' : freePercent > 10 ? 'bg-warning' : 'bg-danger'
+            const indicatorColor = freePercent > 20 ? 'bg-success' : freePercent > 10 ? 'bg-warning' : 'bg-danger'
             const textColor = freePercent > 20 ? 'text-success' : freePercent > 10 ? 'text-warning' : 'text-danger'
             return (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">{formatBytes(used)} used</span>
-                  <span className="text-muted-foreground">{formatBytes(total)} total</span>
+              <Meter value={percent}>
+                <div className="flex items-center justify-between">
+                  <MeterValue>{formatBytes(used)} used</MeterValue>
+                  <MeterValue>{formatBytes(total)} total</MeterValue>
                 </div>
-                {/* Progress bar */}
-                <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${barColor}`}
-                    style={{ width: `${Math.min(percent, 100)}%` }}
-                  />
-                </div>
+                <MeterTrack>
+                  <MeterIndicator className={indicatorColor} />
+                </MeterTrack>
                 <div className="flex items-center justify-between text-xs">
                   <span className={textColor}>
                     {formatBytes(free)} free ({freePercent.toFixed(1)}%)
@@ -201,7 +200,7 @@ export default function Dashboard() {
                     </Badge>
                   )}
                 </div>
-              </div>
+              </Meter>
             )
           })() : dirExists === false ? (
             <p className="text-xs text-destructive flex items-center gap-1">
@@ -261,50 +260,40 @@ export default function Dashboard() {
                 />
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-1">
                 {liveUsers.slice(0, 5).map((user) => (
-                  <div
-                    key={user.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/40"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
-                        <img
+                  <Item key={user.id} size="md">
+                    <ItemMedia>
+                      <Avatar size="md">
+                        <AvatarImage
                           src={api.users.getAvatarUrl(user.id)}
                           alt={user.username}
-                          className="h-full w-full object-cover"
-                          onError={(e) => {
-                            const img = e.target as HTMLImageElement
-                            img.style.display = 'none'
-                            const fallback = img.nextElementSibling as HTMLElement
-                            if (fallback) fallback.style.display = 'flex'
-                          }}
                         />
-                        <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full fallback-initial">
+                        <AvatarFallback>
                           {user.username[0].toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        {user.display_name && (
-                          <p className="font-medium text-sm">{user.display_name}</p>
-                        )}
-                        <p className={user.display_name ? "text-xs text-muted-foreground" : "font-medium text-sm"}>
-                          @{user.username}
-                        </p>
-                        <Badge variant="live" className="text-xs">LIVE</Badge>
-                      </div>
-                    </div>
-                    <Link to={`/watchlist?record=${user.id}`}>
-                      <Button size="sm" variant="subtle">
-                        <Play className="h-3 w-3 mr-1" />
-                        Record
-                      </Button>
-                    </Link>
-                  </div>
+                        </AvatarFallback>
+                        <AvatarIndicator className="bg-success ring-2 ring-background" />
+                      </Avatar>
+                    </ItemMedia>
+                    <ItemContent>
+                      {user.display_name && (
+                        <ItemTitle>{user.display_name}</ItemTitle>
+                      )}
+                      <ItemDescription>@{user.username}</ItemDescription>
+                    </ItemContent>
+                    <ItemAction>
+                      <Link to={`/watchlist?record=${user.id}`}>
+                        <Button size="sm" variant="secondary">
+                          <Play className="h-3 w-3 mr-1" />
+                          Record
+                        </Button>
+                      </Link>
+                    </ItemAction>
+                  </Item>
                 ))}
                 {liveUsers.length > 5 && (
                   <Link to="/watchlist" className="block">
-                    <Button variant="ghost" className="w-full">
+                    <Button variant="plain" className="w-full">
                       View all {liveUsers.length} live users
                     </Button>
                   </Link>
@@ -344,26 +333,28 @@ export default function Dashboard() {
                 />
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-1">
                 {activeRecordings.map((recording: ActiveRecording) => (
-                  <div
-                    key={recording.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-muted/40"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                        <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-sm">@{recording.username}</p>
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {formatDuration(recording.duration_seconds)}
-                        </div>
-                      </div>
-                    </div>
-                    <Badge variant="recording">Recording</Badge>
-                  </div>
+                  <Item key={recording.id} variant="danger-outline" size="md">
+                    <ItemMedia>
+                      <Avatar size="md">
+                        <AvatarFallback>
+                          {recording.username[0].toUpperCase()}
+                        </AvatarFallback>
+                        <AvatarIndicator className="bg-danger animate-pulse ring-2 ring-background" />
+                      </Avatar>
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>@{recording.username}</ItemTitle>
+                      <ItemDescription className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {formatDuration(recording.duration_seconds)}
+                      </ItemDescription>
+                    </ItemContent>
+                    <ItemAction>
+                      <Badge variant="info">Recording</Badge>
+                    </ItemAction>
+                  </Item>
                 ))}
               </div>
             )}
