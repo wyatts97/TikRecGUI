@@ -2,17 +2,11 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Play, Download, Tv, Loader2, Search } from 'lucide-react'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Card } from '@/components/selia/card'
+import { Button } from '@/components/selia/button'
+import { Input } from '@/components/selia/input'
+import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
@@ -104,13 +98,15 @@ export default function Watch() {
           <SelectTrigger className="h-9 w-32 text-sm">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="newest">Newest</SelectItem>
-            <SelectItem value="oldest">Oldest</SelectItem>
-            <SelectItem value="longest">Longest</SelectItem>
-            <SelectItem value="shortest">Shortest</SelectItem>
-            <SelectItem value="largest">Largest</SelectItem>
-          </SelectContent>
+          <SelectPopup>
+            <SelectList>
+              <SelectItem value="newest">Newest</SelectItem>
+              <SelectItem value="oldest">Oldest</SelectItem>
+              <SelectItem value="longest">Longest</SelectItem>
+              <SelectItem value="shortest">Shortest</SelectItem>
+              <SelectItem value="largest">Largest</SelectItem>
+            </SelectList>
+          </SelectPopup>
         </Select>
         <span className="text-xs text-muted-foreground">
           {filtered.length} recording{filtered.length !== 1 ? 's' : ''}
@@ -197,7 +193,7 @@ export default function Watch() {
                       </div>
                     </div>
                     <Button
-                      variant="ghost"
+                      variant="plain"
                       size="icon"
                       className="h-8 w-8 shrink-0"
                       onClick={(e) => {

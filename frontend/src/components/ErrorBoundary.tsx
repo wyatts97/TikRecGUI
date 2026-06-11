@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertCircle, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from 'components/selia/button'
 
 interface Props {
   children: ReactNode

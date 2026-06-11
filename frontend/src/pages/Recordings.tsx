@@ -16,19 +16,20 @@ import {
   X,
   Images,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
+import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
+import { Button } from '@/components/selia/button'
+import { Badge } from '@/components/selia/badge'
+import { Input } from '@/components/selia/input'
 import {
   Dialog,
-  DialogContent,
+  DialogPopup,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '@/components/ui/dialog'
+  DialogBody,
+} from '@/components/selia/dialog'
 import {
   Table,
   TableBody,
@@ -36,27 +37,28 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from '@/components/selia/table'
 import {
   Select,
-  SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+  SelectPopup,
+  SelectList,
+} from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { api, API_BASE, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
-import { useToast } from '@/components/ui/use-toast'
+import { toast } from 'sonner'
 
-const statusVariantMap: Record<string, 'default' | 'recording' | 'completed' | 'failed' | 'stopped' | 'pending'> = {
-  pending: 'pending',
-  recording: 'recording',
-  completed: 'completed',
-  failed: 'failed',
-  stopped: 'stopped',
+const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'secondary-outline'> = {
+  pending: 'secondary',
+  recording: 'info',
+  completed: 'success',
+  failed: 'danger',
+  stopped: 'secondary-outline',
 }
 
 // Memoized recording row
@@ -128,7 +130,7 @@ const RecordingRow = memo(function RecordingRow({
         <div className="flex items-center justify-end gap-1">
           {recording.status === 'recording' && (
             <Button
-              variant="ghost"
+              variant="plain"
               size="icon"
               onClick={() => onStop(recording.id)}
               disabled={stopPending}
@@ -138,7 +140,7 @@ const RecordingRow = memo(function RecordingRow({
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
             <Button
-              variant="ghost"
+              variant="plain"
               size="icon"
               onClick={() => onDownload(recording)}
             >
@@ -146,7 +148,7 @@ const RecordingRow = memo(function RecordingRow({
             </Button>
           )}
           <Button
-            variant="ghost"
+            variant="plain"
             size="icon"
             onClick={() => onDelete(recording.id)}
             disabled={deletePending}
@@ -222,16 +224,16 @@ const RecordingCard = memo(function RecordingCard({
         </div>
         <div className="flex items-center gap-1">
           {recording.status === 'recording' && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onStop(recording.id)} disabled={stopPending}>
+            <Button variant="plain" size="icon" className="h-7 w-7" onClick={() => onStop(recording.id)} disabled={stopPending}>
               <StopCircle className="h-3.5 w-3.5 text-destructive" />
             </Button>
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDownload(recording)}>
+            <Button variant="plain" size="icon" className="h-7 w-7" onClick={() => onDownload(recording)}>
               <Download className="h-3.5 w-3.5" />
             </Button>
           )}
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDelete(recording.id)} disabled={deletePending}>
+          <Button variant="plain" size="icon" className="h-7 w-7" onClick={() => onDelete(recording.id)} disabled={deletePending}>
             <Trash2 className="h-3.5 w-3.5 text-destructive" />
           </Button>
         </div>
@@ -265,8 +267,8 @@ export default function Recordings() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const queryClient = useQueryClient()
-  const { toast } = useToast()
 
   // Sync state to URL search params
   useEffect(() => {
@@ -314,6 +316,8 @@ export default function Recordings() {
   const total = data?.total || 0
   const totalPages = Math.ceil(total / 20)
 
+  const advancedFilterCount = [usernameFilter, minSizeMb, maxSizeMb, dateFrom, dateTo].filter(Boolean).length
+
   const startRecordingMutation = useMutation({
     mutationFn: (username: string) => api.recordings.start({ username }),
     onSuccess: () => {
@@ -321,10 +325,10 @@ export default function Recordings() {
       queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
       setRecordDialogOpen(false)
       setNewUsername('')
-      toast({ title: 'Recording started', description: 'Recording has been started' })
+      toast('Recording started', { description: 'Recording has been started' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -333,10 +337,10 @@ export default function Recordings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
       queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
-      toast({ title: 'Recording stopped', description: 'Recording has been stopped' })
+      toast('Recording stopped', { description: 'Recording has been stopped' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -344,10 +348,10 @@ export default function Recordings() {
     mutationFn: (id: number) => api.recordings.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
-      toast({ title: 'Recording deleted', description: 'Recording has been deleted' })
+      toast('Recording deleted', { description: 'Recording has been deleted' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -357,13 +361,12 @@ export default function Recordings() {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
       setSelectedIds(new Set())
       setDeleteConfirmOpen(false)
-      toast({ 
-        title: 'Recordings deleted', 
-        description: `${data.deleted} recording(s) deleted${data.errors.length > 0 ? `, ${data.errors.length} error(s)` : ''}` 
+      toast('Recordings deleted', {
+        description: `${data.deleted} recording(s) deleted${data.errors.length > 0 ? `, ${data.errors.length} error(s)` : ''}`
       })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -407,9 +410,9 @@ export default function Recordings() {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
-      toast({ title: 'Download started', description: 'Your recordings are being downloaded' })
+      toast('Download started', { description: 'Your recordings are being downloaded' })
     } catch (error) {
-      toast({ title: 'Error', description: (error as Error).message, variant: 'destructive' })
+      toast.error('Error', { description: (error as Error).message })
     } finally {
       setIsDownloading(false)
     }
@@ -430,13 +433,13 @@ export default function Recordings() {
           </p>
         </div>
         <Dialog open={recordDialogOpen} onOpenChange={setRecordDialogOpen}>
-          <DialogTrigger asChild>
+          <DialogTrigger>
             <Button>
               <Play className="h-4 w-4 mr-2" />
               New Recording
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogPopup>
             <form onSubmit={handleStartRecording}>
               <DialogHeader>
                 <DialogTitle>Start New Recording</DialogTitle>
@@ -444,13 +447,15 @@ export default function Recordings() {
                   Enter a TikTok username to start recording their live stream
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <Input
-                  placeholder="@username or username"
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                />
-              </div>
+              <DialogBody>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="@username or username"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value)}
+                  />
+                </div>
+              </DialogBody>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setRecordDialogOpen(false)}>
                   Cancel
@@ -460,7 +465,7 @@ export default function Recordings() {
                 </Button>
               </DialogFooter>
             </form>
-          </DialogContent>
+          </DialogPopup>
         </Dialog>
       </div>
 
@@ -490,7 +495,7 @@ export default function Recordings() {
                 Regenerate Sprites
               </Button>
               {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs">
+                <Button variant="plain" size="sm" onClick={clearFilters} className="text-xs">
                   <X className="h-3 w-3 mr-1" />
                   Clear filters
                 </Button>
@@ -508,13 +513,15 @@ export default function Recordings() {
                 <SelectTrigger className="h-8 w-32 text-sm">
                   <SelectValue placeholder="All Status" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="recording">Recording</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="stopped">Stopped</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                </SelectContent>
+                <SelectPopup>
+                  <SelectList>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="recording">Recording</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="stopped">Stopped</SelectItem>
+                    <SelectItem value="failed">Failed</SelectItem>
+                  </SelectList>
+                </SelectPopup>
               </Select>
             </div>
 
@@ -527,12 +534,14 @@ export default function Recordings() {
                 <SelectTrigger className="h-8 w-28 text-sm">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="date">Date</SelectItem>
-                  <SelectItem value="size">Size</SelectItem>
-                  <SelectItem value="duration">Duration</SelectItem>
-                  <SelectItem value="username">User</SelectItem>
-                </SelectContent>
+                <SelectPopup>
+                  <SelectList>
+                    <SelectItem value="date">Date</SelectItem>
+                    <SelectItem value="size">Size</SelectItem>
+                    <SelectItem value="duration">Duration</SelectItem>
+                    <SelectItem value="username">User</SelectItem>
+                  </SelectList>
+                </SelectPopup>
               </Select>
               <button
                 onClick={() => { setSortOrder((o: 'asc' | 'desc') => o === 'asc' ? 'desc' : 'asc'); setPage(1) }}
@@ -543,52 +552,71 @@ export default function Recordings() {
               </button>
             </div>
 
-            <Input
-              placeholder="Filter by user…"
-              value={usernameFilter}
-              onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
-              className="h-8 w-36 text-sm"
-            />
-
-            <div className="flex items-center gap-1">
-              <Input
-                placeholder="Min MB"
-                type="number"
-                min="0"
-                value={minSizeMb}
-                onChange={(e) => { setMinSizeMb(e.target.value); setPage(1) }}
-                className="h-8 w-20 text-sm"
-              />
-              <span className="text-xs text-muted-foreground">–</span>
-              <Input
-                placeholder="Max MB"
-                type="number"
-                min="0"
-                value={maxSizeMb}
-                onChange={(e) => { setMaxSizeMb(e.target.value); setPage(1) }}
-                className="h-8 w-20 text-sm"
-              />
-              <span className="text-xs text-muted-foreground">MB</span>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
-                className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
-              />
-              <span className="text-xs text-muted-foreground">–</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
-                className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
-              />
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs relative"
+              onClick={() => setShowAdvancedFilters((s) => !s)}
+            >
+              <Filter className="h-3.5 w-3.5 mr-1" />
+              Filters
+              {advancedFilterCount > 0 && (
+                <span className="ml-1.5 h-4 min-w-[1rem] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-medium flex items-center justify-center">
+                  {advancedFilterCount}
+                </span>
+              )}
+            </Button>
           </div>
+
+          {showAdvancedFilters && (
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border mt-2">
+              <Input
+                placeholder="Filter by user…"
+                value={usernameFilter}
+                onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
+                className="h-8 w-36 text-sm"
+              />
+
+              <div className="flex items-center gap-1">
+                <Input
+                  placeholder="Min MB"
+                  type="number"
+                  min="0"
+                  value={minSizeMb}
+                  onChange={(e) => { setMinSizeMb(e.target.value); setPage(1) }}
+                  className="h-8 w-20 text-sm"
+                />
+                <span className="text-xs text-muted-foreground">–</span>
+                <Input
+                  placeholder="Max MB"
+                  type="number"
+                  min="0"
+                  value={maxSizeMb}
+                  onChange={(e) => { setMaxSizeMb(e.target.value); setPage(1) }}
+                  className="h-8 w-20 text-sm"
+                />
+                <span className="text-xs text-muted-foreground">MB</span>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
+                  className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
+                />
+                <span className="text-xs text-muted-foreground">–</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
+                  className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
+                />
+              </div>
+            </div>
+          )}
         </CardHeader>
-        <CardContent>
+        <CardBody>
           {isLoading ? (
             <div className="py-8 text-center text-muted-foreground">Loading...</div>
           ) : recordings.length === 0 ? (
@@ -719,30 +747,33 @@ export default function Recordings() {
               )}
             </>
           )}
-        </CardContent>
+        </CardBody>
       </Card>
 
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-        <DialogContent>
+        <DialogPopup>
           <DialogHeader>
             <DialogTitle>Delete {selectedIds.size} Recording(s)?</DialogTitle>
             <DialogDescription>
               This action cannot be undone. The selected recordings and their files will be permanently deleted.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
+            <p className="text-sm text-muted-foreground">Are you sure you want to delete {selectedIds.size} recording(s)?</p>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant="danger"
               onClick={handleBatchDelete}
               disabled={batchDeleteMutation.isPending}
             >
               {batchDeleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
-        </DialogContent>
+        </DialogPopup>
       </Dialog>
     </div>
   )

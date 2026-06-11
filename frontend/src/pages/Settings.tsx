@@ -1,31 +1,31 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Globe, Activity, Cookie, Send, Video, Clock } from 'lucide-react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
+import { Card, CardBody, CardDescription, CardHeader, CardTitle } from '@/components/selia/card'
+import { Button } from '@/components/selia/button'
+import { Input } from '@/components/selia/input'
+import { Label } from '@/components/selia/label'
+import { Switch } from '@/components/selia/switch'
 import {
   Select,
-  SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
+  SelectPopup,
+  SelectList,
+} from '@/components/selia/select'
 import {
   Tabs,
-  TabsContent,
+  TabsPanel,
   TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs'
+  TabsItem,
+} from '@/components/selia/tabs'
 import { api, type Settings } from '@/lib/api'
-import { useToast } from '@/components/ui/use-toast'
+import { toast } from 'sonner'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const isDesktop = useMediaQuery('(min-width: 768px)')
   const [mobileTab, setMobileTab] = useState('status')
 
@@ -53,10 +53,10 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
       queryClient.invalidateQueries({ queryKey: ['health'] })
-      toast({ title: 'Settings saved', description: 'Your settings have been updated' })
+      toast('Settings saved', { description: 'Your settings have been updated' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -97,7 +97,7 @@ export default function SettingsPage() {
           <CardTitle>System Status</CardTitle>
           <CardDescription>Current system health and configuration status</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardBody className="space-y-4">
           <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
             <span className="text-sm font-medium">API Status</span>
             <div className="flex items-center gap-2">
@@ -172,7 +172,7 @@ export default function SettingsPage() {
               {health?.recordings_dir || settings?.output_dir}
             </span>
           </div>
-        </CardContent>
+        </CardBody>
       </Card>
 
       <Card id="settings-cookies">
@@ -190,7 +190,7 @@ export default function SettingsPage() {
             </a>
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardBody className="space-y-4">
           <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
             <div className="grid gap-2">
               <Label htmlFor="sessionid_ss">Session ID (sessionid_ss)</Label>
@@ -236,7 +236,7 @@ export default function SettingsPage() {
               />
             </div>
           </form>
-        </CardContent>
+        </CardBody>
       </Card>
 
       <Card id="settings-telegram">
@@ -254,7 +254,7 @@ export default function SettingsPage() {
             </a>
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardBody className="space-y-4">
           <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
             <div className="grid gap-2">
               <Label htmlFor="api_id">API ID</Label>
@@ -325,7 +325,7 @@ export default function SettingsPage() {
               />
             </div>
           </form>
-        </CardContent>
+        </CardBody>
       </Card>
 
       <Card id="settings-recording">
@@ -333,7 +333,7 @@ export default function SettingsPage() {
           <CardTitle>Recording Settings</CardTitle>
           <CardDescription>Configure default recording behavior</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardBody className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="proxy">HTTP Proxy</Label>
             <Input
@@ -381,7 +381,7 @@ export default function SettingsPage() {
               }
             />
           </div>
-        </CardContent>
+        </CardBody>
       </Card>
 
       <Card id="settings-cleanup">
@@ -394,7 +394,7 @@ export default function SettingsPage() {
             Automatically clean up old recordings to save disk space
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardBody className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <Label>Enable Auto-Cleanup</Label>
@@ -439,13 +439,15 @@ export default function SettingsPage() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 day</SelectItem>
-                    <SelectItem value="3">3 days</SelectItem>
-                    <SelectItem value="7">7 days</SelectItem>
-                    <SelectItem value="14">14 days</SelectItem>
-                    <SelectItem value="30">30 days</SelectItem>
-                  </SelectContent>
+                  <SelectPopup>
+                    <SelectList>
+                      <SelectItem value="1">1 day</SelectItem>
+                      <SelectItem value="3">3 days</SelectItem>
+                      <SelectItem value="7">7 days</SelectItem>
+                      <SelectItem value="14">14 days</SelectItem>
+                      <SelectItem value="30">30 days</SelectItem>
+                    </SelectList>
+                  </SelectPopup>
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   Recordings older than this will be processed
@@ -503,7 +505,7 @@ export default function SettingsPage() {
               </div>
             </>
           )}
-        </CardContent>
+        </CardBody>
       </Card>
       <Card id="settings-timezone">
         <CardHeader>
@@ -515,7 +517,7 @@ export default function SettingsPage() {
             All timestamps shown in the app will use this timezone
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardBody className="space-y-4">
           <div className="grid gap-2">
             <Label htmlFor="timezone">Timezone</Label>
             <select
@@ -598,7 +600,7 @@ export default function SettingsPage() {
               })}
             </span>
           </div>
-        </CardContent>
+        </CardBody>
       </Card>
     </>
   )
@@ -646,22 +648,22 @@ export default function SettingsPage() {
             {tabs.map((tab) => {
               const Icon = tab.icon
               return (
-                <TabsTrigger key={tab.id} value={tab.id} className="gap-1.5">
+                <TabsItem key={tab.id} value={tab.id} className="gap-1.5">
                   <Icon className="h-3.5 w-3.5" />
                   {tab.label}
-                </TabsTrigger>
+                </TabsItem>
               )
             })}
           </TabsList>
           {tabs.map((tab) => (
-            <TabsContent key={tab.id} value={tab.id}>
+            <TabsPanel key={tab.id} value={tab.id}>
               {tab.id === 'status' && (
                 <Card id="settings-status">
                   <CardHeader>
                     <CardTitle>System Status</CardTitle>
                     <CardDescription>Current system health and configuration status</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardBody className="space-y-4">
                     <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
                       <span className="text-sm font-medium">API Status</span>
                       <div className="flex items-center gap-2">
@@ -732,7 +734,7 @@ export default function SettingsPage() {
                         {health?.recordings_dir || settings?.output_dir}
                       </span>
                     </div>
-                  </CardContent>
+                  </CardBody>
                 </Card>
               )}
               {tab.id === 'cookies' && (
@@ -746,7 +748,7 @@ export default function SettingsPage() {
                       </a>
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardBody className="space-y-4">
                     <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
                       <div className="grid gap-2">
                         <Label htmlFor="m-sessionid_ss">Session ID (sessionid_ss)</Label>
@@ -759,7 +761,7 @@ export default function SettingsPage() {
                         <Input id="m-tt_target_idc" name="tt_target_idc" placeholder="useast2a" autoComplete="off" value={formData.cookies?.tt_target_idc || ''} onChange={(e) => setFormData({ ...formData, cookies: { ...formData.cookies, sessionid_ss: formData.cookies?.sessionid_ss || '', tt_target_idc: e.target.value } })} />
                       </div>
                     </form>
-                  </CardContent>
+                  </CardBody>
                 </Card>
               )}
               {tab.id === 'telegram' && (
@@ -773,7 +775,7 @@ export default function SettingsPage() {
                       </a>
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardBody className="space-y-4">
                     <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
                       <div className="grid gap-2">
                         <Label htmlFor="m-api_id">API ID</Label>
@@ -792,7 +794,7 @@ export default function SettingsPage() {
                         <Input id="m-chat_id" placeholder="me" autoComplete="off" value={formData.telegram?.chat_id || ''} onChange={(e) => setFormData({ ...formData, telegram: { ...formData.telegram, api_id: formData.telegram?.api_id || '', api_hash: formData.telegram?.api_hash || '', chat_id: e.target.value } })} />
                       </div>
                     </form>
-                  </CardContent>
+                  </CardBody>
                 </Card>
               )}
               {tab.id === 'recording' && (
@@ -801,7 +803,7 @@ export default function SettingsPage() {
                     <CardTitle>Recording Settings</CardTitle>
                     <CardDescription>Configure default recording behavior</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardBody className="space-y-4">
                     <div className="grid gap-2">
                       <Label htmlFor="m-proxy">HTTP Proxy</Label>
                       <Input id="m-proxy" placeholder="http://127.0.0.1:8080" value={formData.proxy || ''} onChange={(e) => setFormData({ ...formData, proxy: e.target.value || null })} />
@@ -815,7 +817,7 @@ export default function SettingsPage() {
                       <Label htmlFor="m-interval">Automatic Check Interval (minutes)</Label>
                       <Input id="m-interval" type="number" min="1" placeholder="5" value={formData.automatic_interval || 5} onChange={(e) => setFormData({ ...formData, automatic_interval: parseInt(e.target.value) || 5 })} />
                     </div>
-                  </CardContent>
+                  </CardBody>
                 </Card>
               )}
               {tab.id === 'cleanup' && (
@@ -824,7 +826,7 @@ export default function SettingsPage() {
                     <CardTitle className="flex items-center gap-2"><Trash2 className="h-5 w-5" /> Auto-Cleanup</CardTitle>
                     <CardDescription>Automatically clean up old recordings to save disk space</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardBody className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
                         <Label>Enable Auto-Cleanup</Label>
@@ -838,13 +840,15 @@ export default function SettingsPage() {
                           <Label>Retention Period</Label>
                           <Select value={String(formData.auto_cleanup?.days || 7)} onValueChange={(v) => setFormData({ ...formData, auto_cleanup: { ...formData.auto_cleanup, enabled: formData.auto_cleanup?.enabled || false, days: parseInt(v), action: formData.auto_cleanup?.action || 'delete' } })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1 day</SelectItem>
-                              <SelectItem value="3">3 days</SelectItem>
-                              <SelectItem value="7">7 days</SelectItem>
-                              <SelectItem value="14">14 days</SelectItem>
-                              <SelectItem value="30">30 days</SelectItem>
-                            </SelectContent>
+                            <SelectPopup>
+                              <SelectList>
+                                <SelectItem value="1">1 day</SelectItem>
+                                <SelectItem value="3">3 days</SelectItem>
+                                <SelectItem value="7">7 days</SelectItem>
+                                <SelectItem value="14">14 days</SelectItem>
+                                <SelectItem value="30">30 days</SelectItem>
+                              </SelectList>
+                            </SelectPopup>
                           </Select>
                         </div>
                         <div className="grid gap-2">
@@ -864,7 +868,7 @@ export default function SettingsPage() {
                         </div>
                       </>
                     )}
-                  </CardContent>
+                  </CardBody>
                 </Card>
               )}
               {tab.id === 'timezone' && (
@@ -873,7 +877,7 @@ export default function SettingsPage() {
                     <CardTitle className="flex items-center gap-2"><Globe className="h-5 w-5" /> Display Timezone</CardTitle>
                     <CardDescription>All timestamps shown in the app will use this timezone</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardBody className="space-y-4">
                     <div className="grid gap-2">
                       <Label htmlFor="m-timezone">Timezone</Label>
                       <select id="m-timezone" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={formData.timezone || 'UTC'} onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}>
@@ -949,10 +953,10 @@ export default function SettingsPage() {
                         })}
                       </span>
                     </div>
-                  </CardContent>
+                  </CardBody>
                 </Card>
               )}
-            </TabsContent>
+            </TabsPanel>
           ))}
         </Tabs>
       )}

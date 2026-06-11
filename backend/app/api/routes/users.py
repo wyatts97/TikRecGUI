@@ -7,11 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db, async_get_db
-from app.db.models import User
+from app.db.models import User, Recording
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserStatusResponse
 from app.core.recorder_service import recorder_service
 from app.core.user_info_service import user_info_service
 from app.core.unified_avatar_service import unified_avatar_service
+from app.core.task_manager import task_manager
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -101,11 +102,26 @@ def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-    
+
     update_data = user_update.model_dump(exclude_unset=True)
+
+    # When removing from watchlist, also disable monitoring and stop active recordings
+    if update_data.get("is_on_watchlist") is False:
+        update_data["is_monitoring"] = False
+        active_recordings = (
+            db.query(Recording)
+            .filter(Recording.user_id == user.id, Recording.status == "recording")
+            .all()
+        )
+        for rec in active_recordings:
+            task_manager.stop_recording(rec.id)
+            rec.status = "stopped"
+        if active_recordings:
+            db.commit()
+
     for field, value in update_data.items():
         setattr(user, field, value)
-    
+
     db.commit()
     db.refresh(user)
     return user

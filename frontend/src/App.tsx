@@ -8,7 +8,7 @@ import Recordings from './pages/Recordings'
 import Watch from './pages/Watch'
 import WatchPlayer from './pages/WatchPlayer'
 import Settings from './pages/Settings'
-import { Toaster } from './components/ui/toaster'
+import { Toaster } from 'sonner'
 import { TimezoneProvider } from './lib/timezone-context'
 
 function App() {

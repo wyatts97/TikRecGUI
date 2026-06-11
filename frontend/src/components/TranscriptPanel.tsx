@@ -1,7 +1,7 @@
 import React, { useRef } from 'react'
 import { FileText, Loader2, Search } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Button } from 'components/selia/button'
+import { Input } from 'components/selia/input'
 import type { Recording } from '@/lib/api'
 
 function parseTimestamp(ts: string): number {

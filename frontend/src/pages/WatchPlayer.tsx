@@ -5,8 +5,8 @@ import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import '@vidstack/react/player/styles/default/theme.css'
 import '@vidstack/react/player/styles/default/layouts/video.css'
-import { ArrowLeft, Download, Loader2, FileText } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ArrowLeft, Download, Loader2, FileText, PanelRightOpen, Calendar, Clock, HardDrive, FileVideo } from 'lucide-react'
+import { Button } from '@/components/selia/button'
 import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
@@ -65,6 +65,7 @@ export default function WatchPlayer() {
   const recordingId = Number(id)
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'player' | 'transcript'>('player')
+  const [showSidebar, setShowSidebar] = useState(false)
   const [transcriptSearch, setTranscriptSearch] = useState('')
   const playerRef = useRef<HTMLDivElement>(null)
 
@@ -156,9 +157,18 @@ export default function WatchPlayer() {
         <Button variant="ghost" size="icon" onClick={() => navigate('/watch')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-2xl font-bold text-foreground tracking-tight truncate">
+        <h1 className="text-2xl font-bold text-foreground tracking-tight truncate flex-1">
           @{recording.username}
         </h1>
+        <Button
+          variant="outline"
+          size="sm"
+          className="hidden lg:inline-flex"
+          onClick={() => setShowSidebar((s) => !s)}
+        >
+          <PanelRightOpen className="h-4 w-4 mr-2" />
+          {showSidebar ? 'Hide Transcript' : 'Show Transcript'}
+        </Button>
       </div>
 
       {!recording.thumbnail_ready && (
@@ -197,25 +207,37 @@ export default function WatchPlayer() {
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Recorded</p>
+              <div className="flex items-center gap-2 mb-1">
+                <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Recorded</p>
+              </div>
               <p className="mt-1 font-medium text-foreground">
                 {fmt(recording.ended_at || recording.created_at)}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Duration</p>
+              </div>
               <p className="mt-1 font-medium text-foreground">
                 {formatDuration(recording.duration_seconds)}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Size</p>
+              <div className="flex items-center gap-2 mb-1">
+                <HardDrive className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Size</p>
+              </div>
               <p className="mt-1 font-medium text-foreground">
                 {formatBytes(recording.file_size)}
               </p>
             </div>
             <div className="p-4 rounded-xl bg-card border border-border">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Filename</p>
+              <div className="flex items-center gap-2 mb-1">
+                <FileVideo className="h-3.5 w-3.5 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Filename</p>
+              </div>
               <p className="mt-1 font-medium text-foreground truncate" title={recording.filename}>
                 {recording.filename}
               </p>
@@ -279,22 +301,20 @@ export default function WatchPlayer() {
         </div>
 
         {/* Desktop transcript panel */}
-        <div className="hidden lg:flex lg:flex-col">
-          {activeTab === 'transcript' && (
-            <div>
-              <TranscriptPanel
-                recording={recording}
-                transcriptSearch={transcriptSearch}
-                onTranscriptSearchChange={setTranscriptSearch}
-                onTranscribe={() => transcribeMutation.mutate()}
-                isTranscribing={transcribeMutation.isPending}
-                onSeek={handleSeek}
-                variant="panel"
-              />
-              {transcriptActions}
-            </div>
-          )}
-        </div>
+        {showSidebar && (
+          <div className="hidden lg:flex lg:flex-col">
+            <TranscriptPanel
+              recording={recording}
+              transcriptSearch={transcriptSearch}
+              onTranscriptSearchChange={setTranscriptSearch}
+              onTranscribe={() => transcribeMutation.mutate()}
+              isTranscribing={transcribeMutation.isPending}
+              onSeek={handleSeek}
+              variant="panel"
+            />
+            {transcriptActions}
+          </div>
+        )}
       </div>
     </div>
   )

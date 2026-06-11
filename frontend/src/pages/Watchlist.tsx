@@ -19,27 +19,31 @@ import {
   Check,
   X,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
+import { Button } from 'components/selia/button'
+import { Badge } from 'components/selia/badge'
+import { Input } from 'components/selia/input'
+import { Label } from 'components/selia/label'
 import {
   Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
+  DialogTrigger,
+  DialogPopup,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+  DialogBody,
+  DialogFooter,
+  DialogClose,
+} from 'components/selia/dialog'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+  Drawer,
+  DrawerTrigger,
+  DrawerPopup,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+  DrawerBody,
+  DrawerClose,
+} from 'components/selia/drawer'
 import {
   Table,
   TableBody,
@@ -47,11 +51,11 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table'
+} from 'components/selia/table'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { api, type User, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
-import { useToast } from '@/components/ui/use-toast'
+import { toast } from 'sonner'
 import EmptyState from '@/components/EmptyState'
 
 // Memoized user table row
@@ -129,7 +133,7 @@ const UserRow = memo(function UserRow({
       </TableCell>
       <TableCell>
         {user.is_live ? (
-          <Badge variant="live" className="gap-1">
+          <Badge variant="danger" className="gap-1">
             <Radio className="h-3 w-3" />
             LIVE
           </Badge>
@@ -139,7 +143,7 @@ const UserRow = memo(function UserRow({
       </TableCell>
       <TableCell>
         <Button
-          variant="ghost"
+          variant="plain"
           size="sm"
           onClick={(e) => {
             e.stopPropagation()
@@ -165,7 +169,7 @@ const UserRow = memo(function UserRow({
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
           <Button
-            variant="ghost"
+            variant="plain"
             size="icon"
             onClick={(e) => {
               e.stopPropagation()
@@ -177,7 +181,7 @@ const UserRow = memo(function UserRow({
           </Button>
           {user.is_live && (
             <Button
-              variant="subtle"
+              variant="secondary"
               size="sm"
               onClick={(e) => {
                 e.stopPropagation()
@@ -190,7 +194,7 @@ const UserRow = memo(function UserRow({
             </Button>
           )}
           <Button
-            variant="ghost"
+            variant="plain"
             size="icon"
             onClick={(e) => {
               e.stopPropagation()
@@ -273,7 +277,7 @@ const UserCard = memo(function UserCard({
           </div>
         </div>
         {user.is_live ? (
-          <Badge variant="live" className="gap-1 shrink-0">
+          <Badge variant="danger" className="gap-1 shrink-0">
             <Radio className="h-3 w-3" />
             LIVE
           </Badge>
@@ -293,7 +297,7 @@ const UserCard = memo(function UserCard({
 
       <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
         <Button
-          variant="ghost"
+          variant="plain"
           size="sm"
           className="h-7 text-xs"
           onClick={() => onToggleMonitoring(user.id, !user.is_monitoring)}
@@ -302,7 +306,7 @@ const UserCard = memo(function UserCard({
           {user.is_monitoring ? 'Disable' : 'Enable'}
         </Button>
         <Button
-          variant="ghost"
+          variant="plain"
           size="sm"
           className="h-7 text-xs"
           onClick={() => onRefresh(user.id)}
@@ -313,7 +317,7 @@ const UserCard = memo(function UserCard({
         </Button>
         {user.is_live && (
           <Button
-            variant="subtle"
+            variant="secondary"
             size="sm"
             className="h-7 text-xs"
             onClick={() => onStartRecording(user.username)}
@@ -325,7 +329,7 @@ const UserCard = memo(function UserCard({
         )}
         <div className="flex-1" />
         <Button
-          variant="ghost"
+          variant="plain"
           size="sm"
           className="h-7 w-7"
           onClick={() => onRemove(user.id)}
@@ -351,7 +355,7 @@ export default function Watchlist() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const queryClient = useQueryClient()
-  const { toast } = useToast()
+
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
@@ -378,10 +382,10 @@ export default function Watchlist() {
       setAddDialogOpen(false)
       setNewUsername('')
       setIsMonitoring(false)
-      toast({ title: 'User added', description: 'User has been added to your watchlist' })
+      toast('User added', { description: 'User has been added to your watchlist' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -390,10 +394,10 @@ export default function Watchlist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setSelectedIds(new Set())
-      toast({ title: 'User removed', description: 'User has been removed from your watchlist' })
+      toast('User removed', { description: 'User has been removed from your watchlist' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -403,7 +407,7 @@ export default function Watchlist() {
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -420,10 +424,10 @@ export default function Watchlist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
       queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
-      toast({ title: 'Recording started', description: 'Recording has been started' })
+      toast('Recording started', { description: 'Recording has been started' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -433,10 +437,10 @@ export default function Watchlist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setSelectedIds(new Set())
-      toast({ title: 'Updated', description: 'Monitoring settings updated for selected users' })
+      toast('Updated', { description: 'Monitoring settings updated for selected users' })
     },
     onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' })
+      toast.error('Error', { description: error.message })
     },
   })
 
@@ -451,7 +455,7 @@ export default function Watchlist() {
     for (const user of users) {
       await refreshUserMutation.mutateAsync(user.id)
     }
-    toast({ title: 'Refreshed', description: 'All user statuses have been updated' })
+      toast('Refreshed', { description: 'All user statuses have been updated' })
   }
 
   const toggleSelect = useCallback((id: number) => {
@@ -498,9 +502,9 @@ export default function Watchlist() {
     textarea.select()
     try {
       document.execCommand('copy')
-      toast({ title: 'Exported', description: 'Usernames copied to clipboard' })
+      toast('Exported', { description: 'Usernames copied to clipboard' })
     } catch {
-      toast({ title: 'Export failed', description: 'Could not copy to clipboard', variant: 'destructive' })
+      toast.error('Export failed', { description: 'Could not copy to clipboard' })
     }
     document.body.removeChild(textarea)
   }, [users, toast])
@@ -552,20 +556,20 @@ export default function Watchlist() {
         </div>
         <div className="flex items-center gap-2">
           <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-            <DialogTrigger asChild>
+            <DialogTrigger>
               <Button variant="outline">
                 <Upload className="h-4 w-4 mr-2" />
                 Import
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogPopup>
               <DialogHeader>
                 <DialogTitle>Import Users</DialogTitle>
                 <DialogDescription>
                   Paste a list of @usernames, one per line, to add them to your watchlist with monitoring enabled.
                 </DialogDescription>
               </DialogHeader>
-              <div className="py-4">
+              <DialogBody>
                 <textarea
                   className="w-full min-h-[160px] rounded-lg border border-input bg-background p-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder={`@user1\n@user2\n@user3`}
@@ -573,12 +577,12 @@ export default function Watchlist() {
                   onChange={(e) => { setImportText(e.target.value); setImportStatus(null) }}
                 />
                 {importStatus && (
-                  <div className={`mt-2 text-sm flex items-center gap-1.5 ${importStatus.includes('failed') ? 'text-destructive' : 'text-success'}`}>
+                  <div className={`mt-2 text-sm flex items-center gap-1.5 ${importStatus.includes('failed') ? 'text-danger' : 'text-success'}`}>
                     {importStatus.includes('failed') ? <X className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
                     {importStatus}
                   </div>
                 )}
-              </div>
+              </DialogBody>
               <DialogFooter>
                 <Button variant="outline" onClick={() => { setImportDialogOpen(false); setImportText(''); setImportStatus(null) }}>
                   Cancel
@@ -588,7 +592,7 @@ export default function Watchlist() {
                   Import {importText.trim() ? `(${importText.split('\n').filter(Boolean).length})` : ''}
                 </Button>
               </DialogFooter>
-            </DialogContent>
+            </DialogPopup>
           </Dialog>
           <Button variant="outline" onClick={handleExport} disabled={users.length === 0}>
             <ClipboardList className="h-4 w-4 mr-2" />
@@ -599,13 +603,13 @@ export default function Watchlist() {
             Refresh All
           </Button>
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-            <DialogTrigger asChild>
+            <DialogTrigger>
               <Button>
                 <Plus className="h-4 w-4 mr-2" />
                 Add User
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogPopup>
               <form onSubmit={handleAddUser}>
                 <DialogHeader>
                   <DialogTitle>Add User to Watchlist</DialogTitle>
@@ -613,29 +617,31 @@ export default function Watchlist() {
                     Enter a TikTok username to add to your watchlist
                   </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="username">Username</Label>
-                    <Input
-                      id="username"
-                      placeholder="@username or username"
-                      value={newUsername}
-                      onChange={(e) => setNewUsername(e.target.value)}
-                    />
+                <DialogBody>
+                  <div className="grid gap-4 py-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="username">Username</Label>
+                      <Input
+                        id="username"
+                        placeholder="@username or username"
+                        value={newUsername}
+                        onChange={(e) => setNewUsername(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="monitoring"
+                        checked={isMonitoring}
+                        onChange={(e) => setIsMonitoring(e.target.checked)}
+                        className="rounded border-gray-300"
+                      />
+                      <Label htmlFor="monitoring" className="text-sm font-normal">
+                        Enable automatic monitoring
+                      </Label>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="monitoring"
-                      checked={isMonitoring}
-                      onChange={(e) => setIsMonitoring(e.target.checked)}
-                      className="rounded border-gray-300"
-                    />
-                    <Label htmlFor="monitoring" className="text-sm font-normal">
-                      Enable automatic monitoring
-                    </Label>
-                  </div>
-                </div>
+                </DialogBody>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setAddDialogOpen(false)}>
                     Cancel
@@ -645,7 +651,7 @@ export default function Watchlist() {
                   </Button>
                 </DialogFooter>
               </form>
-            </DialogContent>
+            </DialogPopup>
           </Dialog>
         </div>
       </div>
@@ -665,7 +671,7 @@ export default function Watchlist() {
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardBody>
           {isLoading ? (
             <div className="space-y-3">
               {[1, 2, 3, 4].map((i) => (
@@ -720,7 +726,7 @@ export default function Watchlist() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="destructive"
+                    variant="danger"
                     onClick={() => {
                       Array.from(selectedIds).forEach((id) =>
                         removeFromWatchlistMutation.mutate(id)
@@ -732,7 +738,7 @@ export default function Watchlist() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="ghost"
+                    variant="plain"
                     onClick={() => setSelectedIds(new Set())}
                   >
                     Clear
@@ -804,21 +810,22 @@ export default function Watchlist() {
               )}
             </>
           )}
-        </CardContent>
+        </CardBody>
       </Card>
 
-      {/* User Detail Sheet */}
-      <Sheet open={detailUserId !== null} onOpenChange={(open) => { if (!open) setDetailUserId(null) }}>
-        <SheetContent className="overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>
+      {/* User Detail Drawer */}
+      <Drawer open={detailUserId !== null} onOpenChange={(open) => { if (!open) setDetailUserId(null) }}>
+        <DrawerPopup direction="right" className="overflow-y-auto">
+          <DrawerHeader>
+            <DrawerTitle>
               {detailUser ? `@${detailUser.username}` : 'User Details'}
-            </SheetTitle>
-            <SheetDescription>
+            </DrawerTitle>
+            <DrawerDescription>
               {detailUser?.display_name || ''}
-            </SheetDescription>
-          </SheetHeader>
+            </DrawerDescription>
+          </DrawerHeader>
 
+          <DrawerBody>
           {detailUser ? (
             <div className="mt-6 space-y-6">
               {/* Avatar */}
@@ -881,7 +888,7 @@ export default function Watchlist() {
                 {detailUser.is_live && (
                   <Button
                     size="sm"
-                    variant="subtle"
+                    variant="secondary"
                     className="flex-1"
                     onClick={() => startRecordingMutation.mutate(detailUser.username)}
                   >
@@ -920,7 +927,7 @@ export default function Watchlist() {
                 </Button>
                 <Button
                   size="sm"
-                  variant="destructive"
+                  variant="danger"
                   className="flex-1"
                   onClick={() => {
                     removeFromWatchlistMutation.mutate(detailUser.id)
@@ -977,7 +984,7 @@ export default function Watchlist() {
                             {fmt(rec.ended_at || rec.created_at)}
                           </p>
                         </div>
-                        <Badge variant="outline" className="text-[10px] capitalize">
+                        <Badge variant="secondary-outline" className="text-[10px] capitalize">
                           {rec.status}
                         </Badge>
                       </div>
@@ -991,8 +998,9 @@ export default function Watchlist() {
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           )}
-        </SheetContent>
-      </Sheet>
+        </DrawerBody>
+        </DrawerPopup>
+      </Drawer>
     </div>
   )
 }

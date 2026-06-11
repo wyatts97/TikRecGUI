@@ -1,5 +1,5 @@
 import { type LucideIcon } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from 'components/selia/button'
 
 interface EmptyStateProps {
   icon: LucideIcon
@@ -12,14 +12,20 @@ interface EmptyStateProps {
 export default function EmptyState({ icon: Icon, title, description, actionLabel, onAction }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
-      <Icon className="h-12 w-12 text-muted-foreground mb-4" />
-      <p className="text-lg font-medium text-foreground">{title}</p>
-      <p className="text-muted-foreground mt-1 max-w-sm">{description}</p>
-      {actionLabel && onAction && (
-        <Button className="mt-4" onClick={onAction}>
-          {actionLabel}
-        </Button>
-      )}
+      <div className="flex flex-col items-center gap-4 p-8 rounded-2xl bg-card border border-border shadow-subtle max-w-sm">
+        <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary-subtle">
+          <Icon className="h-8 w-8 text-primary" />
+        </div>
+        <div>
+          <p className="text-lg font-medium text-foreground">{title}</p>
+          <p className="text-muted-foreground mt-1 text-sm">{description}</p>
+        </div>
+        {actionLabel && onAction && (
+          <Button onClick={onAction}>
+            {actionLabel}
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

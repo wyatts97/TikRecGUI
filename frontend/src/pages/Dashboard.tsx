@@ -1,9 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, CheckCircle2, XCircle, Activity } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
+import { Badge } from 'components/selia/badge'
+import { Button } from 'components/selia/button'
 import EmptyState from '@/components/EmptyState'
 import { api, type ActiveRecording } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
@@ -79,7 +78,7 @@ export default function Dashboard() {
 
       {health?.country_blacklisted && (
         <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-900">
-          <CardContent className="flex items-center gap-3 py-4">
+          <CardBody className="flex items-center gap-3 py-4">
             <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
             <div>
               <p className="font-medium text-yellow-800 dark:text-yellow-200">Region Restricted</p>
@@ -87,7 +86,7 @@ export default function Dashboard() {
                 TikTok access is restricted in your region. Configure cookies or use a proxy in Settings.
               </p>
             </div>
-          </CardContent>
+          </CardBody>
         </Card>
       )}
 
@@ -98,8 +97,8 @@ export default function Dashboard() {
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            {usersLoading ? <Skeleton className="h-8 w-16" /> : (
+          <CardBody>
+            {usersLoading ? <div className="h-8 w-16 bg-muted animate-pulse rounded" /> : (
               <>
                 <div className="text-2xl font-bold">{users.length}</div>
                 <p className="text-xs text-muted-foreground">
@@ -107,7 +106,7 @@ export default function Dashboard() {
                 </p>
               </>
             )}
-          </CardContent>
+          </CardBody>
         </Card>
 
         <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-red-500" onClick={() => navigate('/watchlist')}>
@@ -115,8 +114,8 @@ export default function Dashboard() {
             <CardTitle className="text-sm font-medium">Live Now</CardTitle>
             <Radio className="h-4 w-4 text-red-500" />
           </CardHeader>
-          <CardContent>
-            {usersLoading ? <Skeleton className="h-8 w-16" /> : (
+          <CardBody>
+            {usersLoading ? <div className="h-8 w-16 bg-muted animate-pulse rounded" /> : (
               <>
                 <div className="text-2xl font-bold">{liveUsers.length}</div>
                 <p className="text-xs text-muted-foreground">
@@ -124,7 +123,7 @@ export default function Dashboard() {
                 </p>
               </>
             )}
-          </CardContent>
+          </CardBody>
         </Card>
 
         <Card className="hover:shadow-subtle transition-shadow cursor-pointer" onClick={() => navigate('/recordings')}>
@@ -132,8 +131,8 @@ export default function Dashboard() {
             <CardTitle className="text-sm font-medium">Active Recordings</CardTitle>
             <Video className="h-4 w-4 text-primary" />
           </CardHeader>
-          <CardContent>
-            {activeLoading ? <Skeleton className="h-8 w-16" /> : (
+          <CardBody>
+            {activeLoading ? <div className="h-8 w-16 bg-muted animate-pulse rounded" /> : (
               <>
                 <div className="text-2xl font-bold">{activeRecordings.length}</div>
                 <p className="text-xs text-muted-foreground">
@@ -141,7 +140,7 @@ export default function Dashboard() {
                 </p>
               </>
             )}
-          </CardContent>
+          </CardBody>
         </Card>
 
         <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-success" onClick={() => navigate('/settings')}>
@@ -149,12 +148,12 @@ export default function Dashboard() {
             <CardTitle className="text-sm font-medium">Status</CardTitle>
             <div className={`h-2 w-2 rounded-full ${health?.status === 'healthy' ? 'bg-success' : 'bg-yellow-500'}`} />
           </CardHeader>
-          <CardContent>
+          <CardBody>
             <div className="text-2xl font-bold capitalize">{health?.status || 'Unknown'}</div>
             <p className="text-xs text-muted-foreground">
               {health?.cookies_configured ? 'Cookies configured' : 'No cookies set'}
             </p>
-          </CardContent>
+          </CardBody>
         </Card>
       </div>
 
@@ -172,7 +171,7 @@ export default function Dashboard() {
             <Badge variant="destructive" className="text-xs">Missing</Badge>
           )}
         </CardHeader>
-        <CardContent>
+        <CardBody>
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-sm text-muted-foreground truncate">{recordingsDir}</p>
@@ -192,7 +191,7 @@ export default function Dashboard() {
               Recordings directory does not exist. Check your settings.
             </p>
           )}
-        </CardContent>
+        </CardBody>
       </Card>
 
       {/* Quick actions */}
@@ -220,15 +219,15 @@ export default function Dashboard() {
               Live Users
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardBody>
             {usersLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="flex items-center gap-3 p-3">
-                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
                     <div className="space-y-1.5 flex-1">
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-3 w-20" />
+                      <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                      <div className="h-3 w-20 bg-muted animate-pulse rounded" />
                     </div>
                   </div>
                 ))}
@@ -292,7 +291,7 @@ export default function Dashboard() {
                 )}
               </div>
             )}
-          </CardContent>
+          </CardBody>
         </Card>
 
         {/* Active Recordings */}
@@ -303,15 +302,15 @@ export default function Dashboard() {
               Active Recordings
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardBody>
             {activeLoading ? (
               <div className="space-y-3">
                 {[1, 2].map((i) => (
                   <div key={i} className="flex items-center gap-3 p-3">
-                    <Skeleton className="h-8 w-8 rounded-full" />
+                    <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
                     <div className="space-y-1.5 flex-1">
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="h-3 w-20" />
+                      <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                      <div className="h-3 w-20 bg-muted animate-pulse rounded" />
                     </div>
                   </div>
                 ))}
@@ -348,7 +347,7 @@ export default function Dashboard() {
                 ))}
               </div>
             )}
-          </CardContent>
+          </CardBody>
         </Card>
 
         {/* Activity Feed */}
@@ -359,7 +358,7 @@ export default function Dashboard() {
               Recent Activity
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardBody>
             {activityItems.length === 0 ? (
               <div className="py-4">
                 <EmptyState
@@ -392,7 +391,7 @@ export default function Dashboard() {
                 })}
               </div>
             )}
-          </CardContent>
+          </CardBody>
         </Card>
       </div>
     </div>

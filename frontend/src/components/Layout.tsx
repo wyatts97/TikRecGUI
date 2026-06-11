@@ -6,19 +6,29 @@ import {
   Video,
   Settings,
   Radio,
-  Moon,
-  Sun,
   Tv,
   RefreshCw,
   Circle,
   Menu,
   X,
 } from 'lucide-react'
+import { DarkModeSwitch } from 'react-toggle-dark-mode'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import { api } from '@/lib/api'
 import CommandPalette from '@/components/CommandPalette'
+import {
+  Sidebar,
+  SidebarHeader,
+  SidebarLogo,
+  SidebarContent,
+  SidebarMenu,
+  SidebarList,
+  SidebarItem,
+  SidebarItemButton,
+  SidebarFooter,
+} from '@/components/selia/sidebar'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -105,13 +115,13 @@ export default function Layout() {
                 {activeRecordings.length}
               </button>
             )}
-            <button
-              onClick={toggleTheme}
+            <DarkModeSwitch
+              checked={theme === 'dark'}
+              onChange={() => toggleTheme()}
+              size={20}
               className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
               aria-label="Toggle dark mode"
-            >
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
+            />
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
@@ -158,79 +168,80 @@ export default function Layout() {
       </aside>
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:flex-col md:fixed md:inset-y-0 md:w-56 z-30 bg-background border-r border-border">
-        <div className="flex items-center gap-2 h-16 px-5 border-b border-border">
-          <Radio className="h-6 w-6 text-primary" />
-          <span className="text-xl font-bold text-foreground tracking-tight">TikRec</span>
-        </div>
+      <Sidebar className="hidden md:flex md:fixed md:inset-y-0 md:w-56 z-30 bg-background border-r border-border">
+        <SidebarHeader>
+          <SidebarLogo className="h-16 border-b border-border px-5">
+            <Radio className="h-6 w-6 text-primary" />
+            <span className="text-xl font-bold text-foreground tracking-tight">TikRec</span>
+          </SidebarLogo>
+        </SidebarHeader>
 
-        <nav className="flex flex-col flex-1 p-3 gap-1 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/'}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-primary-subtle text-primary'
-                      : 'text-muted-foreground hover:bg-muted/60',
-                  )
-                }
+        <SidebarContent>
+          <SidebarMenu>
+            <SidebarList>
+              {navItems.map((item) => {
+                const Icon = item.icon
+                const isActive = location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to))
+                return (
+                  <SidebarItem key={item.to}>
+                    <SidebarItemButton
+                      render={<NavLink to={item.to} end={item.to === '/'} />}
+                      active={isActive}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </SidebarItemButton>
+                  </SidebarItem>
+                )
+              })}
+            </SidebarList>
+          </SidebarMenu>
+        </SidebarContent>
+
+        <SidebarFooter>
+          <div className="space-y-2 border-t border-border pt-3">
+            {activeRecordings.length > 0 && (
+              <button
+                onClick={() => navigate('/recordings')}
+                className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs font-medium animate-pulse"
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </NavLink>
-            )
-          })}
-        </nav>
+                <Circle className="h-2 w-2 fill-current" />
+                {activeRecordings.length} recording{activeRecordings.length > 1 ? 's' : ''} in progress
+              </button>
+            )}
 
-        {/* Sidebar footer */}
-        <div className="p-3 border-t border-border space-y-2">
-          {activeRecordings.length > 0 && (
-            <button
-              onClick={() => navigate('/recordings')}
-              className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs font-medium animate-pulse"
-            >
-              <Circle className="h-2 w-2 fill-current" />
-              {activeRecordings.length} recording{activeRecordings.length > 1 ? 's' : ''} in progress
-            </button>
-          )}
+            {monitorStatus?.is_running && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-xs text-muted-foreground">
+                <span className="tabular-nums">
+                  {countdown !== null
+                    ? `Next check: ${formatCountdown(countdown)}`
+                    : 'Waiting…'}
+                </span>
+              </div>
+            )}
 
-          {monitorStatus?.is_running && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-muted text-xs text-muted-foreground">
-              <span className="tabular-nums">
-                {countdown !== null
-                  ? `Next check: ${formatCountdown(countdown)}`
-                  : 'Waiting…'}
-              </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => triggerCheckMutation.mutate()}
+                disabled={triggerCheckMutation.isPending}
+                className="flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60 disabled:opacity-50"
+                aria-label="Check live status now"
+                title="Check live status now"
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', triggerCheckMutation.isPending && 'animate-spin')} />
+              </button>
+              <DarkModeSwitch
+                checked={theme === 'dark'}
+                onChange={() => toggleTheme()}
+                size={18}
+                className="flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60"
+                aria-label="Toggle dark mode"
+                title="Toggle dark mode"
+              />
             </div>
-          )}
-
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => triggerCheckMutation.mutate()}
-              disabled={triggerCheckMutation.isPending}
-              className="flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60 disabled:opacity-50"
-              aria-label="Check live status now"
-              title="Check live status now"
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', triggerCheckMutation.isPending && 'animate-spin')} />
-            </button>
-            <button
-              onClick={toggleTheme}
-              className="flex items-center justify-center h-8 w-8 rounded-lg transition-colors text-muted-foreground hover:bg-muted/60"
-              aria-label="Toggle dark mode"
-              title="Toggle dark mode"
-            >
-              {theme === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-            </button>
           </div>
-        </div>
-      </aside>
+        </SidebarFooter>
+      </Sidebar>
 
       {/* Main content */}
       <main className="md:pl-56 pt-14 md:pt-0 pb-8">
