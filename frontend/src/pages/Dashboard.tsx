@@ -338,10 +338,14 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-1">
                 {activeRecordings.map((recording: ActiveRecording) => (
-                  <Item key={recording.id} variant="danger-outline" size="md">
+                  <Item key={recording.id} variant="danger" size="md">
                     <ItemMedia>
                       <Avatar size="md">
-                        <AvatarFallback>
+                        <AvatarImage
+                          src={api.users.getAvatarUrl(recording.user_id)}
+                          alt={recording.username}
+                        />
+                        <AvatarFallback className="bg-danger/20 text-danger">
                           {recording.username[0].toUpperCase()}
                         </AvatarFallback>
                         <AvatarIndicator className="bg-danger animate-pulse ring-2 ring-background" />
@@ -355,7 +359,7 @@ export default function Dashboard() {
                       </ItemDescription>
                     </ItemContent>
                     <ItemAction>
-                      <Badge variant="info">Recording</Badge>
+                      <Badge variant="danger">Recording</Badge>
                     </ItemAction>
                   </Item>
                 ))}

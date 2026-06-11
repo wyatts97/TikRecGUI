@@ -321,6 +321,7 @@ def get_active_recordings(db: Session = Depends(get_db)):
             duration = int((now - rec.started_at).total_seconds())
         out.append(ActiveRecordingResponse(
             id=rec.id,
+            user_id=rec.user_id,
             username=rec.user.username,
             status=rec.status,
             started_at=rec.started_at,

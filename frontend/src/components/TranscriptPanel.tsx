@@ -89,7 +89,7 @@ export default function TranscriptPanel({
               className="pl-8 h-8 text-sm"
             />
           </div>
-          <div className={`font-mono text-xs space-y-1 ${variant === 'panel' ? '' : 'max-h-80 overflow-y-auto rounded-lg border border-border bg-muted/40 p-3'}`}>
+          <div className={`font-mono text-xs space-y-1 ${variant === 'panel' ? '' : 'max-h-80 overflow-y-auto rounded-lg border border-border bg-card/60 dark:bg-black/30 p-3'}`}>
             {recording.transcript_text
               .split('\n')
               .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))

@@ -43,6 +43,7 @@ class RecordingListResponse(BaseModel):
 
 class ActiveRecordingResponse(BaseModel):
     id: int
+    user_id: int
     username: str
     status: str
     started_at: datetime | None = None

@@ -11,6 +11,10 @@ import {
   Circle,
   Menu,
   X,
+  Sun,
+  Moon,
+  Check,
+  Loader2,
 } from 'lucide-react'
 import { DarkModeSwitch } from 'react-toggle-dark-mode'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -18,6 +22,8 @@ import { cn } from '@/lib/utils'
 import { useTheme } from '@/hooks/useTheme'
 import { api } from '@/lib/api'
 import CommandPalette from '@/components/CommandPalette'
+import { IconBox } from '@/components/selia/icon-box'
+import { Badge } from '@/components/selia/badge'
 import {
   Sidebar,
   SidebarHeader,
@@ -37,13 +43,6 @@ const navItems = [
   { to: '/watch', icon: Tv, label: 'Watch' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
-
-function formatCountdown(seconds: number): string {
-  if (seconds <= 0) return 'Checking…'
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return m > 0 ? `${m}m ${s}s` : `${s}s`
-}
 
 export default function Layout() {
   const navigate = useNavigate()
@@ -199,52 +198,93 @@ export default function Layout() {
         </SidebarContent>
 
         <SidebarFooter>
-          <div className="space-y-3 border-t border-border pt-4">
-            {activeRecordings.length > 0 && (
-              <button
-                onClick={() => navigate('/recordings')}
-                className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs font-medium animate-pulse"
-              >
-                <Circle className="h-2 w-2 fill-current" />
-                {activeRecordings.length} recording{activeRecordings.length > 1 ? 's' : ''} in progress
-              </button>
-            )}
+          <div className="flex items-center gap-2 border-t border-border pt-4">
+            {/* Recording indicator */}
+            <button
+              onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
+              className={cn(
+                'relative flex items-center justify-center rounded-xl p-2 transition-colors',
+                activeRecordings.length > 0 && 'hover:bg-muted/60'
+              )}
+              title={activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
+            >
+              {activeRecordings.length > 0 ? (
+                <>
+                  <IconBox
+                    variant="danger"
+                    size="md"
+                    className="shadow-lg shadow-red-500/40 animate-pulse"
+                  >
+                    <Radio className="h-4 w-4" />
+                  </IconBox>
+                  <Badge
+                    variant="danger"
+                    size="sm"
+                    className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
+                  >
+                    {activeRecordings.length}
+                  </Badge>
+                </>
+              ) : (
+                <IconBox variant="secondary-subtle" size="md">
+                  <Radio className="h-4 w-4" />
+                </IconBox>
+              )}
+            </button>
 
-            {monitorStatus?.is_running && (
+            {/* Refresh / sync circle */}
+            <button
+              onClick={() => triggerCheckMutation.mutate()}
+              disabled={triggerCheckMutation.isPending}
+              className="group relative flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
+              title="Sync Now"
+            >
               <div className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs',
-                countdown !== null && countdown > 0
-                  ? 'bg-amber-100/70 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300'
-                  : 'bg-emerald-100/70 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300',
+                'transition-opacity',
+                triggerCheckMutation.isPending ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
               )}>
-                <span className="tabular-nums">
-                  {countdown !== null
-                    ? `Next check: ${formatCountdown(countdown)}`
-                    : 'Waiting…'}
-                </span>
+                <IconBox
+                  variant={countdown !== null && countdown > 0 ? 'warning-subtle' : 'success-subtle'}
+                  size="md"
+                >
+                  {countdown !== null && countdown > 0 ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                </IconBox>
               </div>
-            )}
+              <div className={cn(
+                'absolute inset-0 flex items-center justify-center transition-opacity',
+                triggerCheckMutation.isPending ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+              )}>
+                <IconBox
+                  variant={triggerCheckMutation.isPending ? 'success-subtle' : 'warning-subtle'}
+                  size="md"
+                >
+                  {triggerCheckMutation.isPending ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </IconBox>
+              </div>
+            </button>
 
-            <div className="flex items-center gap-1 rounded-lg border border-border p-1 bg-muted/30">
-              <button
-                onClick={() => triggerCheckMutation.mutate()}
-                disabled={triggerCheckMutation.isPending}
-                className="flex items-center justify-center h-7 w-7 rounded-md transition-colors text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
-                aria-label="Check live status now"
-                title="Check live status now"
-              >
-                <RefreshCw className={cn('h-3.5 w-3.5', triggerCheckMutation.isPending && 'animate-spin')} />
-              </button>
-              <div className="w-px h-4 bg-border" />
-              <DarkModeSwitch
-                checked={theme === 'dark'}
-                onChange={() => toggleTheme()}
-                size={16}
-                className="flex items-center justify-center h-7 w-7 rounded-md transition-colors text-muted-foreground hover:bg-muted/80"
-                aria-label="Toggle dark mode"
-                title="Toggle dark mode"
-              />
-            </div>
+            {/* Dark mode toggle */}
+            <button
+              onClick={() => toggleTheme()}
+              className="flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              <IconBox variant="secondary-subtle" size="md">
+                {theme === 'dark' ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )}
+              </IconBox>
+            </button>
           </div>
         </SidebarFooter>
       </Sidebar>

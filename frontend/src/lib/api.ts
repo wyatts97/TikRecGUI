@@ -67,6 +67,7 @@ export interface RecordingListResponse {
 
 export interface ActiveRecording {
   id: number
+  user_id: number
   username: string
   status: string
   started_at: string | null

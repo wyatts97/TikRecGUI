@@ -8,6 +8,15 @@ import '@vidstack/react/player/styles/default/layouts/video.css'
 import { ArrowLeft, Download, Trash2, Loader2, FileText, PanelRightOpen, Calendar, Clock, HardDrive, FileVideo } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
+import {
+  Dialog,
+  DialogPopup,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogBody,
+  DialogFooter,
+} from '@/components/selia/dialog'
 import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
@@ -69,6 +78,7 @@ export default function WatchPlayer() {
   const [activeTab, setActiveTab] = useState<'player' | 'transcript'>('player')
   const [showSidebar, setShowSidebar] = useState(false)
   const [transcriptSearch, setTranscriptSearch] = useState('')
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const playerRef = useRef<HTMLDivElement>(null)
 
   const { data: recording, isLoading } = useQuery({
@@ -275,18 +285,13 @@ export default function WatchPlayer() {
               Download
             </Button>
             <Button
-              variant="plain"
-              size="icon"
-              onClick={() => {
-                if (window.confirm('Delete this recording?')) {
-                  deleteMutation.mutate()
-                }
-              }}
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(true)}
               disabled={deleteMutation.isPending}
+              className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
             >
-              <IconBox variant="danger-subtle" size="md">
-                <Trash2 className="h-4 w-4" />
-              </IconBox>
+              <Trash2 className="h-4 w-4" />
+              Delete
             </Button>
           </div>
 
@@ -352,6 +357,37 @@ export default function WatchPlayer() {
           </div>
         )}
       </div>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogPopup>
+          <DialogHeader>
+            <DialogTitle>Delete Recording?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. The recording and its file will be permanently deleted.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete this recording?
+            </p>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                deleteMutation.mutate()
+                setDeleteDialogOpen(false)
+              }}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogPopup>
+      </Dialog>
     </div>
   )
 }
