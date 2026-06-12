@@ -129,7 +129,7 @@ export default function TranscriptPanel({
 
   if (variant === 'panel') {
     return (
-      <div className="hidden lg:flex w-80 shrink-0 flex-col border border-border rounded-xl overflow-hidden bg-muted/40 self-start max-h-[calc(100vh-6rem)]">
+      <div className="hidden lg:flex w-80 shrink-0 flex-col border border-border rounded-xl overflow-hidden bg-card self-start max-h-[calc(100vh-6rem)]">
         <div className="px-4 py-3 border-b border-border bg-background flex items-center gap-2">
           <FileText className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Transcript</span>
