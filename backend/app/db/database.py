@@ -93,9 +93,6 @@ def get_session():
 
 
 def init_db():
-    from app.db import models
-    Base.metadata.create_all(bind=engine)
-
     from pathlib import Path
     from alembic.config import Config as AlembicConfig
     from alembic import command
@@ -106,10 +103,19 @@ def init_db():
         str(Path(__file__).resolve().parent.parent.parent / "alembic.ini")
     )
 
+    inspector = inspect(engine)
+
+    # Only create tables via SQLAlchemy on a completely fresh database.
+    # On existing databases Alembic handles all schema changes, so we
+    # skip create_all() to avoid creating new tables (e.g. clips) before
+    # Alembic migrations try to create them.
+    if "alembic_version" not in inspector.get_table_names():
+        from app.db import models
+        Base.metadata.create_all(bind=engine)
+
     # If alembic_version references a revision whose migration file no longer
     # exists (e.g. after replacing an initial "create all tables" migration
     # with an empty baseline), clear the stale entry so Alembic can start fresh.
-    inspector = inspect(engine)
     if "alembic_version" in inspector.get_table_names():
         with engine.begin() as conn:
             stored = conn.execute(

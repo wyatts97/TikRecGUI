@@ -20,6 +20,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+
+    # If the clips table already exists (e.g. from a prior Base.metadata.create_all
+    # run before Alembic got to this migration), drop it so Alembic can recreate
+    # it properly and stamp the version.
+    if 'clips' in inspector.get_table_names():
+        op.drop_table('clips')
+
     op.create_table(
         'clips',
         sa.Column('id', sa.Integer(), nullable=False),
