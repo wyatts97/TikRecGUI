@@ -56,6 +56,7 @@ export interface Recording {
   sprite_ready: boolean
   transcript_status: string | null
   transcript_text: string | null
+  is_favorite: boolean
 }
 
 export interface RecordingListResponse {
@@ -120,6 +121,7 @@ export interface MonitorStatus {
   last_check_at: string | null
   next_check_in_seconds: number | null
   interval_minutes: number
+  check_interval: number
 }
 
 export const api = {
@@ -174,6 +176,7 @@ export const api = {
         maxSize?: number
         dateFrom?: string
         dateTo?: string
+        favoritesOnly?: boolean
       }
     ) => {
       const params = new URLSearchParams({
@@ -189,6 +192,7 @@ export const api = {
       if (filters?.maxSize !== undefined) params.set("max_size", filters.maxSize.toString())
       if (filters?.dateFrom) params.set("date_from", filters.dateFrom)
       if (filters?.dateTo) params.set("date_to", filters.dateTo)
+      if (filters?.favoritesOnly) params.set("favorites_only", "true")
       return fetchApi<RecordingListResponse>(`/recordings?${params}`)
     },
     
@@ -214,6 +218,9 @@ export const api = {
       fetchApi<void>(`/recordings/${id}`, { method: "DELETE" }),
     
     getActive: () => fetchApi<ActiveRecording[]>("/recordings/active"),
+
+    toggleFavorite: (id: number) =>
+      fetchApi<Recording>(`/recordings/${id}/favorite`, { method: "POST" }),
 
     getDownloadUrl: (id: number) => `${API_BASE}/recordings/${id}/download`,
     getStreamUrl: (id: number) => `${API_BASE}/recordings/${id}/stream`,

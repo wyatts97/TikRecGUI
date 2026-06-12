@@ -136,6 +136,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
         sprite_ready=_is_sprite_ready(rec, db),
         transcript_status=rec.transcript_status,
         transcript_text=rec.transcript_text,
+        is_favorite=rec.is_favorite,
         is_corrupt=is_corrupt,
     )
 
@@ -153,6 +154,7 @@ def list_recordings(
     max_size: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    favorites_only: bool = False,
     db: Session = Depends(get_db)
 ):
     query = db.query(Recording).join(User)
@@ -193,6 +195,9 @@ def list_recordings(
             count_query = count_query.filter(Recording.created_at <= dt)
         except ValueError:
             pass
+    if favorites_only:
+        query = query.filter(Recording.is_favorite == True)
+        count_query = count_query.filter(Recording.is_favorite == True)
 
     total = count_query.scalar() or 0
 
@@ -362,6 +367,20 @@ def stop_recording(recording_id: int, db: Session = Depends(get_db)):
     
     db.refresh(recording)
     
+    return _build_response(recording, db)
+
+
+@router.post("/{recording_id}/favorite", response_model=RecordingResponse)
+def toggle_favorite_recording(recording_id: int, db: Session = Depends(get_db)):
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording not found"
+        )
+    recording.is_favorite = not recording.is_favorite
+    db.commit()
+    db.refresh(recording)
     return _build_response(recording, db)
 
 

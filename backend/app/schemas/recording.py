@@ -28,6 +28,7 @@ class RecordingResponse(BaseModel):
     sprite_ready: bool = False
     transcript_status: str | None = None
     transcript_text: str | None = None
+    is_favorite: bool = False
     is_corrupt: bool | None = None
 
     class Config:

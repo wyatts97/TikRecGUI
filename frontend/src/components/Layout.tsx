@@ -14,7 +14,6 @@ import {
   Sun,
   Moon,
   Check,
-  Loader2,
 } from 'lucide-react'
 import { DarkModeSwitch } from 'react-toggle-dark-mode'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -24,6 +23,7 @@ import { api } from '@/lib/api'
 import CommandPalette from '@/components/CommandPalette'
 import { IconBox } from '@/components/selia/icon-box'
 import { Badge } from '@/components/selia/badge'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/selia/tooltip'
 import {
   Sidebar,
   SidebarHeader,
@@ -101,7 +101,7 @@ export default function Layout() {
       <header className="fixed top-0 left-0 right-0 z-40 bg-background border-b border-border md:hidden">
         <div className="flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-2">
-            <Radio className="h-5 w-5 text-primary" />
+            <img src="/tikrecui.png" alt="TikRec" className="h-6 w-6 rounded-lg" />
             <span className="text-lg font-bold text-foreground tracking-tight">TikRec</span>
           </div>
           <div className="flex items-center gap-1">
@@ -170,7 +170,7 @@ export default function Layout() {
       <Sidebar className="hidden md:flex md:fixed md:inset-y-0 md:w-56 z-30 bg-background border-r border-border">
         <SidebarHeader>
           <SidebarLogo className="h-16 border-b border-border px-5">
-            <Radio className="h-6 w-6 text-primary" />
+            <img src="/tikrecui.png" alt="TikRec" className="h-8 w-8 rounded-lg" />
             <span className="text-xl font-bold text-foreground tracking-tight">TikRec</span>
           </SidebarLogo>
         </SidebarHeader>
@@ -200,91 +200,124 @@ export default function Layout() {
         <SidebarFooter>
           <div className="flex items-center gap-2 border-t border-border pt-4">
             {/* Recording indicator */}
-            <button
-              onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
-              className={cn(
-                'relative flex items-center justify-center rounded-xl p-2 transition-colors',
-                activeRecordings.length > 0 && 'hover:bg-muted/60'
-              )}
-              title={activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
-            >
-              {activeRecordings.length > 0 ? (
-                <>
-                  <IconBox
-                    variant="danger"
-                    size="md"
-                    className="shadow-lg shadow-red-500/40 animate-pulse"
-                  >
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
+                    className={cn(
+                      'relative flex items-center justify-center rounded-xl p-2 transition-colors',
+                      activeRecordings.length > 0 && 'hover:bg-muted/60'
+                    )}
+                  />
+                }
+              >
+                {activeRecordings.length > 0 ? (
+                  <>
+                    <IconBox
+                      variant="danger"
+                      size="md"
+                      className="shadow-lg shadow-red-500/40 animate-pulse"
+                    >
+                      <Radio className="h-4 w-4" />
+                    </IconBox>
+                    <Badge
+                      variant="danger"
+                      size="sm"
+                      className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
+                    >
+                      {activeRecordings.length}
+                    </Badge>
+                  </>
+                ) : (
+                  <IconBox variant="secondary-subtle" size="md">
                     <Radio className="h-4 w-4" />
                   </IconBox>
-                  <Badge
-                    variant="danger"
-                    size="sm"
-                    className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
-                  >
-                    {activeRecordings.length}
-                  </Badge>
-                </>
-              ) : (
-                <IconBox variant="secondary-subtle" size="md">
-                  <Radio className="h-4 w-4" />
-                </IconBox>
-              )}
-            </button>
+                )}
+              </TooltipTrigger>
+              <TooltipContent>
+                {activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
+              </TooltipContent>
+            </Tooltip>
 
-            {/* Refresh / sync circle */}
-            <button
-              onClick={() => triggerCheckMutation.mutate()}
-              disabled={triggerCheckMutation.isPending}
-              className="group relative flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
-              title="Sync Now"
-            >
-              <div className={cn(
-                'transition-opacity',
-                triggerCheckMutation.isPending ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
-              )}>
-                <IconBox
-                  variant={countdown !== null && countdown > 0 ? 'warning-subtle' : 'success-subtle'}
-                  size="md"
-                >
-                  {countdown !== null && countdown > 0 ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Check className="h-4 w-4" />
-                  )}
-                </IconBox>
-              </div>
-              <div className={cn(
-                'absolute inset-0 flex items-center justify-center transition-opacity',
-                triggerCheckMutation.isPending ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
-              )}>
-                <IconBox
-                  variant={triggerCheckMutation.isPending ? 'success-subtle' : 'warning-subtle'}
-                  size="md"
-                >
-                  {triggerCheckMutation.isPending ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                </IconBox>
-              </div>
-            </button>
+            {/* Refresh / sync circle with conic-gradient progress ring */}
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => triggerCheckMutation.mutate()}
+                    disabled={triggerCheckMutation.isPending}
+                    className="group relative flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
+                  />
+                }
+              >
+                  {/* Default state: conic-gradient progress ring + Check icon */}
+                  <div className={cn(
+                    'transition-opacity',
+                    triggerCheckMutation.isPending ? 'opacity-0' : 'opacity-100 group-hover:opacity-0'
+                  )}>
+                    <IconBox
+                      variant={countdown !== null && countdown > 0 ? 'warning-subtle' : 'success-subtle'}
+                      size="md"
+                      className="relative overflow-hidden"
+                    >
+                      {/* Conic-gradient progress ring background */}
+                      {countdown !== null && countdown > 0 && monitorStatus?.check_interval && (
+                        <div
+                          className="absolute inset-0 rounded-full"
+                          style={{
+                            background: `conic-gradient(var(--color-warning) ${((monitorStatus.check_interval - countdown) / monitorStatus.check_interval) * 360}deg, transparent ${((monitorStatus.check_interval - countdown) / monitorStatus.check_interval) * 360}deg)`,
+                            opacity: 0.4,
+                          }}
+                        />
+                      )}
+                      <Check className="h-4 w-4 relative z-10" />
+                    </IconBox>
+                  </div>
+                  {/* Hover / active state: RefreshCw or Check */}
+                  <div className={cn(
+                    'absolute inset-0 flex items-center justify-center transition-opacity',
+                    triggerCheckMutation.isPending ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  )}>
+                    <IconBox
+                      variant={triggerCheckMutation.isPending ? 'success-subtle' : 'warning-subtle'}
+                      size="md"
+                    >
+                      {triggerCheckMutation.isPending ? (
+                        <Check className="h-4 w-4" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                    </IconBox>
+                  </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {triggerCheckMutation.isPending ? 'Syncing…' : 'Sync Now'}
+              </TooltipContent>
+            </Tooltip>
 
             {/* Dark mode toggle */}
-            <button
-              onClick={() => toggleTheme()}
-              className="flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              <IconBox variant="secondary-subtle" size="md">
-                {theme === 'dark' ? (
-                  <Sun className="h-4 w-4" />
-                ) : (
-                  <Moon className="h-4 w-4" />
-                )}
-              </IconBox>
-            </button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    onClick={() => toggleTheme()}
+                    className="flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
+                  />
+                }
+              >
+                <IconBox variant="secondary-subtle" size="md">
+                  {theme === 'dark' ? (
+                    <Sun className="h-4 w-4" />
+                  ) : (
+                    <Moon className="h-4 w-4" />
+                  )}
+                </IconBox>
+              </TooltipTrigger>
+              <TooltipContent>
+                {theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              </TooltipContent>
+            </Tooltip>
           </div>
         </SidebarFooter>
       </Sidebar>

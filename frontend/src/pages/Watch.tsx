@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Play, Download, Tv, Loader2, Search } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Play, Download, Tv, Loader2, Search, Heart } from 'lucide-react'
 import { Card } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
-import { api } from '@/lib/api'
-import { formatBytes, formatDuration } from '@/lib/utils'
+import { api, type Recording } from '@/lib/api'
+import { cn, formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 
 const ITEMS_PER_PAGE = 12
@@ -16,9 +16,25 @@ const ITEMS_PER_PAGE = 12
 export default function Watch() {
   const fmt = useDateFormat()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
+
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: (id: number) => api.recordings.toggleFavorite(id),
+    onSuccess: (updated: Recording) => {
+      queryClient.setQueryData(['recordings', 'watchable'], (old: any) => {
+        if (!old) return old
+        return {
+          ...old,
+          recordings: old.recordings.map((r: Recording) =>
+            r.id === updated.id ? { ...r, is_favorite: updated.is_favorite } : r
+          ),
+        }
+      })
+    },
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['recordings', 'watchable'],
@@ -43,6 +59,10 @@ export default function Watch() {
     // Sort
     items.sort((a, b) => {
       switch (sortBy) {
+        case 'favorites':
+          if (a.is_favorite && !b.is_favorite) return -1
+          if (!a.is_favorite && b.is_favorite) return 1
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         case 'newest':
           return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         case 'oldest':
@@ -105,6 +125,7 @@ export default function Watch() {
               <SelectItem value="longest">Longest</SelectItem>
               <SelectItem value="shortest">Shortest</SelectItem>
               <SelectItem value="largest">Largest</SelectItem>
+              <SelectItem value="favorites">Favorites</SelectItem>
             </SelectList>
           </SelectPopup>
         </Select>
@@ -192,18 +213,32 @@ export default function Watch() {
                         </p>
                       </div>
                     </div>
-                    <Button
-                      variant="plain"
-                      size="icon"
-                      className="h-8 w-8 shrink-0"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        window.open(api.recordings.getDownloadUrl(recording.id), '_blank')
-                      }}
-                      title="Download"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="plain"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFavoriteMutation.mutate(recording.id)
+                        }}
+                        title={recording.is_favorite ? 'Unfavorite' : 'Favorite'}
+                      >
+                        <Heart className={cn('h-4 w-4', recording.is_favorite && 'fill-red-500 text-red-500')} />
+                      </Button>
+                      <Button
+                        variant="plain"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          window.open(api.recordings.getDownloadUrl(recording.id), '_blank')
+                        }}
+                        title="Download"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                     <span>{formatDuration(recording.duration_seconds)}</span>
