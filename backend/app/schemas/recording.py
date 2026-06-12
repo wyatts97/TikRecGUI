@@ -42,6 +42,38 @@ class RecordingListResponse(BaseModel):
     page_size: int
 
 
+class ClipCreate(BaseModel):
+    recording_id: int
+    start_time: int = Field(..., ge=0, description="Start time in seconds")
+    end_time: int = Field(..., ge=0, description="End time in seconds")
+    title: str | None = Field(default=None, max_length=255)
+
+
+class ClipResponse(BaseModel):
+    id: int
+    recording_id: int
+    username: str
+    title: str | None = None
+    filename: str
+    start_time: int
+    end_time: int
+    duration_seconds: int | None = None
+    file_size: int | None = None
+    thumbnail_ready: bool = False
+    sprite_ready: bool = False
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ClipListResponse(BaseModel):
+    clips: list[ClipResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 class ActiveRecordingResponse(BaseModel):
     id: int
     user_id: int

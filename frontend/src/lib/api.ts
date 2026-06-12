@@ -66,6 +66,28 @@ export interface RecordingListResponse {
   page_size: number
 }
 
+export interface Clip {
+  id: number
+  recording_id: number
+  username: string
+  title: string | null
+  filename: string
+  start_time: number
+  end_time: number
+  duration_seconds: number | null
+  file_size: number | null
+  thumbnail_ready: boolean
+  sprite_ready: boolean
+  created_at: string
+}
+
+export interface ClipListResponse {
+  clips: Clip[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface ActiveRecording {
   id: number
   user_id: number
@@ -253,6 +275,43 @@ export const api = {
       }
       return response.blob()
     },
+  },
+
+  clips: {
+    create: (data: {
+      recording_id: number
+      start_time: number
+      end_time: number
+      title?: string | null
+    }) =>
+      fetchApi<Clip>("/clips", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+
+    list: (page = 1, pageSize = 20, sortBy?: string, sortOrder?: string) => {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+      })
+      if (sortBy) params.set("sort_by", sortBy)
+      if (sortOrder) params.set("sort_order", sortOrder)
+      return fetchApi<ClipListResponse>(`/clips?${params}`)
+    },
+
+    get: (id: number) => fetchApi<Clip>(`/clips/${id}`),
+
+    delete: (id: number) => fetchApi<void>(`/clips/${id}`, { method: "DELETE" }),
+
+    updateTitle: (id: number, title: string | null) =>
+      fetchApi<Clip>(`/clips/${id}?title=${encodeURIComponent(title || "")}`, {
+        method: "PATCH",
+      }),
+
+    getDownloadUrl: (id: number) => `${API_BASE}/clips/${id}/download`,
+    getStreamUrl: (id: number) => `${API_BASE}/clips/${id}/stream`,
+    getThumbnailUrl: (id: number) => `${API_BASE}/clips/${id}/thumbnail`,
+    getSpriteVttUrl: (id: number) => `${API_BASE}/clips/${id}/thumbnails.vtt`,
   },
 
   settings: {

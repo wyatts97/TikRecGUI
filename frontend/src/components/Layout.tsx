@@ -7,6 +7,7 @@ import {
   Settings,
   Radio,
   Tv,
+  Scissors,
   Circle,
   Menu,
   X,
@@ -40,6 +41,7 @@ const navItems = [
   { to: '/watchlist', icon: Users, label: 'Watchlist' },
   { to: '/recordings', icon: Video, label: 'Recordings' },
   { to: '/watch', icon: Tv, label: 'Watch' },
+  { to: '/clips', icon: Scissors, label: 'Clips' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 

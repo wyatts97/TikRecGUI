@@ -21,6 +21,86 @@ from app.config import settings
 logger = logging.getLogger("tikrec.media_utils")
 
 
+# ----------------------------------------------------------------
+# Clip helpers
+# ----------------------------------------------------------------
+
+def clip_directory() -> Path:
+    """Return the directory for storing clip files."""
+    return Path(settings.RECORDINGS_DIR) / "clips"
+
+
+def create_clip(video_path: Path, start: int, end: int, output_path: Path) -> bool:
+    """Extract a segment from *video_path* using ffmpeg.
+
+    Tries stream-copy first (fast, lossless) and falls back to a
+    full re-encode if the copy produces an empty or unreadable file.
+    """
+    if not video_path.exists():
+        return False
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    duration = end - start
+
+    # Strategy 1 — stream copy (fast, preserves quality)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-ss", str(start),
+                "-t", str(duration),
+                "-i", str(video_path),
+                "-c", "copy",
+                "-movflags", "+faststart",
+                str(output_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=180,
+        )
+        if output_path.exists() and output_path.stat().st_size > 0:
+            # Sanity-check the output is playable
+            health = analyze_video_health(output_path)
+            if not health.get("is_corrupt"):
+                logger.info("Clip created (stream copy): %s", output_path.name)
+                return True
+    except Exception:
+        logger.warning("Stream-copy clip failed for %s, trying re-encode", video_path)
+    finally:
+        if output_path.exists() and output_path.stat().st_size == 0:
+            output_path.unlink(missing_ok=True)
+
+    # Strategy 2 — re-encode (slower but more robust)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-ss", str(start),
+                "-t", str(duration),
+                "-i", str(video_path),
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "128k",
+                "-movflags", "+faststart",
+                str(output_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=300,
+        )
+        if output_path.exists() and output_path.stat().st_size > 0:
+            logger.info("Clip created (re-encode): %s", output_path.name)
+            return True
+    except Exception:
+        logger.error("Re-encode clip also failed for %s", video_path)
+
+    if output_path.exists():
+        output_path.unlink(missing_ok=True)
+    return False
+
+
 def generate_recording_filename(username: str) -> str:
     """Build a standardised filename for a recorded TikTok live stream.
 

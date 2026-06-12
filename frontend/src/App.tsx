@@ -7,6 +7,8 @@ import Watchlist from './pages/Watchlist'
 import Recordings from './pages/Recordings'
 import Watch from './pages/Watch'
 import WatchPlayer from './pages/WatchPlayer'
+import Clips from './pages/Clips'
+import ClipPlayer from './pages/ClipPlayer'
 import Settings from './pages/Settings'
 import { Toaster } from 'react-hot-toast'
 import { TimezoneProvider } from './lib/timezone-context'
@@ -54,6 +56,8 @@ function App() {
           <Route path="recordings" element={<Recordings />} />
           <Route path="watch" element={<Watch />} />
           <Route path="watch/:id" element={<WatchPlayer />} />
+          <Route path="clips" element={<Clips />} />
+          <Route path="clips/:id" element={<ClipPlayer />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

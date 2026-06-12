@@ -5,7 +5,7 @@ import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import '@vidstack/react/player/styles/default/theme.css'
 import '@vidstack/react/player/styles/default/layouts/video.css'
-import { ArrowLeft, Download, Trash2, Loader2, FileText, PanelRightOpen, Calendar, Clock, HardDrive, FileVideo } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, Loader2, FileText, PanelRightOpen, Calendar, Clock, HardDrive, FileVideo, Scissors } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
 import {
@@ -21,6 +21,7 @@ import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import TranscriptPanel from '@/components/TranscriptPanel'
+import ClipDialog from '@/components/ClipDialog'
 import toast from 'react-hot-toast'
 
 function downloadAsFile(content: string, filename: string, mime: string) {
@@ -79,6 +80,7 @@ export default function WatchPlayer() {
   const [showSidebar, setShowSidebar] = useState(false)
   const [transcriptSearch, setTranscriptSearch] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [clipDialogOpen, setClipDialogOpen] = useState(false)
   const playerRef = useRef<HTMLDivElement>(null)
 
   const { data: recording, isLoading } = useQuery({
@@ -286,6 +288,13 @@ export default function WatchPlayer() {
             </Button>
             <Button
               variant="outline"
+              onClick={() => setClipDialogOpen(true)}
+            >
+              <Scissors className="h-4 w-4" />
+              Clip
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setDeleteDialogOpen(true)}
               disabled={deleteMutation.isPending}
               className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
@@ -357,6 +366,14 @@ export default function WatchPlayer() {
           </div>
         )}
       </div>
+
+      {recording && (
+        <ClipDialog
+          recording={recording}
+          open={clipDialogOpen}
+          onOpenChange={setClipDialogOpen}
+        />
+      )}
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogPopup>

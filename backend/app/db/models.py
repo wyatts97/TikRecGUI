@@ -47,6 +47,24 @@ class Recording(Base):
     user = relationship("User", back_populates="recordings")
 
 
+class Clip(Base):
+    __tablename__ = "clips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    recording_id = Column(Integer, ForeignKey("recordings.id"), nullable=False)
+    title = Column(String(255), nullable=True)
+    filename = Column(String(512), nullable=False)
+    start_time = Column(Integer, nullable=False)
+    end_time = Column(Integer, nullable=False)
+    duration_seconds = Column(Integer, nullable=True)
+    file_size = Column(BigInteger, nullable=True)
+    thumbnail_ready = Column(Boolean, default=False)
+    sprite_ready = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    recording = relationship("Recording")
+
+
 class Setting(Base):
     __tablename__ = "settings"
     

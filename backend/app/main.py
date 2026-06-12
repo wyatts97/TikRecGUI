@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.database import init_db
-from app.api.routes import users, recordings, settings as settings_routes
+from app.api.routes import users, recordings, clips, settings as settings_routes
 from app.core.task_manager import task_manager, monitor_service
 
 
@@ -35,6 +35,7 @@ app.add_middleware(
 
 app.include_router(users.router, prefix="/api")
 app.include_router(recordings.router, prefix="/api")
+app.include_router(clips.router, prefix="/api")
 app.include_router(settings_routes.router, prefix="/api")
 
 
