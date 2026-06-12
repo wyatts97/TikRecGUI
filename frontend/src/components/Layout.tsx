@@ -101,7 +101,6 @@ export default function Layout() {
       <header className="fixed top-0 left-0 right-0 z-40 bg-background border-b border-border md:hidden">
         <div className="flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-2">
-            <img src="/tikrecui.png" alt="TikRec" className="h-6 w-6 rounded-lg" />
             <span className="text-lg font-bold text-foreground tracking-tight">TikRec</span>
           </div>
           <div className="flex items-center gap-1">
@@ -201,39 +200,37 @@ export default function Layout() {
           <div className="flex items-center gap-2 border-t border-border pt-4">
             {/* Recording indicator */}
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
-                    className={cn(
-                      'relative flex items-center justify-center rounded-xl p-2 transition-colors',
-                      activeRecordings.length > 0 && 'hover:bg-muted/60'
-                    )}
-                  />
-                }
-              >
-                {activeRecordings.length > 0 ? (
-                  <>
-                    <IconBox
-                      variant="danger"
-                      size="md"
-                      className="shadow-lg shadow-red-500/40 animate-pulse"
-                    >
+              <TooltipTrigger>
+                <div
+                  onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
+                  className={cn(
+                    'relative flex items-center justify-center rounded-xl p-2 transition-colors cursor-pointer',
+                    activeRecordings.length > 0 && 'hover:bg-muted/60'
+                  )}
+                >
+                  {activeRecordings.length > 0 ? (
+                    <>
+                      <IconBox
+                        variant="danger"
+                        size="md"
+                        className="shadow-lg shadow-red-500/40 animate-pulse"
+                      >
+                        <Radio className="h-4 w-4" />
+                      </IconBox>
+                      <Badge
+                        variant="danger"
+                        size="sm"
+                        className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
+                      >
+                        {activeRecordings.length}
+                      </Badge>
+                    </>
+                  ) : (
+                    <IconBox variant="secondary-subtle" size="md">
                       <Radio className="h-4 w-4" />
                     </IconBox>
-                    <Badge
-                      variant="danger"
-                      size="sm"
-                      className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
-                    >
-                      {activeRecordings.length}
-                    </Badge>
-                  </>
-                ) : (
-                  <IconBox variant="secondary-subtle" size="md">
-                    <Radio className="h-4 w-4" />
-                  </IconBox>
-                )}
+                  )}
+                </div>
               </TooltipTrigger>
               <TooltipContent>
                 {activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
@@ -242,15 +239,11 @@ export default function Layout() {
 
             {/* Refresh / sync circle with conic-gradient progress ring */}
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => triggerCheckMutation.mutate()}
-                    disabled={triggerCheckMutation.isPending}
-                    className="group relative flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
-                  />
-                }
-              >
+              <TooltipTrigger>
+                <div
+                  onClick={() => !triggerCheckMutation.isPending && triggerCheckMutation.mutate()}
+                  className="group relative flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors cursor-pointer"
+                >
                   {/* Default state: conic-gradient progress ring + Check icon */}
                   <div className={cn(
                     'transition-opacity',
@@ -262,15 +255,20 @@ export default function Layout() {
                       className="relative overflow-hidden"
                     >
                       {/* Conic-gradient progress ring background */}
-                      {countdown !== null && countdown > 0 && monitorStatus?.check_interval && (
-                        <div
-                          className="absolute inset-0 rounded-full"
-                          style={{
-                            background: `conic-gradient(var(--color-warning) ${((monitorStatus.check_interval - countdown) / monitorStatus.check_interval) * 360}deg, transparent ${((monitorStatus.check_interval - countdown) / monitorStatus.check_interval) * 360}deg)`,
-                            opacity: 0.4,
-                          }}
-                        />
-                      )}
+                      {(() => {
+                        const interval = monitorStatus?.check_interval ?? (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
+                        if (countdown === null || countdown <= 0) return null
+                        const progress = Math.min(1, Math.max(0, (interval - countdown) / interval))
+                        const angle = progress * 360
+                        return (
+                          <div
+                            className="absolute inset-0 rounded-full"
+                            style={{
+                              background: `conic-gradient(var(--color-warning) ${angle}deg, var(--color-muted) ${angle}deg)`,
+                            }}
+                          />
+                        )
+                      })()}
                       <Check className="h-4 w-4 relative z-10" />
                     </IconBox>
                   </div>
@@ -290,6 +288,7 @@ export default function Layout() {
                       )}
                     </IconBox>
                   </div>
+                </div>
               </TooltipTrigger>
               <TooltipContent>
                 {triggerCheckMutation.isPending ? 'Syncing…' : 'Sync Now'}
@@ -298,21 +297,19 @@ export default function Layout() {
 
             {/* Dark mode toggle */}
             <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    onClick={() => toggleTheme()}
-                    className="flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors"
-                  />
-                }
-              >
-                <IconBox variant="secondary-subtle" size="md">
-                  {theme === 'dark' ? (
-                    <Sun className="h-4 w-4" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
-                </IconBox>
+              <TooltipTrigger>
+                <div
+                  onClick={() => toggleTheme()}
+                  className="flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors cursor-pointer"
+                >
+                  <IconBox variant="secondary-subtle" size="md">
+                    {theme === 'dark' ? (
+                      <Sun className="h-4 w-4" />
+                    ) : (
+                      <Moon className="h-4 w-4" />
+                    )}
+                  </IconBox>
+                </div>
               </TooltipTrigger>
               <TooltipContent>
                 {theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}

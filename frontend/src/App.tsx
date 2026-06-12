@@ -10,6 +10,20 @@ import WatchPlayer from './pages/WatchPlayer'
 import Settings from './pages/Settings'
 import { Toaster } from 'sonner'
 import { TimezoneProvider } from './lib/timezone-context'
+import { useTheme } from './hooks/useTheme'
+
+function ToasterWrapper() {
+  const { theme } = useTheme()
+  return (
+    <Toaster
+      theme={theme}
+      closeButton
+      toastOptions={{
+        className: 'w-fit min-w-0',
+      }}
+    />
+  )
+}
 
 function App() {
   return (
@@ -27,7 +41,7 @@ function App() {
         </Route>
       </Routes>
       </TimezoneProvider>
-      <Toaster />
+      <ToasterWrapper />
     </ThemeProvider>
     </ErrorBoundary>
   )

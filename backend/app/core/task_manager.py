@@ -327,6 +327,7 @@ class MonitorService:
             "last_check_at": self._last_check_at.isoformat() if self._last_check_at else None,
             "next_check_in_seconds": next_check_in,
             "interval_minutes": self._interval_seconds() // 60,
+            "check_interval": self._interval_seconds(),
         }
 
     def _interval_seconds(self) -> int:
