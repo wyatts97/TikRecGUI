@@ -198,7 +198,8 @@ def create_clip_endpoint(request: ClipCreate, db: Session = Depends(get_db)):
     run_background(generate_thumbnail, output_path, thumbnail_path(output_path))
     run_background(generate_sprite, output_path)
 
-    return _build_clip_response(clip, username=recording.username)
+    recording_username = recording.user.username if recording.user else None
+    return _build_clip_response(clip, username=recording_username)
 
 
 @router.get("", response_model=ClipListResponse)
