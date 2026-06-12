@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db.database import get_db, run_background
@@ -34,11 +34,14 @@ router = APIRouter(prefix="/clips", tags=["clips"])
 # Internal helpers
 # ----------------------------------------------------------------
 
-def _build_clip_response(clip: Clip) -> ClipResponse:
+def _build_clip_response(clip: Clip, username: str | None = None) -> ClipResponse:
+    resolved_username = username or (
+        clip.recording.username if clip.recording is not None else "unknown"
+    )
     return ClipResponse(
         id=clip.id,
         recording_id=clip.recording_id,
-        username=clip.recording.username,
+        username=resolved_username,
         title=clip.title,
         filename=clip.filename,
         start_time=clip.start_time,
@@ -88,7 +91,7 @@ def _is_thumbnail_ready(clip: Clip) -> bool:
     return False
 
 
-def _is_sprite_ready(clip: Clip, db: Session | None = None) -> bool:
+def _is_sprite_ready(clip: Clip) -> bool:
     clip_dir = clip_directory()
     video_path = clip_dir / clip.filename
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
@@ -99,9 +102,6 @@ def _is_sprite_ready(clip: Clip, db: Session | None = None) -> bool:
         and vtt_path.exists()
         and vtt_path.stat().st_size > 0
     ):
-        if not clip.sprite_ready and db is not None:
-            clip.sprite_ready = True
-            db.commit()
         return True
     if video_path.exists():
         run_background(generate_sprite, video_path)
@@ -195,7 +195,7 @@ def create_clip_endpoint(request: ClipCreate, db: Session = Depends(get_db)):
     run_background(generate_thumbnail, output_path, thumbnail_path(output_path))
     run_background(generate_sprite, output_path)
 
-    return _build_clip_response(clip)
+    return _build_clip_response(clip, username=recording.username)
 
 
 @router.get("", response_model=ClipListResponse)
@@ -206,7 +206,9 @@ def list_clips(
     sort_order: str = "desc",
     db: Session = Depends(get_db)
 ):
-    query = db.query(Clip).join(Recording)
+    # Eagerly load the recording relationship so _build_clip_response
+    # can access clip.recording.username without detached errors.
+    query = db.query(Clip).options(joinedload(Clip.recording))
     count_query = db.query(func.count()).select_from(Clip)
 
     total = count_query.scalar() or 0
@@ -221,12 +223,10 @@ def list_clips(
 
     clips = query.order_by(order).offset((page - 1) * page_size).limit(page_size).all()
 
-    # Refresh thumbnail/sprite flags
+    # Refresh thumbnail/sprite flags in-memory (do NOT modify detached objects)
     for clip in clips:
         clip.thumbnail_ready = _is_thumbnail_ready(clip)
-        clip.sprite_ready = _is_sprite_ready(clip, db)
-
-    db.commit()
+        clip.sprite_ready = _is_sprite_ready(clip)
 
     return ClipListResponse(
         clips=[_build_clip_response(c) for c in clips],
@@ -238,7 +238,7 @@ def list_clips(
 
 @router.get("/{clip_id}", response_model=ClipResponse)
 def get_clip(clip_id: int, db: Session = Depends(get_db)):
-    clip = db.query(Clip).filter(Clip.id == clip_id).first()
+    clip = db.query(Clip).options(joinedload(Clip.recording)).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -246,15 +246,14 @@ def get_clip(clip_id: int, db: Session = Depends(get_db)):
         )
 
     clip.thumbnail_ready = _is_thumbnail_ready(clip)
-    clip.sprite_ready = _is_sprite_ready(clip, db)
-    db.commit()
+    clip.sprite_ready = _is_sprite_ready(clip)
 
     return _build_clip_response(clip)
 
 
 @router.patch("/{clip_id}", response_model=ClipResponse)
 def update_clip(clip_id: int, title: str | None = None, db: Session = Depends(get_db)):
-    clip = db.query(Clip).filter(Clip.id == clip_id).first()
+    clip = db.query(Clip).options(joinedload(Clip.recording)).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
