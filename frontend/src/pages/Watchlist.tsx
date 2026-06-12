@@ -57,7 +57,7 @@ import {
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { api, type User, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
-import { toast } from 'sonner'
+import toast from 'react-hot-toast'
 import EmptyState from '@/components/EmptyState'
 
 // Memoized user table row
@@ -388,10 +388,10 @@ export default function Watchlist() {
       setAddDialogOpen(false)
       setNewUsername('')
       setIsMonitoring(false)
-      toast('User added', { description: 'User has been added to your watchlist' })
+      toast.success('User added')
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -400,10 +400,10 @@ export default function Watchlist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setSelectedIds(new Set())
-      toast('User removed', { description: 'User has been removed from your watchlist' })
+      toast.success('User removed')
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -413,7 +413,7 @@ export default function Watchlist() {
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -430,10 +430,10 @@ export default function Watchlist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
       queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
-      toast('Recording started', { description: 'Recording has been started' })
+      toast.success('Recording started')
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -443,10 +443,10 @@ export default function Watchlist() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setSelectedIds(new Set())
-      toast('Updated', { description: 'Monitoring settings updated for selected users' })
+      toast.success('Monitoring settings updated')
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -461,7 +461,7 @@ export default function Watchlist() {
     for (const user of users) {
       await refreshUserMutation.mutateAsync(user.id)
     }
-      toast('Refreshed', { description: 'All user statuses have been updated' })
+      toast.success('All user statuses updated')
   }
 
   const toggleSelect = useCallback((id: number) => {

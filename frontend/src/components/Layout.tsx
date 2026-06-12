@@ -100,6 +100,7 @@ export default function Layout() {
       <header className="fixed top-0 left-0 right-0 z-40 bg-background border-b border-border md:hidden">
         <div className="flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-2">
+            <div className="h-6 w-6 rounded-full bg-red-500 shadow-lg shadow-red-500/40" />
             <span className="text-lg font-bold text-foreground tracking-tight">TikRec</span>
           </div>
           <div className="flex items-center gap-1">
@@ -168,7 +169,7 @@ export default function Layout() {
       <Sidebar className="hidden md:flex md:fixed md:inset-y-0 md:w-56 z-30 bg-background border-r border-border">
         <SidebarHeader>
           <SidebarLogo className="h-16 border-b border-border px-5">
-            <img src="/tikrecui.png" alt="TikRec" className="h-8 w-8 rounded-lg" />
+            <div className="h-8 w-8 rounded-full bg-red-500 shadow-lg shadow-red-500/40" />
             <span className="text-xl font-bold text-foreground tracking-tight">TikRec</span>
           </SidebarLogo>
         </SidebarHeader>

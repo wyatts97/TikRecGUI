@@ -8,43 +8,37 @@ import Recordings from './pages/Recordings'
 import Watch from './pages/Watch'
 import WatchPlayer from './pages/WatchPlayer'
 import Settings from './pages/Settings'
-import { Toaster } from 'sonner'
+import { Toaster } from 'react-hot-toast'
 import { TimezoneProvider } from './lib/timezone-context'
-import { useTheme } from './hooks/useTheme'
 
 function ToasterWrapper() {
-  const { theme } = useTheme()
   return (
-    <>
-      <style>{`
-        [data-sonner-toast] {
-          width: auto !important;
-          min-width: 0 !important;
-          max-width: none !important;
-        }
-        [data-sonner-toast] [data-close-button] {
-          top: 6px !important;
-          right: 6px !important;
-          transform: none !important;
-          background: transparent !important;
-          border: none !important;
-          box-shadow: none !important;
-          color: inherit !important;
-          opacity: 0.5;
-        }
-        [data-sonner-toast] [data-close-button]:hover {
-          opacity: 1;
-        }
-      `}</style>
-      <Toaster
-        theme={theme}
-        closeButton
-        toastOptions={{
-          className:
-            'bg-popover text-popover-foreground border border-border shadow-lg w-fit min-w-0 !max-w-none',
-        }}
-      />
-    </>
+    <Toaster
+      position="bottom-right"
+      toastOptions={{
+        style: {
+          background: 'var(--color-popover)',
+          color: 'var(--color-popover-foreground)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-lg)',
+          borderRadius: '0.75rem',
+          padding: '0.75rem 1rem',
+          fontSize: '0.875rem',
+        },
+        success: {
+          iconTheme: {
+            primary: 'var(--color-success)',
+            secondary: 'var(--color-popover)',
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: 'var(--color-danger)',
+            secondary: 'var(--color-popover)',
+          },
+        },
+      }}
+    />
   )
 }
 

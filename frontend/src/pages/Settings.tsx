@@ -57,7 +57,7 @@ export default function SettingsPage() {
       toast('Settings saved', { description: 'Your settings have been updated' })
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 

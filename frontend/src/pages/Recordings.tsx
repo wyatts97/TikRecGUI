@@ -51,7 +51,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
-import { toast } from 'sonner'
+import toast from 'react-hot-toast'
 
 const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'secondary-outline'> = {
   pending: 'secondary',
@@ -351,10 +351,10 @@ export default function Recordings() {
       queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
       setRecordDialogOpen(false)
       setNewUsername('')
-      toast('Recording started', { description: 'Recording has been started' })
+      toast.success('Recording started')
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -363,10 +363,10 @@ export default function Recordings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
       queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
-      toast('Recording stopped', { description: 'Recording has been stopped' })
+      toast.success('Recording stopped')
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -374,10 +374,10 @@ export default function Recordings() {
     mutationFn: (id: number) => api.recordings.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
-      toast('Recording deleted', { description: 'Recording has been deleted' })
+      toast.success('Recording deleted')
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -387,12 +387,10 @@ export default function Recordings() {
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
       setSelectedIds(new Set())
       setDeleteConfirmOpen(false)
-      toast('Recordings deleted', {
-        description: `${data.deleted} recording(s) deleted${data.errors.length > 0 ? `, ${data.errors.length} error(s)` : ''}`
-      })
+      toast.success(`${data.deleted} recording(s) deleted${data.errors.length > 0 ? `, ${data.errors.length} error(s)` : ''}`)
     },
     onError: (error: Error) => {
-      toast.error('Error', { description: error.message })
+      toast.error(error.message)
     },
   })
 
@@ -436,9 +434,9 @@ export default function Recordings() {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
-      toast('Download started', { description: 'Your recordings are being downloaded' })
+      toast.success('Download started')
     } catch (error) {
-      toast.error('Error', { description: (error as Error).message })
+      toast.error((error as Error).message)
     } finally {
       setIsDownloading(false)
     }

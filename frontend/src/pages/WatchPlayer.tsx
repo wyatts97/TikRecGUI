@@ -21,7 +21,7 @@ import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import TranscriptPanel from '@/components/TranscriptPanel'
-import { toast } from 'sonner'
+import toast from 'react-hot-toast'
 
 function downloadAsFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime })
@@ -102,12 +102,12 @@ export default function WatchPlayer() {
   const deleteMutation = useMutation({
     mutationFn: () => api.recordings.delete(recordingId),
     onSuccess: () => {
-      toast('Recording deleted')
+      toast.success('Recording deleted')
       queryClient.invalidateQueries({ queryKey: ['recordings'] })
       navigate('/watch')
     },
     onError: () => {
-      toast('Failed to delete recording')
+      toast.error('Failed to delete recording')
     },
   })
 
