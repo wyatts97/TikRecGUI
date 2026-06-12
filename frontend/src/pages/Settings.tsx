@@ -22,7 +22,7 @@ import {
   TabsItem,
 } from '@/components/selia/tabs'
 import { api, type Settings } from '@/lib/api'
-import { toast } from 'sonner'
+import toast from 'react-hot-toast'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 export default function SettingsPage() {
