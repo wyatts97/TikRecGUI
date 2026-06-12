@@ -35,9 +35,12 @@ router = APIRouter(prefix="/clips", tags=["clips"])
 # ----------------------------------------------------------------
 
 def _build_clip_response(clip: Clip, username: str | None = None) -> ClipResponse:
-    resolved_username = username or (
-        clip.recording.username if clip.recording is not None else "unknown"
-    )
+    if username:
+        resolved_username = username
+    elif clip.recording is not None and clip.recording.user is not None:
+        resolved_username = clip.recording.user.username
+    else:
+        resolved_username = "unknown"
     return ClipResponse(
         id=clip.id,
         recording_id=clip.recording_id,
@@ -208,7 +211,7 @@ def list_clips(
 ):
     # Eagerly load the recording relationship so _build_clip_response
     # can access clip.recording.username without detached errors.
-    query = db.query(Clip).options(joinedload(Clip.recording))
+    query = db.query(Clip).options(joinedload(Clip.recording).joinedload(Recording.user))
     count_query = db.query(func.count()).select_from(Clip)
 
     total = count_query.scalar() or 0
