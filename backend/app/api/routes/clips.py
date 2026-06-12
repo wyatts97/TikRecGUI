@@ -241,7 +241,7 @@ def list_clips(
 
 @router.get("/{clip_id}", response_model=ClipResponse)
 def get_clip(clip_id: int, db: Session = Depends(get_db)):
-    clip = db.query(Clip).options(joinedload(Clip.recording)).filter(Clip.id == clip_id).first()
+    clip = db.query(Clip).options(joinedload(Clip.recording).joinedload(Recording.user)).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -256,7 +256,7 @@ def get_clip(clip_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{clip_id}", response_model=ClipResponse)
 def update_clip(clip_id: int, title: str | None = None, db: Session = Depends(get_db)):
-    clip = db.query(Clip).options(joinedload(Clip.recording)).filter(Clip.id == clip_id).first()
+    clip = db.query(Clip).options(joinedload(Clip.recording).joinedload(Recording.user)).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
