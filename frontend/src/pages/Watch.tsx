@@ -232,7 +232,12 @@ export default function Watch() {
                         className="h-8 w-8"
                         onClick={(e) => {
                           e.stopPropagation()
-                          window.open(api.recordings.getDownloadUrl(recording.id), '_blank')
+                          const a = document.createElement('a')
+                          a.href = api.recordings.getDownloadUrl(recording.id)
+                          a.download = ''
+                          document.body.appendChild(a)
+                          a.click()
+                          document.body.removeChild(a)
                         }}
                         title="Download"
                       >

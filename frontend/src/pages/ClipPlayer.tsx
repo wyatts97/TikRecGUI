@@ -22,6 +22,15 @@ import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import toast from 'react-hot-toast'
 
+function triggerDownload(url: string) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = ''
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 export default function ClipPlayer() {
   const fmt = useDateFormat()
   const { id } = useParams<{ id: string }>()
@@ -161,7 +170,7 @@ export default function ClipPlayer() {
         <div className="flex justify-end gap-2">
           <Button
             variant="outline"
-            onClick={() => window.open(api.clips.getDownloadUrl(clip.id), '_blank')}
+            onClick={() => triggerDownload(api.clips.getDownloadUrl(clip.id))}
           >
             <Download className="h-4 w-4" />
             Download

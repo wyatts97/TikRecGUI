@@ -36,6 +36,15 @@ function downloadAsFile(content: string, filename: string, mime: string) {
   URL.revokeObjectURL(url)
 }
 
+function triggerDownload(url: string) {
+  const a = document.createElement('a')
+  a.href = url
+  a.download = ''
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 function formatTranscriptAsSrt(transcriptText: string): string {
   const lines = transcriptText.split('\n').filter(Boolean)
   const entries: string[] = []
@@ -281,7 +290,7 @@ export default function WatchPlayer() {
           <div className="flex justify-end gap-2">
             <Button
               variant="outline"
-              onClick={() => window.open(api.recordings.getDownloadUrl(recording.id), '_blank')}
+              onClick={() => triggerDownload(api.recordings.getDownloadUrl(recording.id))}
             >
               <Download className="h-4 w-4" />
               Download
