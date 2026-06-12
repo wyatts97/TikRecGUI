@@ -1,3 +1,5 @@
 tiktok-live-recorder
 node_modules
 .omo
+.agents
+skills-lock.json

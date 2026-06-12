@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import { ThemeProvider } from './hooks/useTheme'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
@@ -45,6 +46,12 @@ function ToasterWrapper() {
 }
 
 function App() {
+  const location = useLocation()
+
+  useEffect(() => {
+    window.HSStaticMethods?.autoInit()
+  }, [location.pathname])
+
   return (
     <ErrorBoundary>
     <ThemeProvider>
