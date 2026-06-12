@@ -123,7 +123,12 @@ def _generate_clip_filename(recording: Recording, start: int, end: int) -> str:
 
 @router.post("", response_model=ClipResponse, status_code=status.HTTP_201_CREATED)
 def create_clip_endpoint(request: ClipCreate, db: Session = Depends(get_db)):
-    recording = db.query(Recording).filter(Recording.id == request.recording_id).first()
+    recording = (
+        db.query(Recording)
+        .options(joinedload(Recording.user))
+        .filter(Recording.id == request.recording_id)
+        .first()
+    )
     if not recording:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -198,7 +203,13 @@ def create_clip_endpoint(request: ClipCreate, db: Session = Depends(get_db)):
     run_background(generate_thumbnail, output_path, thumbnail_path(output_path))
     run_background(generate_sprite, output_path)
 
+    # Resolve the username — recording.user was eagerly loaded via joinedload above
     recording_username = recording.user.username if recording.user else None
+    if not recording_username:
+        logger.warning(
+            "Could not resolve username for recording %s (user=%s), falling back",
+            recording.id, recording.user,
+        )
     return _build_clip_response(clip, username=recording_username)
 
 

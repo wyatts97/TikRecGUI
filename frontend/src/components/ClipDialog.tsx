@@ -109,7 +109,13 @@ export default function ClipDialog({
       onOpenChange(false)
       onClipCreated?.()
     } catch (err: any) {
-      toast.error(err.message || 'Failed to create clip')
+      const msg = err.message || 'Failed to create clip'
+      // "Request failed" from fetchApi is vague — give a friendlier fallback
+      if (msg === 'Request failed') {
+        toast.error('Failed to create clip — the clip may still have been created. Refresh to check.')
+      } else {
+        toast.error(msg)
+      }
     } finally {
       setIsSubmitting(false)
     }
