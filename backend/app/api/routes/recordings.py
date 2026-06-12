@@ -136,7 +136,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
         sprite_ready=_is_sprite_ready(rec, db),
         transcript_status=rec.transcript_status,
         transcript_text=rec.transcript_text,
-        is_favorite=rec.is_favorite,
+        is_favorite=rec.is_favorite or False,
         is_corrupt=is_corrupt,
     )
 
