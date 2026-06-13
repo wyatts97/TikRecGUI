@@ -386,30 +386,26 @@ export default function Dashboard() {
                 />
               </div>
             ) : (
-              <div className="space-y-1">
+              <ul className="relative space-y-6 border-s-2 border-border ps-6">
                 {activityItems.map((item) => {
                   const Icon = item.icon
-                  const iconVariant =
-                    item.type === 'recording' ? 'success-subtle' : 'danger-subtle'
+                  const nodeColor = item.type === 'recording' ? 'bg-success' : 'bg-danger'
                   return (
-                    <Item
-                      key={item.id}
-                      className="cursor-pointer hover:bg-accent transition-colors"
-                      onClick={item.onClick}
-                    >
-                      <ItemMedia>
-                        <IconBox variant={iconVariant} size="md" circle>
-                          <Icon className="h-4 w-4" />
-                        </IconBox>
-                      </ItemMedia>
-                      <ItemContent>
-                        <ItemTitle className="font-normal truncate">{item.label}</ItemTitle>
-                        <ItemDescription>{fmt(item.timestamp)}</ItemDescription>
-                      </ItemContent>
-                    </Item>
+                    <li key={item.id} className="relative">
+                      <span className={`absolute -start-[31px] flex h-6 w-6 items-center justify-center rounded-full ${nodeColor} ring-2 ring-background`}>
+                        <Icon className="h-3 w-3 text-white" />
+                      </span>
+                      <div
+                        className="cursor-pointer hover:bg-accent rounded-lg p-2 -m-2 transition-colors"
+                        onClick={item.onClick}
+                      >
+                        <p className="text-sm font-medium text-foreground truncate">{item.label}</p>
+                        <p className="text-xs text-muted-foreground">{fmt(item.timestamp)}</p>
+                      </div>
+                    </li>
                   )
                 })}
-              </div>
+              </ul>
             )}
           </CardBody>
         </Card>

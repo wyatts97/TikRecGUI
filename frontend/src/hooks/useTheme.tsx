@@ -1,17 +1,15 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
-type Theme = 'dark' | 'light'
+type Theme = 'light' | 'dark' | 'neo-futurism'
 
 interface ThemeContextValue {
   theme: Theme
   setTheme: (theme: Theme) => void
-  toggleTheme: () => void
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
   theme: 'light',
   setTheme: () => {},
-  toggleTheme: () => {},
 })
 
 function getSystemTheme(): Theme {
@@ -23,7 +21,7 @@ function getSystemTheme(): Theme {
 
 function getStoredTheme(): Theme | null {
   const stored = localStorage.getItem('tikrec-theme')
-  if (stored === 'dark' || stored === 'light') return stored
+  if (stored === 'light' || stored === 'dark' || stored === 'neo-futurism') return stored
   return null
 }
 
@@ -36,7 +34,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const root = window.document.documentElement
     root.classList.remove('light', 'dark')
-    root.classList.add(theme)
+    root.removeAttribute('data-theme')
+
+    if (theme === 'light') {
+      root.classList.add('light')
+    } else if (theme === 'dark') {
+      root.classList.add('dark')
+    } else if (theme === 'neo-futurism') {
+      root.classList.add('dark')
+      root.setAttribute('data-theme', 'theme-neo-futurism')
+    }
   }, [theme])
 
   useEffect(() => {
@@ -55,12 +62,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setThemeState(newTheme)
   }
 
-  const toggleTheme = () => {
-    setTheme(theme === 'light' ? 'dark' : 'light')
-  }
-
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme }}>
       {children}
     </ThemeContext.Provider>
   )

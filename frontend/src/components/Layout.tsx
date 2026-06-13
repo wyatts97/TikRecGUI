@@ -11,14 +11,10 @@ import {
   Circle,
   Menu,
   X,
-  Sun,
-  Moon,
   PanelLeft,
 } from 'lucide-react'
-import { DarkModeSwitch } from 'react-toggle-dark-mode'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
-import { useTheme } from '@/hooks/useTheme'
 import { api } from '@/lib/api'
 import CommandPalette from '@/components/CommandPalette'
 import { IconBox } from '@/components/selia/icon-box'
@@ -38,7 +34,6 @@ const navItems = [
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { theme, toggleTheme } = useTheme()
   const queryClient = useQueryClient()
   const [countdown, setCountdown] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -106,13 +101,6 @@ export default function Layout() {
                 {activeRecordings.length}
               </button>
             )}
-            <DarkModeSwitch
-              checked={theme === 'dark'}
-              onChange={() => toggleTheme()}
-              size={20}
-              className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
-              aria-label="Toggle dark mode"
-            />
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
@@ -305,26 +293,6 @@ export default function Layout() {
               </TooltipContent>
             </Tooltip>
 
-            {/* Dark mode toggle */}
-            <Tooltip>
-              <TooltipTrigger>
-                <div
-                  onClick={() => toggleTheme()}
-                  className="flex items-center justify-center rounded-xl p-2 hover:bg-muted/60 transition-colors cursor-pointer"
-                >
-                  <IconBox variant="secondary-subtle" size="md">
-                    {theme === 'dark' ? (
-                      <Sun className="h-4 w-4" />
-                    ) : (
-                      <Moon className="h-4 w-4" />
-                    )}
-                  </IconBox>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent>
-                {theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              </TooltipContent>
-            </Tooltip>
           </div>
         </div>
       </aside>

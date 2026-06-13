@@ -22,7 +22,6 @@ import {
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Button } from 'components/selia/button'
 import { Badge } from 'components/selia/badge'
-import { IconBox } from 'components/selia/icon-box'
 import { Input } from 'components/selia/input'
 import { Label } from 'components/selia/label'
 import {
@@ -170,46 +169,41 @@ const UserRow = memo(function UserRow({
       </TableCell>
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="plain"
-            size="icon"
+          <button
+            className="inline-flex items-center justify-center rounded-lg p-2 bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={(e) => {
               e.stopPropagation()
               onRefresh(user.id)
             }}
             disabled={isRefreshing}
+            aria-label="Refresh user"
           >
-            <IconBox variant="secondary-subtle" size="sm">
-              <RefreshCw className="h-4 w-4" />
-            </IconBox>
-          </Button>
+            <RefreshCw className="h-4 w-4" />
+          </button>
           {user.is_live && (
-            <Button
-              variant="secondary"
-              size="sm"
+            <button
+              className="inline-flex items-center justify-center rounded-lg p-2 bg-primary text-white hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               onClick={(e) => {
                 e.stopPropagation()
                 onStartRecording(user.username)
               }}
               disabled={isRecording}
+              aria-label="Start recording"
             >
-              <Play className="h-3 w-3" />
-              Record
-            </Button>
+              <Play className="h-3.5 w-3.5" />
+            </button>
           )}
-          <Button
-            variant="plain"
-            size="icon"
+          <button
+            className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={(e) => {
               e.stopPropagation()
               onRemove(user.id)
             }}
             disabled={isRemoving}
+            aria-label="Remove user"
           >
-            <IconBox variant="danger-subtle" size="sm">
-              <Trash2 className="h-4 w-4" />
-            </IconBox>
-          </Button>
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       </TableCell>
     </TableRow>
@@ -311,38 +305,33 @@ const UserCard = memo(function UserCard({
           {user.is_monitoring ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
           {user.is_monitoring ? 'Disable' : 'Enable'}
         </Button>
-        <Button
-          variant="plain"
-          size="sm"
-          className="h-7 text-xs"
+        <button
+          className="inline-flex items-center justify-center rounded-lg p-1.5 bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={() => onRefresh(user.id)}
           disabled={isRefreshing}
+          aria-label="Refresh user"
         >
-          <RefreshCw className="h-3 w-3 mr-1" />
-          Refresh
-        </Button>
+          <RefreshCw className="h-3.5 w-3.5" />
+        </button>
         {user.is_live && (
-          <Button
-            variant="secondary"
-            size="sm"
-            className="h-7 text-xs"
+          <button
+            className="inline-flex items-center justify-center rounded-lg p-1.5 bg-primary text-white hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={() => onStartRecording(user.username)}
             disabled={isRecording}
+            aria-label="Start recording"
           >
-            <Play className="h-3 w-3 mr-1" />
-            Record
-          </Button>
+            <Play className="h-3.5 w-3.5" />
+          </button>
         )}
         <div className="flex-1" />
-        <Button
-          variant="plain"
-          size="sm"
-          className="h-7 w-7"
+        <button
+          className="inline-flex items-center justify-center rounded-lg p-1.5 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           onClick={() => onRemove(user.id)}
           disabled={isRemoving}
+          aria-label="Remove user"
         >
-          <Trash2 className="h-3.5 w-3.5 text-destructive" />
-        </Button>
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
     </div>
   )

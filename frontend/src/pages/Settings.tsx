@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Globe, Activity, Cookie, Send, Video, Clock } from 'lucide-react'
+import { Save, AlertCircle, CheckCircle2, ExternalLink, Trash2, Archive, Globe, Activity, Cookie, Send, Video, Clock, Palette } from 'lucide-react'
 import { Card, CardBody, CardDescription, CardHeader, CardTitle } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
@@ -24,10 +24,12 @@ import {
 import { api, type Settings } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useTheme } from '@/hooks/useTheme'
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const isDesktop = useMediaQuery('(min-width: 768px)')
+  const { theme, setTheme } = useTheme()
   const [mobileTab, setMobileTab] = useState('status')
 
   const { data: settings, isLoading } = useQuery({
@@ -80,6 +82,7 @@ export default function SettingsPage() {
     { id: 'recording', label: 'Recording', icon: Video },
     { id: 'cleanup', label: 'Cleanup', icon: Trash2 },
     { id: 'timezone', label: 'Timezone', icon: Clock },
+    { id: 'appearance', label: 'Appearance', icon: Palette },
   ]
 
   const sectionContent = (
@@ -610,6 +613,38 @@ export default function SettingsPage() {
           </div>
         </CardBody>
       </Card>
+
+      <Card id="settings-appearance">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="h-5 w-5" />
+            Appearance
+          </CardTitle>
+          <CardDescription>Choose your preferred theme</CardDescription>
+        </CardHeader>
+        <CardBody className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { value: 'light' as const, label: 'Light', bg: 'bg-white', border: 'border-gray-200', dot: 'bg-gray-400' },
+              { value: 'dark' as const, label: 'Dark', bg: 'bg-gray-800', border: 'border-gray-700', dot: 'bg-gray-500' },
+              { value: 'neo-futurism' as const, label: 'Neo-Futurism', bg: 'bg-black', border: 'border-purple-900', dot: 'bg-red-500' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setTheme(option.value)}
+                className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                  theme === option.value ? 'border-primary' : option.border
+                } ${option.bg}`}
+              >
+                <div className={`h-4 w-4 rounded-full ${option.dot} ${theme === option.value ? 'ring-2 ring-white ring-offset-2 ring-offset-background' : ''}`} />
+                <span className={`text-xs font-medium ${option.value === 'light' ? 'text-gray-800' : 'text-white'}`}>
+                  {option.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </CardBody>
+      </Card>
     </>
   )
 
@@ -944,6 +979,39 @@ export default function SettingsPage() {
                           second: '2-digit',
                         })}
                       </span>
+                    </div>
+                  </CardBody>
+                </Card>
+              )}
+              {tab.id === 'appearance' && (
+                <Card id="settings-appearance">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Palette className="h-5 w-5" />
+                      Appearance
+                    </CardTitle>
+                    <CardDescription>Choose your preferred theme</CardDescription>
+                  </CardHeader>
+                  <CardBody className="space-y-4">
+                    <div className="grid grid-cols-3 gap-3">
+                      {[
+                        { value: 'light' as const, label: 'Light', bg: 'bg-white', border: 'border-gray-200', dot: 'bg-gray-400' },
+                        { value: 'dark' as const, label: 'Dark', bg: 'bg-gray-800', border: 'border-gray-700', dot: 'bg-gray-500' },
+                        { value: 'neo-futurism' as const, label: 'Neo-Futurism', bg: 'bg-black', border: 'border-purple-900', dot: 'bg-red-500' },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => setTheme(option.value)}
+                          className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
+                            theme === option.value ? 'border-primary' : option.border
+                          } ${option.bg}`}
+                        >
+                          <div className={`h-4 w-4 rounded-full ${option.dot} ${theme === option.value ? 'ring-2 ring-white ring-offset-2 ring-offset-background' : ''}`} />
+                          <span className={`text-xs font-medium ${option.value === 'light' ? 'text-gray-800' : 'text-white'}`}>
+                            {option.label}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   </CardBody>
                 </Card>

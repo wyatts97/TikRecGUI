@@ -19,7 +19,6 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
 import { Badge } from '@/components/selia/badge'
 import { Input } from '@/components/selia/input'
-import { IconBox } from '@/components/selia/icon-box'
 import {
   Dialog,
   DialogPopup,
@@ -129,38 +128,32 @@ const RecordingRow = memo(function RecordingRow({
       <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
           {recording.status === 'recording' && (
-            <Button
-              variant="plain"
-              size="icon"
+            <button
+              className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               onClick={() => onStop(recording.id)}
               disabled={stopPending}
+              aria-label="Stop recording"
             >
-              <IconBox variant="danger-subtle" size="sm">
-                <StopCircle className="h-4 w-4" />
-              </IconBox>
-            </Button>
+              <StopCircle className="h-4 w-4" />
+            </button>
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <Button
-              variant="plain"
-              size="icon"
+            <button
+              className="inline-flex items-center justify-center rounded-lg p-2 bg-primary text-white hover:bg-primary-hover transition-colors"
               onClick={() => onDownload(recording)}
+              aria-label="Download recording"
             >
-              <IconBox variant="primary-subtle" size="sm">
-                <Download className="h-4 w-4" />
-              </IconBox>
-            </Button>
+              <Download className="h-4 w-4" />
+            </button>
           )}
-          <Button
-            variant="plain"
-            size="icon"
+          <button
+            className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={() => onDelete(recording.id)}
             disabled={deletePending}
+            aria-label="Delete recording"
           >
-            <IconBox variant="danger-subtle" size="sm">
-              <Trash2 className="h-4 w-4" />
-            </IconBox>
-          </Button>
+            <Trash2 className="h-4 w-4" />
+          </button>
         </div>
       </TableCell>
     </TableRow>
@@ -230,38 +223,32 @@ const RecordingCard = memo(function RecordingCard({
         </div>
         <div className="flex items-center gap-1">
           {recording.status === 'recording' && (
-            <Button
-              variant="plain"
-              size="icon"
+            <button
+              className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               onClick={() => onStop(recording.id)}
               disabled={stopPending}
+              aria-label="Stop recording"
             >
-              <IconBox variant="danger-subtle" size="sm">
-                <StopCircle className="h-3.5 w-3.5" />
-              </IconBox>
-            </Button>
+              <StopCircle className="h-3.5 w-3.5" />
+            </button>
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <Button
-              variant="plain"
-              size="icon"
+            <button
+              className="inline-flex items-center justify-center rounded-lg p-2 bg-primary text-white hover:bg-primary-hover transition-colors"
               onClick={() => onDownload(recording)}
+              aria-label="Download recording"
             >
-              <IconBox variant="primary-subtle" size="sm">
-                <Download className="h-3.5 w-3.5" />
-              </IconBox>
-            </Button>
+              <Download className="h-3.5 w-3.5" />
+            </button>
           )}
-          <Button
-            variant="plain"
-            size="icon"
+          <button
+            className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             onClick={() => onDelete(recording.id)}
             disabled={deletePending}
+            aria-label="Delete recording"
           >
-            <IconBox variant="danger-subtle" size="sm">
-              <Trash2 className="h-3.5 w-3.5" />
-            </IconBox>
-          </Button>
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
     </div>
