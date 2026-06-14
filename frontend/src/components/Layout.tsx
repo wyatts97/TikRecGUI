@@ -12,15 +12,14 @@ import {
   Menu,
   X,
   PanelLeft,
+  Timer,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
 import CommandPalette from '@/components/CommandPalette'
-import { IconBox } from '@/components/selia/icon-box'
 import { Badge } from '@/components/selia/badge'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/selia/tooltip'
-import { Progress } from '@/components/selia/progress'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -133,7 +132,7 @@ export default function Layout() {
               key={item.to}
               onClick={() => handleNav(item.to)}
               className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors text-left',
+                'flex items-center gap-3.5 px-3.5 py-3 rounded-lg text-base font-medium transition-colors text-left',
                 location.pathname === item.to || (item.to !== '/' && location.pathname.startsWith(item.to + '/'))
                   ? 'bg-primary-subtle text-primary'
                   : 'text-muted-foreground hover:bg-muted/60',
@@ -195,7 +194,7 @@ export default function Layout() {
                     end={item.to === '/'}
                     className={cn(
                       'flex items-center rounded-lg transition-colors',
-                      miniMode ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5',
+                      miniMode ? 'justify-center px-2 py-2.5' : 'gap-3.5 px-3.5 py-3',
                       isActive
                         ? 'bg-primary-subtle text-primary'
                         : 'text-muted-foreground hover:bg-muted/60',
@@ -204,7 +203,7 @@ export default function Layout() {
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     {!miniMode && (
-                      <span className="text-sm font-medium">{item.label}</span>
+                      <span className="text-base font-medium">{item.label}</span>
                     )}
                   </NavLink>
                 </li>
@@ -218,73 +217,90 @@ export default function Layout() {
           'border-t border-border shrink-0',
           miniMode ? 'p-2' : 'p-4'
         )}>
-          {!miniMode && (
-            <div className="flex flex-col gap-3 mb-3">
-              {/* Refresh progress bar */}
-              <Tooltip>
-                <TooltipTrigger>
-                  <div
-                    onClick={() => !triggerCheckMutation.isPending && triggerCheckMutation.mutate()}
-                    className="cursor-pointer"
-                  >
-                    {(() => {
-                      const interval = monitorStatus?.check_interval ?? (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
-                      const isReady = countdown === null || countdown <= 0
-                      const value = isReady ? interval : Math.max(0, interval - countdown)
-                      return (
-                        <Progress
-                          label="Time to refresh"
-                          count={isReady ? 'Ready' : `${countdown}s`}
-                          value={value}
-                          max={interval}
-                          variant={isReady ? 'success' : 'warning'}
-                        />
-                      )
-                    })()}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {triggerCheckMutation.isPending ? 'Syncing…' : 'Sync Now'}
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          )}
-
           <div className={cn(
-            'flex items-center gap-2',
-            miniMode ? 'flex-col' : ''
+            'flex',
+            miniMode ? 'flex-col items-center gap-2' : 'flex-row items-center justify-between gap-2'
           )}>
+            {/* Circular Progress */}
+            <Tooltip>
+              <TooltipTrigger>
+                <div
+                  onClick={() => !triggerCheckMutation.isPending && triggerCheckMutation.mutate()}
+                  className="cursor-pointer"
+                >
+                  {(() => {
+                    const interval = monitorStatus?.check_interval ?? (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
+                    const isReady = countdown === null || countdown <= 0
+                    const value = isReady ? interval : Math.max(0, interval - countdown)
+                    const radius = 28
+                    const size = 64
+                    const strokeWidth = 4
+                    const circumference = 2 * Math.PI * radius
+                    const pct = interval > 0 ? Math.min(1, Math.max(0, value / interval)) : 0
+                    const dashOffset = circumference * (1 - pct)
+                    return (
+                      <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
+                        <svg className="transform -rotate-90" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+                          <circle
+                            cx={size / 2}
+                            cy={size / 2}
+                            r={radius}
+                            stroke="currentColor"
+                            strokeWidth={strokeWidth}
+                            fill="none"
+                            className="text-muted/30"
+                          />
+                          <circle
+                            cx={size / 2}
+                            cy={size / 2}
+                            r={radius}
+                            stroke="currentColor"
+                            strokeWidth={strokeWidth}
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeDasharray={circumference}
+                            strokeDashoffset={dashOffset}
+                            className={isReady ? 'text-success' : 'text-warning'}
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          {miniMode ? (
+                            <Timer className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <span className="text-[11px] font-semibold text-foreground">{isReady ? 'Ready' : `${countdown}s`}</span>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {triggerCheckMutation.isPending ? 'Syncing…' : 'Sync Now'}
+              </TooltipContent>
+            </Tooltip>
+
             {/* Recording indicator */}
             <Tooltip>
               <TooltipTrigger>
                 <div
                   onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
                   className={cn(
-                    'relative flex items-center justify-center rounded-xl p-2 transition-colors cursor-pointer',
-                    activeRecordings.length > 0 && 'hover:bg-muted/60'
+                    'relative flex items-center justify-center w-16 h-16 rounded-full transition-colors cursor-pointer',
+                    activeRecordings.length > 0
+                      ? 'bg-red-500 text-white shadow-lg shadow-red-500/40 animate-pulse'
+                      : 'bg-muted/60 text-muted-foreground'
                   )}
                 >
-                  {activeRecordings.length > 0 ? (
-                    <>
-                      <IconBox
-                        variant="danger"
-                        size="md"
-                        className="shadow-lg shadow-red-500/40 animate-pulse"
-                      >
-                        <Radio className="h-4 w-4" />
-                      </IconBox>
-                      <Badge
-                        variant="danger"
-                        size="sm"
-                        className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
-                      >
-                        {activeRecordings.length}
-                      </Badge>
-                    </>
-                  ) : (
-                    <IconBox variant="secondary-subtle" size="md">
-                      <Radio className="h-4 w-4" />
-                    </IconBox>
+                  <Radio className="h-5 w-5" />
+                  {activeRecordings.length > 0 && (
+                    <Badge
+                      variant="danger"
+                      size="sm"
+                      className="absolute -top-0.5 -right-0.5 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
+                    >
+                      {activeRecordings.length}
+                    </Badge>
                   )}
                 </div>
               </TooltipTrigger>
@@ -292,7 +308,6 @@ export default function Layout() {
                 {activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
               </TooltipContent>
             </Tooltip>
-
           </div>
         </div>
       </aside>

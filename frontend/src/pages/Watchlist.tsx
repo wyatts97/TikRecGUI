@@ -168,9 +168,9 @@ const UserRow = memo(function UserRow({
         {fmt(user.last_checked)}
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
+        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
           <button
-            className="inline-flex items-center justify-center rounded-lg p-2 bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-gray-500 text-white hover:bg-gray-600"
             onClick={(e) => {
               e.stopPropagation()
               onRefresh(user.id)
@@ -182,7 +182,7 @@ const UserRow = memo(function UserRow({
           </button>
           {user.is_live && (
             <button
-              className="inline-flex items-center justify-center rounded-lg p-2 bg-primary text-white hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
               onClick={(e) => {
                 e.stopPropagation()
                 onStartRecording(user.username)
@@ -194,7 +194,7 @@ const UserRow = memo(function UserRow({
             </button>
           )}
           <button
-            className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
             onClick={(e) => {
               e.stopPropagation()
               onRemove(user.id)
@@ -305,33 +305,34 @@ const UserCard = memo(function UserCard({
           {user.is_monitoring ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
           {user.is_monitoring ? 'Disable' : 'Enable'}
         </Button>
-        <button
-          className="inline-flex items-center justify-center rounded-lg p-1.5 bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          onClick={() => onRefresh(user.id)}
-          disabled={isRefreshing}
-          aria-label="Refresh user"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-        </button>
-        {user.is_live && (
+        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
           <button
-            className="inline-flex items-center justify-center rounded-lg p-1.5 bg-primary text-white hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            onClick={() => onStartRecording(user.username)}
-            disabled={isRecording}
-            aria-label="Start recording"
+            className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-gray-500 text-white hover:bg-gray-600"
+            onClick={() => onRefresh(user.id)}
+            disabled={isRefreshing}
+            aria-label="Refresh user"
           >
-            <Play className="h-3.5 w-3.5" />
+            <RefreshCw className="h-3.5 w-3.5" />
           </button>
-        )}
-        <div className="flex-1" />
-        <button
-          className="inline-flex items-center justify-center rounded-lg p-1.5 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          onClick={() => onRemove(user.id)}
-          disabled={isRemoving}
-          aria-label="Remove user"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+          {user.is_live && (
+            <button
+              className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
+              onClick={() => onStartRecording(user.username)}
+              disabled={isRecording}
+              aria-label="Start recording"
+            >
+              <Play className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
+            onClick={() => onRemove(user.id)}
+            disabled={isRemoving}
+            aria-label="Remove user"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   )

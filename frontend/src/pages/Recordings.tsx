@@ -126,10 +126,10 @@ const RecordingRow = memo(function RecordingRow({
         {fmt(recording.started_at || recording.created_at)}
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex items-center justify-end gap-1">
+        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
           {recording.status === 'recording' && (
             <button
-              className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
               onClick={() => onStop(recording.id)}
               disabled={stopPending}
               aria-label="Stop recording"
@@ -139,7 +139,7 @@ const RecordingRow = memo(function RecordingRow({
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
             <button
-              className="inline-flex items-center justify-center rounded-lg p-2 bg-primary text-white hover:bg-primary-hover transition-colors"
+              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
               onClick={() => onDownload(recording)}
               aria-label="Download recording"
             >
@@ -147,7 +147,7 @@ const RecordingRow = memo(function RecordingRow({
             </button>
           )}
           <button
-            className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
             onClick={() => onDelete(recording.id)}
             disabled={deletePending}
             aria-label="Delete recording"
@@ -221,10 +221,10 @@ const RecordingCard = memo(function RecordingCard({
             <span className="text-[10px] text-muted-foreground">No transcript</span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
           {recording.status === 'recording' && (
             <button
-              className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
               onClick={() => onStop(recording.id)}
               disabled={stopPending}
               aria-label="Stop recording"
@@ -234,7 +234,7 @@ const RecordingCard = memo(function RecordingCard({
           )}
           {(recording.status === 'completed' || recording.status === 'stopped') && (
             <button
-              className="inline-flex items-center justify-center rounded-lg p-2 bg-primary text-white hover:bg-primary-hover transition-colors"
+              className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
               onClick={() => onDownload(recording)}
               aria-label="Download recording"
             >
@@ -242,7 +242,7 @@ const RecordingCard = memo(function RecordingCard({
             </button>
           )}
           <button
-            className="inline-flex items-center justify-center rounded-lg p-2 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
             onClick={() => onDelete(recording.id)}
             disabled={deletePending}
             aria-label="Delete recording"
