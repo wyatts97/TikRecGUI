@@ -366,7 +366,10 @@ class MonitorService:
 
         # --- Phase 1: fetch monitored users and active recordings (short session) ---
         with get_session() as db:
-            monitored = db.query(User).filter(User.is_monitoring == True).all()  # noqa: E712
+            monitored = db.query(User).filter(
+                User.is_monitoring == True,  # noqa: E712
+                User.is_on_watchlist == True,  # noqa: E712
+            ).all()
             if not monitored:
                 return
 

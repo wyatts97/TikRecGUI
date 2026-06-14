@@ -39,16 +39,30 @@ def list_users(
 @router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):
     username = user.username.lstrip("@").strip()
-    
+
     existing = db.query(User).filter(User.username == username).first()
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User '{username}' already exists"
-        )
-    
+        if existing.is_on_watchlist:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"User '{username}' already exists"
+            )
+        # User was previously removed from the watchlist — re-activate them
+        status_info = recorder_service.check_user_live(username)
+        existing.is_on_watchlist = True
+        existing.is_monitoring = user.is_monitoring
+        existing.is_live = status_info.get("is_live", False)
+        existing.room_id = status_info.get("room_id")
+        existing.last_checked = datetime.utcnow()
+        db.commit()
+        db.refresh(existing)
+
+        user_info_service.update_user_profile_async(existing.id)
+        run_background(unified_avatar_service.fetch_and_cache, existing.username, existing.room_id)
+        return existing
+
     status_info = recorder_service.check_user_live(username)
-    
+
     db_user = User(
         username=username,
         room_id=status_info.get("room_id"),
