@@ -53,6 +53,7 @@ def _build_clip_response(clip: Clip, username: str | None = None) -> ClipRespons
         file_size=clip.file_size,
         thumbnail_ready=clip.thumbnail_ready,
         sprite_ready=clip.sprite_ready,
+        is_favorite=clip.is_favorite or False,
         created_at=clip.created_at,
     )
 
@@ -278,6 +279,20 @@ def update_clip(clip_id: int, title: str | None = None, db: Session = Depends(ge
     if title is not None:
         clip.title = title[:255] if title else None
 
+    db.commit()
+    db.refresh(clip)
+    return _build_clip_response(clip)
+
+
+@router.post("/{clip_id}/favorite", response_model=ClipResponse)
+def toggle_favorite_clip(clip_id: int, db: Session = Depends(get_db)):
+    clip = db.query(Clip).options(joinedload(Clip.recording).joinedload(Recording.user)).filter(Clip.id == clip_id).first()
+    if not clip:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Clip not found"
+        )
+    clip.is_favorite = not clip.is_favorite
     db.commit()
     db.refresh(clip)
     return _build_clip_response(clip)

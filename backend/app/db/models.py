@@ -60,6 +60,7 @@ class Clip(Base):
     file_size = Column(BigInteger, nullable=True)
     thumbnail_ready = Column(Boolean, default=False)
     sprite_ready = Column(Boolean, default=False)
+    is_favorite = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     recording = relationship("Recording")

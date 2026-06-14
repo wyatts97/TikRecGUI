@@ -61,6 +61,7 @@ class ClipResponse(BaseModel):
     file_size: int | None = None
     thumbnail_ready: bool = False
     sprite_ready: bool = False
+    is_favorite: bool = False
     created_at: datetime
 
     class Config:

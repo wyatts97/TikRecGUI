@@ -78,6 +78,7 @@ export interface Clip {
   file_size: number | null
   thumbnail_ready: boolean
   sprite_ready: boolean
+  is_favorite: boolean
   created_at: string
 }
 
@@ -302,6 +303,9 @@ export const api = {
     get: (id: number) => fetchApi<Clip>(`/clips/${id}`),
 
     delete: (id: number) => fetchApi<void>(`/clips/${id}`, { method: "DELETE" }),
+
+    toggleFavorite: (id: number) =>
+      fetchApi<Clip>(`/clips/${id}/favorite`, { method: "POST" }),
 
     updateTitle: (id: number, title: string | null) =>
       fetchApi<Clip>(`/clips/${id}?title=${encodeURIComponent(title || "")}`, {

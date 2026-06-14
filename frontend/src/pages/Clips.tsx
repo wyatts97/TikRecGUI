@@ -1,14 +1,14 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Play, Scissors, Loader2, Search } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Play, Scissors, Loader2, Search, Heart, Download } from 'lucide-react'
 import { Card } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
-import { api } from '@/lib/api'
-import { formatBytes, formatDuration } from '@/lib/utils'
+import { api, type Clip } from '@/lib/api'
+import { cn, formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 
 const ITEMS_PER_PAGE = 12
@@ -19,6 +19,24 @@ export default function Clips() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
+
+  const queryClient = useQueryClient()
+
+  const toggleFavoriteMutation = useMutation({
+    mutationFn: (id: number) => api.clips.toggleFavorite(id),
+    onSuccess: (updated: Clip) => {
+      queryClient.setQueryData(['clips', page, sortBy], (old: any) => {
+        if (!old) return old
+        return {
+          ...old,
+          clips: old.clips.map((c: Clip) =>
+            c.id === updated.id ? { ...c, is_favorite: updated.is_favorite } : c
+          ),
+        }
+      })
+      queryClient.invalidateQueries({ queryKey: ['clips'] })
+    },
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['clips', page, sortBy],
@@ -50,6 +68,10 @@ export default function Clips() {
           return (a.duration_seconds || 0) - (b.duration_seconds || 0)
         case 'largest':
           return (b.file_size || 0) - (a.file_size || 0)
+        case 'favorites':
+          if (a.is_favorite && !b.is_favorite) return -1
+          if (!a.is_favorite && b.is_favorite) return 1
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         default:
           return 0
       }
@@ -101,6 +123,7 @@ export default function Clips() {
               <SelectItem value="longest">Longest</SelectItem>
               <SelectItem value="shortest">Shortest</SelectItem>
               <SelectItem value="largest">Largest</SelectItem>
+              <SelectItem value="favorites">Favorites</SelectItem>
             </SelectList>
           </SelectPopup>
         </Select>
@@ -169,6 +192,37 @@ export default function Clips() {
                       <p className="text-xs text-muted-foreground mt-0.5">
                         @{clip.username} · {fmt(clip.created_at)}
                       </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="plain"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFavoriteMutation.mutate(clip.id)
+                        }}
+                        title={clip.is_favorite ? 'Unfavorite' : 'Favorite'}
+                      >
+                        <Heart className={cn('h-4 w-4', clip.is_favorite && 'fill-red-500 text-red-500')} />
+                      </Button>
+                      <Button
+                        variant="plain"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const a = document.createElement('a')
+                          a.href = api.clips.getDownloadUrl(clip.id)
+                          a.download = ''
+                          document.body.appendChild(a)
+                          a.click()
+                          document.body.removeChild(a)
+                        }}
+                        title="Download"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
