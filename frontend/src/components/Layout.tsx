@@ -208,7 +208,7 @@ export default function Layout() {
         )}>
           <div className={cn(
             'flex',
-            miniMode ? 'flex-col items-center gap-2' : 'flex-row items-center justify-between gap-2'
+            miniMode ? 'flex-col items-center justify-evenly' : 'flex-row items-center justify-evenly'
           )}>
             {/* Circular Progress */}
             <Tooltip>

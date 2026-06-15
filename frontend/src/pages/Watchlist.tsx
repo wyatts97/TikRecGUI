@@ -71,10 +71,14 @@ const customStyles = {
       color: 'var(--foreground)',
       fontSize: '0.875rem',
       minHeight: '56px',
-      borderBottom: '1px solid var(--border)',
+    },
+    stripedStyle: {
+      backgroundColor: 'var(--table-accent)',
     },
     highlightOnHoverStyle: {
-      backgroundColor: 'var(--muted-hover)',
+      backgroundColor: 'var(--table-head)',
+      transitionDuration: '150ms',
+      transitionProperty: 'background-color',
     },
   },
   cells: {
@@ -85,6 +89,53 @@ const customStyles = {
       backgroundColor: 'var(--card)',
       color: 'var(--foreground)',
       borderTop: '1px solid var(--border)',
+      fontSize: '0.875rem',
+    },
+    pageButtonsStyle: {
+      color: 'var(--foreground)',
+      fill: 'var(--foreground)',
+      backgroundColor: 'transparent',
+      borderRadius: '0.5rem',
+      height: '36px',
+      padding: '0 12px',
+      margin: '0 2px',
+      cursor: 'pointer',
+      transition: 'all 150ms',
+    },
+  },
+  paginationRowsPerPage: {
+    style: {
+      color: 'var(--foreground)',
+      backgroundColor: 'var(--card)',
+    },
+  },
+  paginationSelect: {
+    style: {
+      color: 'var(--foreground)',
+      backgroundColor: 'var(--card)',
+      border: '1px solid var(--border)',
+      borderRadius: '0.5rem',
+      padding: '4px 8px',
+    },
+  },
+  contextMenu: {
+    style: {
+      backgroundColor: 'var(--card)',
+      color: 'var(--foreground)',
+      border: '1px solid var(--border)',
+      borderRadius: '0.5rem',
+      boxShadow: 'var(--shadow-card)',
+    },
+  },
+  subHeader: {
+    style: {
+      backgroundColor: 'transparent',
+      padding: '0 0 12px 0',
+    },
+  },
+  responsiveWrapper: {
+    style: {
+      borderRadius: '0',
     },
   },
 }
@@ -587,6 +638,8 @@ export default function Watchlist() {
                 onRowClicked={(row: User) => setDetailUserId(row.id)}
                 highlightOnHover
                 pointerOnHover
+                striped
+                resizable
                 progressPending={isLoading}
                 progressComponent={<div className="py-8 text-center text-muted-foreground">Loading...</div>}
                 noDataComponent={

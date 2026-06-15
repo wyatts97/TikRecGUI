@@ -6,12 +6,8 @@ import {
   Trash2,
   StopCircle,
   Play,
-  Filter,
   Video,
   Loader2,
-  ArrowUp,
-  ArrowDown,
-  X,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
@@ -28,14 +24,6 @@ import {
   DialogBody,
 } from '@/components/selia/dialog'
 import DataTable from 'react-data-table-component'
-import {
-  Select,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  SelectPopup,
-  SelectList,
-} from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
 import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
@@ -70,14 +58,72 @@ const customStyles = {
       color: 'var(--foreground)',
       fontSize: '0.875rem',
       minHeight: '56px',
-      borderBottom: '1px solid var(--border)',
+    },
+    stripedStyle: {
+      backgroundColor: 'var(--table-accent)',
     },
     highlightOnHoverStyle: {
-      backgroundColor: 'var(--muted-hover)',
+      backgroundColor: 'var(--table-head)',
+      transitionDuration: '150ms',
+      transitionProperty: 'background-color',
     },
   },
   cells: {
     style: { paddingLeft: '16px', paddingRight: '16px' },
+  },
+  pagination: {
+    style: {
+      backgroundColor: 'var(--card)',
+      color: 'var(--foreground)',
+      borderTop: '1px solid var(--border)',
+      fontSize: '0.875rem',
+    },
+    pageButtonsStyle: {
+      color: 'var(--foreground)',
+      fill: 'var(--foreground)',
+      backgroundColor: 'transparent',
+      borderRadius: '0.5rem',
+      height: '36px',
+      padding: '0 12px',
+      margin: '0 2px',
+      cursor: 'pointer',
+      transition: 'all 150ms',
+    },
+  },
+  paginationRowsPerPage: {
+    style: {
+      color: 'var(--foreground)',
+      backgroundColor: 'var(--card)',
+    },
+  },
+  paginationSelect: {
+    style: {
+      color: 'var(--foreground)',
+      backgroundColor: 'var(--card)',
+      border: '1px solid var(--border)',
+      borderRadius: '0.5rem',
+      padding: '4px 8px',
+    },
+  },
+  contextMenu: {
+    style: {
+      backgroundColor: 'var(--card)',
+      color: 'var(--foreground)',
+      border: '1px solid var(--border)',
+      borderRadius: '0.5rem',
+      boxShadow: 'var(--shadow-card)',
+    },
+  },
+  subHeader: {
+    style: {
+      backgroundColor: 'transparent',
+      padding: '0 0 12px 0',
+    },
+  },
+  responsiveWrapper: {
+    style: {
+      borderRadius: '0',
+    },
   },
 }
 
@@ -88,6 +134,10 @@ export default function Recordings() {
     const p = searchParams.get('page')
     return p ? parseInt(p) : 1
   })
+  const [perPage, setPerPage] = useState(() => {
+    const pp = searchParams.get('perPage')
+    return pp ? parseInt(pp) : 20
+  })
   const [statusFilter, setStatusFilter] = useState<string | undefined>(() => {
     return searchParams.get('status') || undefined
   })
@@ -96,55 +146,39 @@ export default function Recordings() {
     return (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc'
   })
   const [usernameFilter, setUsernameFilter] = useState(() => searchParams.get('username') || '')
-  const [minSizeMb, setMinSizeMb] = useState(() => searchParams.get('minSize') || '')
-  const [maxSizeMb, setMaxSizeMb] = useState(() => searchParams.get('maxSize') || '')
-  const [dateFrom, setDateFrom] = useState(() => searchParams.get('dateFrom') || '')
-  const [dateTo, setDateTo] = useState(() => searchParams.get('dateTo') || '')
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [newUsername, setNewUsername] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
-  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const queryClient = useQueryClient()
 
   // Sync state to URL search params
   useEffect(() => {
     const params = new URLSearchParams()
     if (page > 1) params.set('page', String(page))
+    if (perPage !== 20) params.set('perPage', String(perPage))
     if (statusFilter) params.set('status', statusFilter)
     if (sortBy !== 'date') params.set('sortBy', sortBy)
     if (sortOrder !== 'desc') params.set('sortOrder', sortOrder)
     if (usernameFilter) params.set('username', usernameFilter)
-    if (minSizeMb) params.set('minSize', minSizeMb)
-    if (maxSizeMb) params.set('maxSize', maxSizeMb)
-    if (dateFrom) params.set('dateFrom', dateFrom)
-    if (dateTo) params.set('dateTo', dateTo)
     setSearchParams(params, { replace: true })
-  }, [page, statusFilter, sortBy, sortOrder, usernameFilter, minSizeMb, maxSizeMb, dateFrom, dateTo, setSearchParams])
+  }, [page, perPage, statusFilter, sortBy, sortOrder, usernameFilter, setSearchParams])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['recordings', page, statusFilter, sortBy, sortOrder, usernameFilter, minSizeMb, maxSizeMb, dateFrom, dateTo],
-    queryFn: () => api.recordings.list(page, 20, statusFilter, undefined, {
+    queryKey: ['recordings', page, perPage, statusFilter, sortBy, sortOrder, usernameFilter],
+    queryFn: () => api.recordings.list(page, perPage, statusFilter, undefined, {
       sortBy,
       sortOrder,
       usernameFilter: usernameFilter || undefined,
-      minSize: minSizeMb ? Math.round(parseFloat(minSizeMb) * 1024 * 1024) : undefined,
-      maxSize: maxSizeMb ? Math.round(parseFloat(maxSizeMb) * 1024 * 1024) : undefined,
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
     }),
   })
 
-  const hasActiveFilters = usernameFilter || minSizeMb || maxSizeMb || dateFrom || dateTo || statusFilter
+  const hasActiveFilters = !!usernameFilter || !!statusFilter
 
   const clearFilters = useCallback(() => {
     setStatusFilter(undefined)
     setUsernameFilter('')
-    setMinSizeMb('')
-    setMaxSizeMb('')
-    setDateFrom('')
-    setDateTo('')
     setSortBy('date')
     setSortOrder('desc')
     setPage(1)
@@ -152,9 +186,6 @@ export default function Recordings() {
 
   const recordings = data?.recordings || []
   const total = data?.total || 0
-  const totalPages = Math.ceil(total / 20)
-
-  const advancedFilterCount = [usernameFilter, minSizeMb, maxSizeMb, dateFrom, dateTo].filter(Boolean).length
 
   const startRecordingMutation = useMutation({
     mutationFn: (username: string) => api.recordings.start({ username }),
@@ -250,6 +281,7 @@ export default function Recordings() {
 
   const columns = useMemo(() => [
     {
+      id: 'username',
       name: 'User',
       selector: (row: Recording) => row.username,
       sortable: true,
@@ -264,6 +296,7 @@ export default function Recordings() {
       minWidth: '200px',
     },
     {
+      id: 'status',
       name: 'Status',
       selector: (row: Recording) => row.status,
       sortable: true,
@@ -275,6 +308,7 @@ export default function Recordings() {
       width: '120px',
     },
     {
+      id: 'transcript_status',
       name: 'Transcript',
       selector: (row: Recording) => row.transcript_status || '',
       sortable: true,
@@ -292,6 +326,7 @@ export default function Recordings() {
       width: '130px',
     },
     {
+      id: 'duration',
       name: 'Duration',
       selector: (row: Recording) => row.duration_seconds || 0,
       sortable: true,
@@ -299,6 +334,7 @@ export default function Recordings() {
       width: '110px',
     },
     {
+      id: 'size',
       name: 'Size',
       selector: (row: Recording) => row.file_size || 0,
       sortable: true,
@@ -306,6 +342,7 @@ export default function Recordings() {
       width: '100px',
     },
     {
+      id: 'date',
       name: 'Date',
       selector: (row: Recording) => row.started_at || row.created_at || '',
       sortable: true,
@@ -403,128 +440,7 @@ export default function Recordings() {
               <Video className="h-5 w-5" />
               Recordings ({total})
             </CardTitle>
-            <div className="flex items-center gap-2">
-              {hasActiveFilters && (
-                <Button variant="plain" size="sm" onClick={clearFilters} className="text-xs">
-                  <X className="h-3 w-3" />
-                  Clear filters
-                </Button>
-              )}
-            </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <div className="flex items-center gap-1.5">
-              <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <Select
-                value={statusFilter || 'all'}
-                onValueChange={(v) => { const val = v as string; setStatusFilter(val === 'all' ? undefined : val); setPage(1) }}
-              >
-                <SelectTrigger className="h-8 w-32 text-sm">
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectList>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="recording">Recording</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="stopped">Stopped</SelectItem>
-                    <SelectItem value="failed">Failed</SelectItem>
-                  </SelectList>
-                </SelectPopup>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">Sort:</span>
-              <Select
-                value={sortBy}
-                onValueChange={(v) => { setSortBy(v as string); setPage(1) }}
-              >
-                <SelectTrigger className="h-8 w-28 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectPopup>
-                  <SelectList>
-                    <SelectItem value="date">Date</SelectItem>
-                    <SelectItem value="size">Size</SelectItem>
-                    <SelectItem value="duration">Duration</SelectItem>
-                    <SelectItem value="username">User</SelectItem>
-                  </SelectList>
-                </SelectPopup>
-              </Select>
-              <button
-                onClick={() => { setSortOrder((o: 'asc' | 'desc') => o === 'asc' ? 'desc' : 'asc'); setPage(1) }}
-                className="flex items-center justify-center h-8 w-8 rounded-lg border bg-background hover:bg-muted/60 transition-colors"
-                title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
-              >
-                {sortOrder === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs relative"
-              onClick={() => setShowAdvancedFilters((s) => !s)}
-            >
-              <Filter className="h-3.5 w-3.5" />
-              Filters
-              {advancedFilterCount > 0 && (
-                <span className="ml-1.5 h-4 min-w-[1rem] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-medium flex items-center justify-center">
-                  {advancedFilterCount}
-                </span>
-              )}
-            </Button>
-          </div>
-
-          {showAdvancedFilters && (
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border mt-2">
-              <Input
-                placeholder="Filter by user…"
-                value={usernameFilter}
-                onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
-                className="h-8 w-36 text-sm"
-              />
-
-              <div className="flex items-center gap-1">
-                <Input
-                  placeholder="Min MB"
-                  type="number"
-                  min="0"
-                  value={minSizeMb}
-                  onChange={(e) => { setMinSizeMb(e.target.value); setPage(1) }}
-                  className="h-8 w-20 text-sm"
-                />
-                <span className="text-xs text-muted-foreground">–</span>
-                <Input
-                  placeholder="Max MB"
-                  type="number"
-                  min="0"
-                  value={maxSizeMb}
-                  onChange={(e) => { setMaxSizeMb(e.target.value); setPage(1) }}
-                  className="h-8 w-20 text-sm"
-                />
-                <span className="text-xs text-muted-foreground">MB</span>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
-                  className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
-                />
-                <span className="text-xs text-muted-foreground">–</span>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
-                  className="text-sm border rounded-lg px-2 py-1 bg-background h-8"
-                />
-              </div>
-            </div>
-          )}
         </CardHeader>
         <CardBody>
           {selectedIds.size > 0 && recordings.length > 0 && (
@@ -577,34 +493,54 @@ export default function Recordings() {
                 onAction={() => setRecordDialogOpen(true)}
               />
             }
-            pagination={false}
+            pagination
+            paginationServer
+            paginationTotalRows={total}
+            paginationPerPage={perPage}
+            paginationRowsPerPageOptions={[10, 20, 50, 100]}
+            onChangePage={(p) => setPage(p)}
+            onChangeRowsPerPage={(n) => { setPerPage(n); setPage(1) }}
+            sortServer
+            onSort={(column) => {
+              const field = (column as any).id || 'date'
+              setSortBy(field)
+              setSortOrder((prev) => prev === 'asc' ? 'desc' : 'asc')
+              setPage(1)
+            }}
+            striped
+            resizable
             highlightOnHover
             pointerOnHover
+            subHeader={
+              <div className="flex items-center gap-2 w-full">
+                <select
+                  value={statusFilter || 'all'}
+                  onChange={(e) => { const val = e.target.value; setStatusFilter(val === 'all' ? undefined : val); setPage(1) }}
+                  className="h-8 px-2 text-sm rounded-lg border bg-background text-foreground border-border focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="all">All Status</option>
+                  <option value="recording">Recording</option>
+                  <option value="completed">Completed</option>
+                  <option value="stopped">Stopped</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <input
+                  placeholder="Filter by user…"
+                  value={usernameFilter}
+                  onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
+                  className="h-8 px-3 text-sm rounded-lg border bg-background text-foreground border-border focus:outline-none focus:ring-2 focus:ring-primary w-48"
+                />
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            }
           />
-
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 mt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          )}
         </CardBody>
       </Card>
 
