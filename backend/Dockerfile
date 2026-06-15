@@ -17,7 +17,7 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN uv pip install --system --no-cache -r requirements.txt
+RUN uv pip install --system --no-cache --prerelease=allow -r requirements.txt
 
 # Vendor the TikTok recorder into the image so it is always present,
 # independent of the host filesystem / git state.
