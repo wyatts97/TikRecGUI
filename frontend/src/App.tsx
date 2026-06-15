@@ -1,18 +1,19 @@
-import { useEffect } from 'react'
+import { useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import { ThemeProvider } from './hooks/useTheme'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
-import Dashboard from './pages/Dashboard'
-import Watchlist from './pages/Watchlist'
-import Recordings from './pages/Recordings'
-import Watch from './pages/Watch'
-import WatchPlayer from './pages/WatchPlayer'
-import Clips from './pages/Clips'
-import ClipPlayer from './pages/ClipPlayer'
-import Settings from './pages/Settings'
 import { Toaster } from 'react-hot-toast'
 import { TimezoneProvider } from './lib/timezone-context'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Watchlist = lazy(() => import('./pages/Watchlist'))
+const Recordings = lazy(() => import('./pages/Recordings'))
+const Watch = lazy(() => import('./pages/Watch'))
+const WatchPlayer = lazy(() => import('./pages/WatchPlayer'))
+const Clips = lazy(() => import('./pages/Clips'))
+const ClipPlayer = lazy(() => import('./pages/ClipPlayer'))
+const Settings = lazy(() => import('./pages/Settings'))
 
 function ToasterWrapper() {
   return (
@@ -56,18 +57,20 @@ function App() {
     <ErrorBoundary>
     <ThemeProvider>
       <TimezoneProvider>
-      <Routes>
-        <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
-          <Route path="watchlist" element={<Watchlist />} />
-          <Route path="recordings" element={<Recordings />} />
-          <Route path="watch" element={<Watch />} />
-          <Route path="watch/:id" element={<WatchPlayer />} />
-          <Route path="clips" element={<Clips />} />
-          <Route path="clips/:id" element={<ClipPlayer />} />
-          <Route path="settings" element={<Settings />} />
-        </Route>
-      </Routes>
+      <Suspense fallback={<div className="flex h-screen items-center justify-center"><span className="text-muted">Loading...</span></div>}>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="watchlist" element={<Watchlist />} />
+            <Route path="recordings" element={<Recordings />} />
+            <Route path="watch" element={<Watch />} />
+            <Route path="watch/:id" element={<WatchPlayer />} />
+            <Route path="clips" element={<Clips />} />
+            <Route path="clips/:id" element={<ClipPlayer />} />
+            <Route path="settings" element={<Settings />} />
+          </Route>
+        </Routes>
+      </Suspense>
       </TimezoneProvider>
       <ToasterWrapper />
     </ThemeProvider>
