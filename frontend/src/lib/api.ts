@@ -282,6 +282,9 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ recording_ids: ids }),
       }),
+
+    stopAll: () =>
+      fetchApi<{ stopped: number }>("/recordings/stop-all", { method: "POST" }),
     
     getEvents: (id: number, page = 1, pageSize = 100, eventType?: string, search?: string) => {
       const params = new URLSearchParams({

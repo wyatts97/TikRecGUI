@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -8,6 +8,8 @@ import {
   Play,
   Video,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
@@ -23,12 +25,13 @@ import {
   DialogTrigger,
   DialogBody,
 } from '@/components/selia/dialog'
-import DataTable from 'react-data-table-component'
 import EmptyState from '@/components/EmptyState'
 import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import toast from 'react-hot-toast'
+
+const PER_PAGE = 20
 
 const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'secondary-outline'> = {
   pending: 'secondary',
@@ -38,96 +41,6 @@ const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'dange
   stopped: 'secondary-outline',
 }
 
-const customStyles = {
-  table: { style: { backgroundColor: 'transparent' } },
-  headRow: {
-    style: {
-      backgroundColor: 'var(--table-head)',
-      color: 'var(--foreground)',
-      fontSize: '0.875rem',
-      fontWeight: 500,
-      borderBottom: '1px solid var(--border)',
-    },
-  },
-  headCells: {
-    style: { paddingLeft: '16px', paddingRight: '16px' },
-  },
-  rows: {
-    style: {
-      backgroundColor: 'var(--card)',
-      color: 'var(--foreground)',
-      fontSize: '0.875rem',
-      minHeight: '56px',
-      borderBottom: 'none',
-    },
-    stripedStyle: {
-      backgroundColor: 'var(--table-accent)',
-    },
-    highlightOnHoverStyle: {
-      backgroundColor: 'var(--table-head)',
-      transitionDuration: '150ms',
-      transitionProperty: 'background-color',
-      borderBottom: 'none',
-    },
-  },
-  cells: {
-    style: { paddingLeft: '16px', paddingRight: '16px' },
-  },
-  pagination: {
-    style: {
-      backgroundColor: 'var(--card)',
-      color: 'var(--foreground)',
-      borderTop: '1px solid var(--border)',
-      fontSize: '0.875rem',
-    },
-    pageButtonsStyle: {
-      color: 'var(--foreground)',
-      fill: 'var(--foreground)',
-      backgroundColor: 'transparent',
-      borderRadius: '0.5rem',
-      height: '36px',
-      padding: '0 12px',
-      margin: '0 2px',
-      cursor: 'pointer',
-      transition: 'all 150ms',
-    },
-  },
-  paginationRowsPerPage: {
-    style: {
-      color: 'var(--foreground)',
-      backgroundColor: 'var(--card)',
-    },
-  },
-  paginationSelect: {
-    style: {
-      color: 'var(--foreground)',
-      backgroundColor: 'var(--card)',
-      border: '1px solid var(--border)',
-      borderRadius: '0.5rem',
-      padding: '4px 8px',
-    },
-  },
-  contextMenu: {
-    style: {
-      backgroundColor: 'var(--card)',
-      color: 'var(--foreground)',
-      border: '1px solid var(--border)',
-      borderRadius: '0.5rem',
-      boxShadow: 'var(--shadow-card)',
-    },
-  },
-  subHeader: {
-    style: {
-      backgroundColor: 'transparent',
-      padding: '0 0 12px 0',
-    },
-  },
-  responsiveWrapper: {
-    style: {
-      borderRadius: '0',
-    },
-  },
-}
 
 export default function Recordings() {
   const fmt = useDateFormat()
@@ -136,10 +49,10 @@ export default function Recordings() {
     const p = searchParams.get('page')
     return p ? parseInt(p) : 1
   })
-  const [perPage, setPerPage] = useState(() => {
+  const perPage = (() => {
     const pp = searchParams.get('perPage')
     return pp ? parseInt(pp) : 20
-  })
+  })()
   const [statusFilter, setStatusFilter] = useState<string | undefined>(() => {
     return searchParams.get('status') || undefined
   })
@@ -153,6 +66,7 @@ export default function Recordings() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [tablePage, setTablePage] = useState(1)
   const queryClient = useQueryClient()
 
   // Sync state to URL search params
@@ -239,6 +153,18 @@ export default function Recordings() {
     },
   })
 
+  const stopAllMutation = useMutation({
+    mutationFn: () => api.recordings.stopAll(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+      queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
+      toast.success(`${data.stopped} recording(s) stopped`)
+    },
+    onError: (error: Error) => {
+      toast.error(error.message)
+    },
+  })
+
   const handleStartRecording = (e: React.FormEvent) => {
     e.preventDefault()
     if (newUsername.trim()) {
@@ -281,113 +207,6 @@ export default function Recordings() {
     batchDeleteMutation.mutate(Array.from(selectedIds))
   }
 
-  const columns = useMemo(() => [
-    {
-      id: 'username',
-      name: 'User',
-      selector: (row: Recording) => row.username,
-      sortable: true,
-      cell: (row: Recording) => (
-        <div>
-          <p className="font-medium">@{row.username}</p>
-          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-            {row.filename}
-          </p>
-        </div>
-      ),
-      minWidth: '200px',
-    },
-    {
-      id: 'status',
-      name: 'Status',
-      selector: (row: Recording) => row.status,
-      sortable: true,
-      cell: (row: Recording) => (
-        <Badge variant={statusVariantMap[row.status] || 'default'}>
-          {row.status}
-        </Badge>
-      ),
-      width: '120px',
-    },
-    {
-      id: 'transcript_status',
-      name: 'Transcript',
-      selector: (row: Recording) => row.transcript_status || '',
-      sortable: true,
-      cell: (row: Recording) => (
-        row.transcript_status === 'done' ? (
-          <Badge variant="success" className="text-xs">Done</Badge>
-        ) : row.transcript_status === 'processing' ? (
-          <Badge variant="warning" className="text-xs">Processing</Badge>
-        ) : row.transcript_status === 'pending' ? (
-          <Badge variant="secondary" className="text-xs">Pending</Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )
-      ),
-      width: '130px',
-    },
-    {
-      id: 'duration',
-      name: 'Duration',
-      selector: (row: Recording) => row.duration_seconds || 0,
-      sortable: true,
-      cell: (row: Recording) => formatDuration(row.duration_seconds),
-      width: '110px',
-    },
-    {
-      id: 'size',
-      name: 'Size',
-      selector: (row: Recording) => row.file_size || 0,
-      sortable: true,
-      cell: (row: Recording) => formatBytes(row.file_size),
-      width: '100px',
-    },
-    {
-      id: 'date',
-      name: 'Date',
-      selector: (row: Recording) => row.started_at || row.created_at || '',
-      sortable: true,
-      cell: (row: Recording) => <span className="text-sm text-muted-foreground">{fmt(row.started_at || row.created_at)}</span>,
-      width: '160px',
-    },
-    {
-      name: 'Actions',
-      cell: (row: Recording) => (
-        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
-          {row.status === 'recording' && (
-            <button
-              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-              onClick={() => stopRecordingMutation.mutate(row.id)}
-              disabled={stopRecordingMutation.isPending}
-              aria-label="Stop recording"
-            >
-              <StopCircle className="h-4 w-4" />
-            </button>
-          )}
-          {(row.status === 'completed' || row.status === 'stopped') && (
-            <button
-              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
-              onClick={() => handleDownload(row)}
-              aria-label="Download recording"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-            onClick={() => deleteRecordingMutation.mutate(row.id)}
-            disabled={deleteRecordingMutation.isPending}
-            aria-label="Delete recording"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      ),
-      width: '140px',
-      right: true,
-    },
-  ], [fmt, stopRecordingMutation.isPending, deleteRecordingMutation.isPending])
 
   return (
     <div className="space-y-6">
@@ -398,7 +217,20 @@ export default function Recordings() {
             View and manage your TikTok live recordings
           </p>
         </div>
-        <Dialog open={recordDialogOpen} onOpenChange={setRecordDialogOpen}>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="danger"
+            onClick={() => stopAllMutation.mutate()}
+            disabled={stopAllMutation.isPending}
+          >
+            {stopAllMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <StopCircle className="h-4 w-4 mr-2" />
+            )}
+            Stop Recording All
+          </Button>
+          <Dialog open={recordDialogOpen} onOpenChange={setRecordDialogOpen}>
           <DialogTrigger>
             <Button>
               <Play className="h-4 w-4" />
@@ -433,15 +265,43 @@ export default function Recordings() {
             </form>
           </DialogPopup>
         </Dialog>
+        </div>
       </div>
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <CardTitle className="flex items-center gap-2">
               <Video className="h-5 w-5" />
               Recordings ({total})
             </CardTitle>
+            <div className="flex items-center gap-2">
+              <select
+                value={statusFilter || 'all'}
+                onChange={(e) => { const val = e.target.value; setStatusFilter(val === 'all' ? undefined : val); setPage(1); setTablePage(1) }}
+                className="h-8 px-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-800 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Status</option>
+                <option value="recording">Recording</option>
+                <option value="completed">Completed</option>
+                <option value="stopped">Stopped</option>
+                <option value="failed">Failed</option>
+              </select>
+              <input
+                placeholder="Filter by user…"
+                value={usernameFilter}
+                onChange={(e) => { setUsernameFilter(e.target.value); setPage(1); setTablePage(1) }}
+                className="h-8 px-3 text-sm rounded-lg border border-gray-200 bg-white text-gray-800 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
+              />
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="h-8 px-2 text-xs text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-white transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardBody>
@@ -475,74 +335,144 @@ export default function Recordings() {
             </div>
           )}
 
-          <DataTable
-            columns={columns}
-            data={recordings}
-            selectableRows
-            selectableRowsHighlight
-            onSelectedRowsChange={({ selectedRows }) => {
-              setSelectedIds(new Set(selectedRows.map((r: Recording) => r.id)))
-            }}
-            customStyles={customStyles}
-            progressPending={isLoading}
-            progressComponent={<div className="py-8 text-center text-muted-foreground">Loading...</div>}
-            noDataComponent={
-              <EmptyState
-                icon={Video}
-                title="No recordings found"
-                description="Start a recording to capture TikTok live streams"
-                actionLabel="Start your first recording"
-                onAction={() => setRecordDialogOpen(true)}
-              />
-            }
-            pagination
-            paginationServer
-            paginationTotalRows={total}
-            paginationPerPage={perPage}
-            paginationRowsPerPageOptions={[10, 20, 50, 100]}
-            onChangePage={(p) => setPage(p)}
-            onChangeRowsPerPage={(n) => { setPerPage(n); setPage(1) }}
-            sortServer
-            onSort={(column) => {
-              const field = (column as any).id || 'date'
-              setSortBy(field)
-              setSortOrder((prev) => prev === 'asc' ? 'desc' : 'asc')
-              setPage(1)
-            }}
-            striped
-            resizable
-            highlightOnHover
-            pointerOnHover
-            subHeader={
-              <div className="flex items-center gap-2 w-full">
-                <select
-                  value={statusFilter || 'all'}
-                  onChange={(e) => { const val = e.target.value; setStatusFilter(val === 'all' ? undefined : val); setPage(1) }}
-                  className="h-8 px-2 text-sm rounded-lg border bg-background text-foreground border-border focus:outline-none focus:ring-2 focus:ring-primary"
-                >
-                  <option value="all">All Status</option>
-                  <option value="recording">Recording</option>
-                  <option value="completed">Completed</option>
-                  <option value="stopped">Stopped</option>
-                  <option value="failed">Failed</option>
-                </select>
-                <input
-                  placeholder="Filter by user…"
-                  value={usernameFilter}
-                  onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
-                  className="h-8 px-3 text-sm rounded-lg border bg-background text-foreground border-border focus:outline-none focus:ring-2 focus:ring-primary w-48"
-                />
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    Clear
-                  </button>
-                )}
+          {isLoading ? (
+            <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto text-gray-400" /></div>
+          ) : recordings.length === 0 ? (
+            <EmptyState
+              icon={Video}
+              title="No recordings found"
+              description="Start a recording to capture TikTok live streams"
+              actionLabel="Start your first recording"
+              onAction={() => setRecordDialogOpen(true)}
+            />
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-neutral-700">
+                  <thead className="bg-gray-50 dark:bg-neutral-800">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-start">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 dark:border-neutral-600"
+                          checked={selectedIds.size === recordings.length && recordings.length > 0}
+                          onChange={(e) => setSelectedIds(e.target.checked ? new Set(recordings.map((r) => r.id)) : new Set())}
+                        />
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">User</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Status</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Transcript</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Duration</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Size</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Date</th>
+                      <th scope="col" className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+                    {recordings.slice((tablePage - 1) * PER_PAGE, tablePage * PER_PAGE).map((row) => (
+                      <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300 dark:border-neutral-600"
+                            checked={selectedIds.has(row.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedIds)
+                              e.target.checked ? next.add(row.id) : next.delete(row.id)
+                              setSelectedIds(next)
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="block text-sm font-semibold text-gray-800 dark:text-neutral-200">@{row.username}</span>
+                          <span className="block text-xs text-gray-500 dark:text-neutral-400 truncate max-w-[200px]">{row.filename}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={statusVariantMap[row.status] || 'secondary'}>{row.status}</Badge>
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.transcript_status === 'done' ? (
+                            <Badge variant="success" className="text-xs">Done</Badge>
+                          ) : row.transcript_status === 'processing' ? (
+                            <Badge variant="warning" className="text-xs">Processing</Badge>
+                          ) : row.transcript_status === 'pending' ? (
+                            <Badge variant="secondary" className="text-xs">Pending</Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400 dark:text-neutral-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-gray-600 dark:text-neutral-300">{formatDuration(row.duration_seconds)}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-gray-600 dark:text-neutral-300">{formatBytes(row.file_size)}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-gray-500 dark:text-neutral-400">{fmt(row.started_at || row.created_at)}</span>
+                        </td>
+                        <td className="px-4 py-3 text-end">
+                          <div className="inline-flex rounded-lg shadow-sm">
+                            {row.status === 'recording' && (
+                              <button
+                                title="Stop recording"
+                                className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
+                                onClick={() => stopRecordingMutation.mutate(row.id)}
+                                disabled={stopRecordingMutation.isPending}
+                              >
+                                <StopCircle className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            {(row.status === 'completed' || row.status === 'stopped') && (
+                              <button
+                                title="Download"
+                                className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-neutral-800 transition-colors"
+                                onClick={() => handleDownload(row)}
+                              >
+                                <Download className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            <button
+                              title="Delete"
+                              className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
+                              onClick={() => deleteRecordingMutation.mutate(row.id)}
+                              disabled={deleteRecordingMutation.isPending}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            }
-          />
+
+              {/* Pagination */}
+              {recordings.length > PER_PAGE && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-neutral-700">
+                  <span className="text-sm text-gray-500 dark:text-neutral-400">
+                    {(tablePage - 1) * PER_PAGE + 1}–{Math.min(tablePage * PER_PAGE, recordings.length)} of {total}
+                  </span>
+                  <div className="inline-flex rounded-lg shadow-sm">
+                    <button
+                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                      onClick={() => { const prev = tablePage - 1; setTablePage(prev); setPage(prev) }}
+                      disabled={tablePage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                      onClick={() => { const next = tablePage + 1; setTablePage(next); setPage(next) }}
+                      disabled={tablePage * PER_PAGE >= total}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardBody>
       </Card>
 

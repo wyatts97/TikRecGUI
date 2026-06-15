@@ -18,6 +18,9 @@ import {
   ClipboardList,
   Check,
   X,
+  StopCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Button } from 'components/selia/button'
@@ -45,100 +48,12 @@ import {
   DrawerBody,
   DrawerClose,
 } from 'components/selia/drawer'
-import DataTable from 'react-data-table-component'
 import { api, type User, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
 import toast from 'react-hot-toast'
 import EmptyState from '@/components/EmptyState'
 
-const customStyles = {
-  table: { style: { backgroundColor: 'transparent' } },
-  headRow: {
-    style: {
-      backgroundColor: 'var(--table-head)',
-      color: 'var(--foreground)',
-      fontSize: '0.875rem',
-      fontWeight: 500,
-      borderBottom: '1px solid var(--border)',
-    },
-  },
-  headCells: {
-    style: { paddingLeft: '16px', paddingRight: '16px' },
-  },
-  rows: {
-    style: {
-      backgroundColor: 'var(--card)',
-      color: 'var(--foreground)',
-      fontSize: '0.875rem',
-      minHeight: '56px',
-    },
-    stripedStyle: {
-      backgroundColor: 'var(--table-accent)',
-    },
-    highlightOnHoverStyle: {
-      backgroundColor: 'var(--table-head)',
-      transitionDuration: '150ms',
-      transitionProperty: 'background-color',
-    },
-  },
-  cells: {
-    style: { paddingLeft: '16px', paddingRight: '16px' },
-  },
-  pagination: {
-    style: {
-      backgroundColor: 'var(--card)',
-      color: 'var(--foreground)',
-      borderTop: '1px solid var(--border)',
-      fontSize: '0.875rem',
-    },
-    pageButtonsStyle: {
-      color: 'var(--foreground)',
-      fill: 'var(--foreground)',
-      backgroundColor: 'transparent',
-      borderRadius: '0.5rem',
-      height: '36px',
-      padding: '0 12px',
-      margin: '0 2px',
-      cursor: 'pointer',
-      transition: 'all 150ms',
-    },
-  },
-  paginationRowsPerPage: {
-    style: {
-      color: 'var(--foreground)',
-      backgroundColor: 'var(--card)',
-    },
-  },
-  paginationSelect: {
-    style: {
-      color: 'var(--foreground)',
-      backgroundColor: 'var(--card)',
-      border: '1px solid var(--border)',
-      borderRadius: '0.5rem',
-      padding: '4px 8px',
-    },
-  },
-  contextMenu: {
-    style: {
-      backgroundColor: 'var(--card)',
-      color: 'var(--foreground)',
-      border: '1px solid var(--border)',
-      borderRadius: '0.5rem',
-      boxShadow: 'var(--shadow-card)',
-    },
-  },
-  subHeader: {
-    style: {
-      backgroundColor: 'transparent',
-      padding: '0 0 12px 0',
-    },
-  },
-  responsiveWrapper: {
-    style: {
-      borderRadius: '0',
-    },
-  },
-}
+const PER_PAGE = 20
 
 export default function Watchlist() {
   const fmt = useDateFormat()
@@ -151,6 +66,7 @@ export default function Watchlist() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [detailUserId, setDetailUserId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
   const queryClient = useQueryClient()
   const retriedIdsRef = useRef<Set<number>>(new Set())
 
@@ -242,127 +158,17 @@ export default function Watchlist() {
     },
   })
 
-  const columns = useMemo(() => [
-    {
-      name: 'User',
-      selector: (row: User) => row.username,
-      sortable: true,
-      cell: (row: User) => (
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
-            <img
-              src={api.users.getAvatarUrl(row.id)}
-              alt={row.username}
-              className="h-full w-full object-cover"
-              onError={(e) => {
-                const img = e.target as HTMLImageElement
-                img.style.display = 'none'
-                const fallback = img.nextElementSibling as HTMLElement
-                if (fallback) fallback.style.display = 'flex'
-                if (!retriedIdsRef.current.has(row.id)) {
-                  retriedIdsRef.current.add(row.id)
-                  api.users.refresh(row.id, true)
-                }
-              }}
-            />
-            <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
-              {row.username[0].toUpperCase()}
-            </span>
-          </div>
-          <div className="min-w-0">
-            {row.display_name && <p className="font-medium text-sm leading-tight">{row.display_name}</p>}
-            <p className={row.display_name ? 'text-xs text-muted-foreground' : 'font-medium text-sm'}>
-              @{row.username}
-            </p>
-          </div>
-        </div>
-      ),
-      minWidth: '240px',
+  const stopAllMutation = useMutation({
+    mutationFn: () => api.recordings.stopAll(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+      queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
+      toast.success(`${data.stopped} recording(s) stopped`)
     },
-    {
-      name: 'Status',
-      selector: (row: User) => (row.is_live ? 'Live' : 'Offline'),
-      sortable: true,
-      cell: (row: User) => (
-        row.is_live ? (
-          <Badge variant="danger" className="gap-1">
-            <Radio className="h-3 w-3" />
-            LIVE
-          </Badge>
-        ) : (
-          <Badge variant="secondary">Offline</Badge>
-        )
-      ),
-      width: '120px',
+    onError: (error: Error) => {
+      toast.error(error.message)
     },
-    {
-      name: 'Monitoring',
-      selector: (row: User) => (row.is_monitoring ? 'On' : 'Off'),
-      sortable: true,
-      cell: (row: User) => (
-        <Button
-          variant="plain"
-          size="sm"
-          onClick={() => toggleMonitoringMutation.mutate({ id: row.id, isMonitoring: !row.is_monitoring })}
-        >
-          {row.is_monitoring ? (
-            <>
-              <Eye className="h-4 w-4 mr-1 text-success" />
-              <span className="text-success">On</span>
-            </>
-          ) : (
-            <>
-              <EyeOff className="h-4 w-4 mr-1 text-muted-foreground" />
-              <span className="text-muted-foreground">Off</span>
-            </>
-          )}
-        </Button>
-      ),
-      width: '140px',
-    },
-    {
-      name: 'Last Checked',
-      selector: (row: User) => row.last_checked || '',
-      sortable: true,
-      cell: (row: User) => <span className="text-muted-foreground text-sm">{fmt(row.last_checked)}</span>,
-      width: '160px',
-    },
-    {
-      name: 'Actions',
-      cell: (row: User) => (
-        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
-          <button
-            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-gray-500 text-white hover:bg-gray-600"
-            onClick={() => refreshUserMutation.mutate(row.id)}
-            disabled={refreshUserMutation.isPending}
-            aria-label="Refresh user"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          {row.is_live && (
-            <button
-              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
-              onClick={() => startRecordingMutation.mutate(row.username)}
-              disabled={startRecordingMutation.isPending}
-              aria-label="Start recording"
-            >
-              <Play className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-            onClick={() => removeFromWatchlistMutation.mutate(row.id)}
-            disabled={removeFromWatchlistMutation.isPending}
-            aria-label="Remove user"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      ),
-      width: '140px',
-      right: true,
-    },
-  ], [fmt, refreshUserMutation.isPending, startRecordingMutation.isPending, removeFromWatchlistMutation.isPending])
+  })
 
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault()
@@ -406,9 +212,9 @@ export default function Watchlist() {
     textarea.select()
     try {
       document.execCommand('copy')
-      toast('Exported', { description: 'Usernames copied to clipboard' })
+      toast.success('Usernames copied to clipboard')
     } catch {
-      toast.error('Export failed', { description: 'Could not copy to clipboard' })
+      toast.error('Export failed')
     }
     document.body.removeChild(textarea)
   }, [users, toast])
@@ -441,9 +247,9 @@ export default function Watchlist() {
       setImportText('')
       setImportStatus(null)
       if (failed === 0) {
-        toast('Import complete', { description: `Added ${completed} user(s) to your watchlist` })
+        toast.success(`Added ${completed} user(s) to your watchlist`)
       } else {
-        toast(`Import complete`, { description: `Added ${completed} user(s), ${failed} failed` })
+        toast.success(`Added ${completed} user(s), ${failed} failed`)
       }
     }
     run()
@@ -505,6 +311,18 @@ export default function Watchlist() {
           <Button variant="outline" onClick={handleRefreshAll} disabled={users.length === 0}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh All
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => stopAllMutation.mutate()}
+            disabled={stopAllMutation.isPending}
+          >
+            {stopAllMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <StopCircle className="h-4 w-4 mr-2" />
+            )}
+            Stop Recording All
           </Button>
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger>
@@ -627,35 +445,177 @@ export default function Watchlist() {
             </div>
           )}
 
-          <DataTable
-                columns={columns}
-                data={filteredUsers}
-                selectableRows
-                selectableRowsHighlight
-                onSelectedRowsChange={({ selectedRows }) => {
-                  setSelectedIds(new Set(selectedRows.map((r: User) => r.id)))
-                }}
-                pagination
-                paginationPerPage={20}
-                paginationRowsPerPageOptions={[10, 20, 50, 100]}
-                customStyles={customStyles}
-                onRowClicked={(row: User) => setDetailUserId(row.id)}
-                highlightOnHover
-                pointerOnHover
-                striped
-                resizable
-                progressPending={isLoading}
-                progressComponent={<div className="py-8 text-center text-muted-foreground">Loading...</div>}
-                noDataComponent={
-                  <EmptyState
-                    icon={Users}
-                    title={searchQuery ? 'No users match your search' : 'No users in your watchlist'}
-                    description={searchQuery ? 'Try a different search term' : 'Add TikTok users to start monitoring their livestreams'}
-                    actionLabel={searchQuery ? undefined : 'Add your first user'}
-                    onAction={searchQuery ? undefined : () => setAddDialogOpen(true)}
-                  />
-                }
-              />
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
+          ) : filteredUsers.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title={searchQuery ? 'No users match your search' : 'No users in your watchlist'}
+              description={searchQuery ? 'Try a different search term' : 'Add TikTok users to start monitoring their livestreams'}
+              actionLabel={searchQuery ? undefined : 'Add your first user'}
+              onAction={searchQuery ? undefined : () => setAddDialogOpen(true)}
+            />
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-neutral-700">
+                  <thead className="bg-gray-50 dark:bg-neutral-800">
+                    <tr>
+                      <th scope="col" className="px-4 py-3 text-start">
+                        <input
+                          type="checkbox"
+                          className="rounded border-gray-300 dark:border-neutral-600"
+                          checked={selectedIds.size === filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE).length && filteredUsers.length > 0}
+                          onChange={(e) => {
+                            const pageRows = filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+                            setSelectedIds(e.target.checked ? new Set(pageRows.map((u) => u.id)) : new Set())
+                          }}
+                        />
+                      </th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Name</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Status</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Monitoring</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Last Checked</th>
+                      <th scope="col" className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+                    {filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE).map((row) => (
+                      <tr
+                        key={row.id}
+                        className="hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+                        onClick={() => setDetailUserId(row.id)}
+                      >
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="rounded border-gray-300 dark:border-neutral-600"
+                            checked={selectedIds.has(row.id)}
+                            onChange={(e) => {
+                              const next = new Set(selectedIds)
+                              e.target.checked ? next.add(row.id) : next.delete(row.id)
+                              setSelectedIds(next)
+                            }}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-x-3">
+                            <div className="h-[38px] w-[38px] rounded-full overflow-hidden bg-gray-100 dark:bg-neutral-700 flex-shrink-0 flex items-center justify-center">
+                              <img
+                                src={api.users.getAvatarUrl(row.id)}
+                                alt={row.username}
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  const img = e.target as HTMLImageElement
+                                  img.style.display = 'none'
+                                  const sib = img.nextElementSibling as HTMLElement
+                                  if (sib) sib.style.display = 'flex'
+                                  if (!retriedIdsRef.current.has(row.id)) {
+                                    retriedIdsRef.current.add(row.id)
+                                    api.users.refresh(row.id, true)
+                                  }
+                                }}
+                              />
+                              <span className="text-sm font-medium text-gray-600 dark:text-neutral-300" style={{ display: 'none' }}>
+                                {row.username[0].toUpperCase()}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="block text-sm font-semibold text-gray-800 dark:text-neutral-200">
+                                {row.display_name && row.display_name !== row.username ? row.display_name : row.username}
+                              </span>
+                              {row.display_name && row.display_name !== row.username && (
+                                <span className="block text-xs text-gray-500 dark:text-neutral-400">@{row.username}</span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.is_live ? (
+                            <Badge variant="danger" className="gap-1">
+                              <Radio className="h-3 w-3" />LIVE
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Offline</Badge>
+                          )}
+                        </td>
+                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="inline-flex items-center gap-1.5 text-sm"
+                            onClick={() => toggleMonitoringMutation.mutate({ id: row.id, isMonitoring: !row.is_monitoring })}
+                          >
+                            {row.is_monitoring ? (
+                              <><Eye className="h-4 w-4 text-green-500" /><span className="text-green-600 dark:text-green-400">On</span></>
+                            ) : (
+                              <><EyeOff className="h-4 w-4 text-gray-400" /><span className="text-gray-400">Off</span></>
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-gray-500 dark:text-neutral-400">{fmt(row.last_checked)}</span>
+                        </td>
+                        <td className="px-4 py-3 text-end" onClick={(e) => e.stopPropagation()}>
+                          <div className="inline-flex rounded-lg shadow-sm">
+                            <button
+                              title="Refresh"
+                              className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800 transition-colors"
+                              onClick={() => refreshUserMutation.mutate(row.id)}
+                              disabled={refreshUserMutation.isPending}
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            </button>
+                            {row.is_live && (
+                              <button
+                                title="Record now"
+                                className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-neutral-800 transition-colors"
+                                onClick={() => startRecordingMutation.mutate(row.username)}
+                                disabled={startRecordingMutation.isPending}
+                              >
+                                <Play className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            <button
+                              title="Remove"
+                              className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
+                              onClick={() => removeFromWatchlistMutation.mutate(row.id)}
+                              disabled={removeFromWatchlistMutation.isPending}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination */}
+              {filteredUsers.length > PER_PAGE && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-neutral-700">
+                  <span className="text-sm text-gray-500 dark:text-neutral-400">
+                    {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filteredUsers.length)} of {filteredUsers.length}
+                  </span>
+                  <div className="inline-flex rounded-lg shadow-sm">
+                    <button
+                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                      onClick={() => setPage((p) => Math.min(Math.ceil(filteredUsers.length / PER_PAGE), p + 1))}
+                      disabled={page * PER_PAGE >= filteredUsers.length}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </CardBody>
       </Card>
 

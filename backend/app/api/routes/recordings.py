@@ -483,6 +483,20 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/stop-all", status_code=status.HTTP_200_OK)
+def stop_all_recordings(db: Session = Depends(get_db)):
+    """Stop all currently active (status=recording) recordings."""
+    active = db.query(Recording).filter(Recording.status == "recording").all()
+    stopped = 0
+    for rec in active:
+        try:
+            task_manager.stop_recording(rec.id)
+            stopped += 1
+        except Exception:
+            pass
+    return {"stopped": stopped}
+
+
 @router.post("/batch/delete", status_code=status.HTTP_200_OK)
 def batch_delete_recordings(
     recording_ids: List[int] = Body(..., embed=True),
