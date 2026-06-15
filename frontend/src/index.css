@@ -344,3 +344,8 @@
     font-family: "IBM Plex Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
 }
+
+/* Hide horizontal scrollbar on react-data-table-component wrappers */
+.rdt_TableWrapper {
+  overflow-x: hidden !important;
+}

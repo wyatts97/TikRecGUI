@@ -62,20 +62,34 @@ class UnifiedAvatarService:
         """Download avatar image and save locally. Returns local path or None."""
         try:
             headers = {"User-Agent": self.USER_AGENT}
+
+            # Add cookies for authenticated access
+            cookie_str = self._load_cookies_string()
+            if cookie_str:
+                headers["Cookie"] = cookie_str
+
+            # Load proxy if configured
+            proxy = self._load_proxy()
+            proxies = {"https": proxy, "http": proxy} if proxy else None
+
             with requests.Session() as client:
                 response = client.get(
                     url,
                     headers=headers,
                     timeout=15,
                     impersonate="chrome120",
+                    proxies=proxies,
                 )
                 response.raise_for_status()
-                if response.headers.get("content-type", "").startswith("image/"):
+                content_type = response.headers.get("content-type", "")
+                if content_type.startswith("image/") or len(response.content) > 1000:
                     path = self._avatar_path(username)
                     path.write_bytes(response.content)
                     self._cache[username] = str(path)
-                    logger.info(f"Cached avatar for @{username} -> {path}")
+                    logger.info(f"Cached avatar for @{username} -> {path} ({len(response.content)} bytes)")
                     return str(path)
+                else:
+                    logger.warning(f"Avatar response for @{username} not an image: content-type={content_type}, size={len(response.content)}")
         except Exception as exc:
             logger.warning(f"Failed to download avatar for @{username}: {exc}")
         return None
@@ -128,6 +142,29 @@ class UnifiedAvatarService:
         # The bundled recorder API has no avatar method; skip this path.
         return None
 
+    def _load_cookies_string(self) -> str:
+        """Load TikTok cookies from settings and return as Cookie header string."""
+        try:
+            from app.config import settings as app_settings
+            if app_settings.COOKIES_FILE.exists():
+                import json as _json
+                with open(app_settings.COOKIES_FILE, "r") as f:
+                    cookies = _json.load(f)
+                if cookies.get("sessionid_ss"):
+                    return "; ".join(f"{k}={v}" for k, v in cookies.items() if v)
+        except Exception:
+            pass
+        return ""
+
+    def _load_proxy(self) -> str | None:
+        """Load proxy from settings store."""
+        try:
+            from app.core.settings_store import settings_store
+            from app.config import settings as app_settings
+            return settings_store.get("proxy", app_settings.DEFAULT_PROXY)
+        except Exception:
+            return None
+
     def _fetch_via_html_scraper(self, username: str) -> str | None:
         """Scrape TikTok profile page HTML for an avatar URL.
 
@@ -143,6 +180,15 @@ class UnifiedAvatarService:
             "Connection": "keep-alive",
         }
 
+        # Add cookies for authenticated access (required in many regions)
+        cookie_str = self._load_cookies_string()
+        if cookie_str:
+            headers["Cookie"] = cookie_str
+
+        # Load proxy if configured
+        proxy = self._load_proxy()
+        proxies = {"https": proxy, "http": proxy} if proxy else None
+
         try:
             with requests.Session() as client:
                 response = client.get(
@@ -150,6 +196,7 @@ class UnifiedAvatarService:
                     headers=headers,
                     timeout=15,
                     impersonate="chrome120",
+                    proxies=proxies,
                 )
                 status = response.status_code
                 content_type = response.headers.get("content-type", "")
@@ -299,7 +346,13 @@ class UnifiedAvatarService:
         return None
 
     def _fetch_via_tiktok_scraper(self, username: str) -> str | None:
-        """Run tiktok-scraper CLI to get avatar URL."""
+        """Run tiktok-scraper CLI to get avatar URL.
+
+        tiktok-scraper outputs JSON that may be:
+        - A dict with "userInfo" -> "user" -> avatarLarger/avatarMedium/avatarThumb
+        - A list of user dicts with avatarLarger/avatarMedium/avatarThumb
+        - A flat dict with "avatar_url" or "avatar" (legacy fallback)
+        """
         try:
             proc = subprocess.run(
                 ["tiktok-scraper", "user", username, "-t", "json"],
@@ -308,12 +361,35 @@ class UnifiedAvatarService:
             if proc.returncode != 0:
                 logger.warning(f"tiktok-scraper failed for @{username} (rc={proc.returncode}): {proc.stderr[:500]}")
                 return None
-            data = json.loads(proc.stdout)
-            avatar_url = data.get("avatar_url") or data.get("avatar")
+
+            raw = json.loads(proc.stdout)
+
+            # Normalize to a single user dict
+            user_data: dict = {}
+            if isinstance(raw, list) and raw:
+                user_data = raw[0]
+            elif isinstance(raw, dict):
+                user_data = raw.get("userInfo", {}).get("user", raw)
+
+            # Extract avatar URL (preferred order: largest first)
+            avatar_url = (
+                user_data.get("avatarLarger")
+                or user_data.get("avatarMedium")
+                or user_data.get("avatarThumb")
+                or user_data.get("avatar_url")   # legacy fallback
+                or user_data.get("avatar")        # legacy fallback
+            )
+
             if avatar_url:
                 logger.info(f"Got avatar URL via tiktok-scraper for @{username}")
                 return avatar_url
-        except (json.JSONDecodeError, subprocess.TimeoutExpired, Exception) as exc:
+
+            logger.debug(f"tiktok-scraper returned no avatar for @{username}; keys: {list(user_data.keys())[:10]}")
+        except json.JSONDecodeError as exc:
+            logger.warning(f"tiktok-scraper returned invalid JSON for @{username}: {exc}")
+        except subprocess.TimeoutExpired:
+            logger.warning(f"tiktok-scraper timed out for @{username}")
+        except Exception as exc:
             logger.warning(f"tiktok-scraper avatar fetch failed for @{username}: {exc}")
         return None
 

@@ -58,6 +58,7 @@ const customStyles = {
       color: 'var(--foreground)',
       fontSize: '0.875rem',
       minHeight: '56px',
+      borderBottom: 'none',
     },
     stripedStyle: {
       backgroundColor: 'var(--table-accent)',
@@ -66,6 +67,7 @@ const customStyles = {
       backgroundColor: 'var(--table-head)',
       transitionDuration: '150ms',
       transitionProperty: 'background-color',
+      borderBottom: 'none',
     },
   },
   cells: {
