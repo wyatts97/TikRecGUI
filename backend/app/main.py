@@ -18,6 +18,9 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Alembic's env.py calls fileConfig() which resets root logger to
+    # WARNING (from alembic.ini).  Restore to INFO so app logs are visible.
+    logging.getLogger().setLevel(logging.INFO)
     monitor_service.start()
     yield
     monitor_service.stop()

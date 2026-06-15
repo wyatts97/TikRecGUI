@@ -18,8 +18,10 @@ config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
 # Interpret the config file for Python logging.
+# IMPORTANT: disable_existing_loggers=False prevents alembic from nuking
+# all non-alembic loggers the app has already set up.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Point alembic at our declarative models for autogenerate support
 target_metadata = Base.metadata
