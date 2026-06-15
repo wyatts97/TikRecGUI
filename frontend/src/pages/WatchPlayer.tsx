@@ -5,7 +5,7 @@ import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import '@vidstack/react/player/styles/default/theme.css'
 import '@vidstack/react/player/styles/default/layouts/video.css'
-import { ArrowLeft, Download, Trash2, Loader2, FileText, PanelRightOpen, Calendar, Clock, HardDrive, FileVideo, Scissors } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, Loader2, FileText, MessageCircle, Calendar, Clock, HardDrive, FileVideo, Scissors } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
 import {
@@ -21,6 +21,7 @@ import { api } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import TranscriptPanel from '@/components/TranscriptPanel'
+import ChatPanel from '@/components/ChatPanel'
 import ClipDialog from '@/components/ClipDialog'
 import toast from 'react-hot-toast'
 
@@ -85,9 +86,11 @@ export default function WatchPlayer() {
   const navigate = useNavigate()
   const recordingId = Number(id)
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'player' | 'transcript'>('player')
-  const [showSidebar, setShowSidebar] = useState(false)
+  const [activeTab, setActiveTab] = useState<'player' | 'transcript' | 'chat'>('player')
+  const [showTranscript, setShowTranscript] = useState(false)
+  const [showChat, setShowChat] = useState(false)
   const [transcriptSearch, setTranscriptSearch] = useState('')
+  const [chatSearch, setChatSearch] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [clipDialogOpen, setClipDialogOpen] = useState(false)
   const playerRef = useRef<HTMLDivElement>(null)
@@ -196,13 +199,22 @@ export default function WatchPlayer() {
           @{recording.username}
         </h1>
         <Button
-          variant="outline"
+          variant={showTranscript ? "default" : "outline"}
           size="sm"
           className="hidden lg:inline-flex"
-          onClick={() => setShowSidebar((s) => !s)}
+          onClick={() => setShowTranscript((s) => !s)}
         >
-          <PanelRightOpen className="h-4 w-4" />
-          {showSidebar ? 'Hide Transcript' : 'Show Transcript'}
+          <FileText className="h-4 w-4" />
+          Transcript
+        </Button>
+        <Button
+          variant={showChat ? "default" : "outline"}
+          size="sm"
+          className="hidden lg:inline-flex"
+          onClick={() => setShowChat((s) => !s)}
+        >
+          <MessageCircle className="h-4 w-4" />
+          Chat
         </Button>
       </div>
 
@@ -340,6 +352,17 @@ export default function WatchPlayer() {
                   <span className="ml-1 h-1.5 w-1.5 rounded-full bg-green-500" />
                 )}
               </button>
+              <button
+                onClick={() => setActiveTab('chat')}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  activeTab === 'chat'
+                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Chat
+              </button>
             </div>
 
             {activeTab === 'transcript' && (
@@ -356,11 +379,22 @@ export default function WatchPlayer() {
                 {transcriptActions}
               </div>
             )}
+            {activeTab === 'chat' && (
+              <div>
+                <ChatPanel
+                  recording={recording}
+                  chatSearch={chatSearch}
+                  onChatSearchChange={setChatSearch}
+                  onSeek={handleSeek}
+                  variant="inline"
+                />
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Desktop transcript panel */}
-        {showSidebar && (
+        {/* Desktop sidebar panels */}
+        {showTranscript && (
           <div className="hidden lg:flex lg:flex-col">
             <TranscriptPanel
               recording={recording}
@@ -372,6 +406,17 @@ export default function WatchPlayer() {
               variant="panel"
             />
             {transcriptActions}
+          </div>
+        )}
+        {showChat && (
+          <div className="hidden lg:flex lg:flex-col">
+            <ChatPanel
+              recording={recording}
+              chatSearch={chatSearch}
+              onChatSearchChange={setChatSearch}
+              onSeek={handleSeek}
+              variant="panel"
+            />
           </div>
         )}
       </div>

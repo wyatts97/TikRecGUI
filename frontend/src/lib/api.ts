@@ -82,6 +82,25 @@ export interface Clip {
   created_at: string
 }
 
+export interface LiveEvent {
+  id: number
+  recording_id: number
+  offset_seconds: number
+  event_type: "chat" | "gift"
+  user_nickname: string
+  user_unique_id: string | null
+  content: string | null
+  gift_name: string | null
+  gift_diamond_count: number | null
+  gift_repeat_count: number | null
+  created_at: string
+}
+
+export interface LiveEventListResponse {
+  events: LiveEvent[]
+  total: number
+}
+
 export interface ClipListResponse {
   clips: Clip[]
   total: number
@@ -264,6 +283,16 @@ export const api = {
         body: JSON.stringify({ recording_ids: ids }),
       }),
     
+    getEvents: (id: number, page = 1, pageSize = 100, eventType?: string, search?: string) => {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        page_size: pageSize.toString(),
+      })
+      if (eventType) params.set("event_type", eventType)
+      if (search) params.set("search", search)
+      return fetchApi<LiveEventListResponse>(`/recordings/${id}/events?${params}`)
+    },
+
     batchDownload: async (ids: number[]) => {
       const response = await fetch(`${API_BASE}/recordings/batch/download`, {
         method: "POST",

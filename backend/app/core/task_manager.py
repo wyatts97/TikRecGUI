@@ -17,6 +17,7 @@ from app.core.media_utils import (
 )
 from app.core.recorder_loader import get_tiktok_api_class
 from app.core.transcription_service import transcription_service
+from app.core.live_chat_service import live_chat_service
 
 
 def _update_recording_status(recording_id: int, status: str, error_message: str | None = None) -> None:
@@ -77,6 +78,17 @@ class RecordingTask:
             recording.status = "recording"
             recording.started_at = datetime.utcnow()
             db.commit()
+
+        # Start live chat/gift capture (fire-and-forget — failure does not affect recording)
+        try:
+            live_chat_service.start_listening(
+                recording_id=self.recording_id,
+                username=self.username,
+                started_at=recording.started_at,
+                proxy=self.proxy,
+            )
+        except Exception as e:
+            logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
 
         # --- Phase 2: validate room and get stream URL (no DB) ---
         api_cls = get_tiktok_api_class()
@@ -151,6 +163,9 @@ class RecordingTask:
 
             db.commit()
 
+        # Stop live chat/gift capture
+        live_chat_service.stop_listening(self.recording_id)
+
         # --- Phase 5: post-processing (remux, thumbnails, sprites, transcription) ---
         if file_existed:
             # Log video health before processing
@@ -204,6 +219,10 @@ class RecordingTask:
         except Exception as e:
             logger.error(f"Recording error: {e}", exc_info=True)
             _update_recording_status(self.recording_id, "failed", str(e))
+            try:
+                live_chat_service.stop_listening(self.recording_id)
+            except Exception:
+                pass
 
 
 class TaskManager:

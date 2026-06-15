@@ -15,13 +15,14 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db.database import get_db, get_session, run_background
-from app.db.models import Recording, User
+from app.db.models import Recording, User, LiveEvent
 from app.schemas.recording import (
     RecordingStart,
     RecordingResponse,
     RecordingListResponse,
     ActiveRecordingResponse
 )
+from app.schemas.live_event import LiveEventResponse, LiveEventListResponse
 from app.core.recorder_service import recorder_service
 from app.core.task_manager import task_manager
 from app.core.media_utils import (
@@ -702,4 +703,47 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="Repair failed — recording may be beyond recovery",
+    )
+
+
+@router.get("/{recording_id}/events", response_model=LiveEventListResponse)
+def list_live_events(
+    recording_id: int,
+    page: int = 1,
+    page_size: int = 100,
+    event_type: str | None = None,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Return paginated live chat/gift events for a recording."""
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+
+    query = db.query(LiveEvent).filter(LiveEvent.recording_id == recording_id)
+    count_query = db.query(func.count()).select_from(LiveEvent).filter(LiveEvent.recording_id == recording_id)
+
+    if event_type:
+        query = query.filter(LiveEvent.event_type == event_type)
+        count_query = count_query.filter(LiveEvent.event_type == event_type)
+
+    if search:
+        like_pat = f"%{search}%"
+        query = query.filter(
+            LiveEvent.user_nickname.ilike(like_pat)
+            | LiveEvent.content.ilike(like_pat)
+            | LiveEvent.gift_name.ilike(like_pat)
+        )
+        count_query = count_query.filter(
+            LiveEvent.user_nickname.ilike(like_pat)
+            | LiveEvent.content.ilike(like_pat)
+            | LiveEvent.gift_name.ilike(like_pat)
+        )
+
+    total = count_query.scalar() or 0
+    events = query.order_by(LiveEvent.offset_seconds.asc()).offset((page - 1) * page_size).limit(page_size).all()
+
+    return LiveEventListResponse(
+        events=[LiveEventResponse.model_validate(e) for e in events],
+        total=total,
     )
