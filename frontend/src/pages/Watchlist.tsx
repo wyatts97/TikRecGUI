@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, memo } from 'react'
+import { useState, useMemo, useCallback, memo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -87,6 +87,13 @@ const UserRow = memo(function UserRow({
   onRemove: (id: number) => void
   fmt: (date: string | null | undefined) => string
 }) {
+  const hasRetriedRef = useRef(false)
+  const handleAvatarError = () => {
+    if (!hasRetriedRef.current) {
+      hasRetriedRef.current = true
+      onRefresh(user.id)
+    }
+  }
   return (
     <TableRow
       key={user.id}
@@ -113,6 +120,7 @@ const UserRow = memo(function UserRow({
                 img.style.display = 'none'
                 const fallback = img.nextElementSibling as HTMLElement
                 if (fallback) fallback.style.display = 'flex'
+                handleAvatarError()
               }}
             />
             <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
@@ -238,6 +246,13 @@ const UserCard = memo(function UserCard({
   onRemove: (id: number) => void
   fmt: (date: string | null | undefined) => string
 }) {
+  const hasRetriedRef = useRef(false)
+  const handleAvatarError = () => {
+    if (!hasRetriedRef.current) {
+      hasRetriedRef.current = true
+      onRefresh(user.id)
+    }
+  }
   return (
     <div
       className="rounded-lg border border-border bg-card p-4 space-y-3 cursor-pointer hover:bg-muted/20 transition-colors"
@@ -263,6 +278,7 @@ const UserCard = memo(function UserCard({
                 img.style.display = 'none'
                 const fallback = img.nextElementSibling as HTMLElement
                 if (fallback) fallback.style.display = 'flex'
+                handleAvatarError()
               }}
             />
             <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
@@ -398,9 +414,10 @@ export default function Watchlist() {
   })
 
   const refreshUserMutation = useMutation({
-    mutationFn: (id: number) => api.users.refresh(id),
-    onSuccess: () => {
+    mutationFn: (id: number) => api.users.refresh(id, true),
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['user', id] })
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -836,6 +853,7 @@ export default function Watchlist() {
                       img.style.display = 'none'
                       const fallback = img.nextElementSibling as HTMLElement
                       if (fallback) fallback.style.display = 'flex'
+                      api.users.refresh(detailUser.id, true)
                     }}
                   />
                   <span className="hidden h-full w-full items-center justify-center text-2xl font-medium text-primary fallback-initial">

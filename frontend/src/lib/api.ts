@@ -179,8 +179,8 @@ export const api = {
         `/users/${id}/status`
       ),
     
-    refresh: (id: number) =>
-      fetchApi<User>(`/users/${id}/refresh`, { method: "POST" }),
+    refresh: (id: number, refreshProfile = false) =>
+      fetchApi<User>(`/users/${id}/refresh?refresh_profile=${refreshProfile}`, { method: "POST" }),
     
     getAvatarUrl: (id: number) => `${API_BASE}/users/${id}/avatar`,
   },

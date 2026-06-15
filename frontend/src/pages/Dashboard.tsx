@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity, CheckCircle2 } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
@@ -16,6 +17,13 @@ import { Link, useNavigate } from 'react-router-dom'
 export default function Dashboard() {
   const navigate = useNavigate()
   const fmt = useDateFormat()
+  const retriedIdsRef = useRef<Set<number>>(new Set())
+  const handleAvatarError = (id: number) => {
+    if (!retriedIdsRef.current.has(id)) {
+      retriedIdsRef.current.add(id)
+      api.users.refresh(id, true)
+    }
+  }
 
   const { data: users = [], isLoading: usersLoading } = useQuery({
     queryKey: ['users'],
@@ -271,6 +279,7 @@ export default function Dashboard() {
                         <AvatarImage
                           src={api.users.getAvatarUrl(user.id)}
                           alt={user.username}
+                          onError={() => handleAvatarError(user.id)}
                         />
                         <AvatarFallback>
                           {user.username[0].toUpperCase()}
@@ -344,6 +353,7 @@ export default function Dashboard() {
                         <AvatarImage
                           src={api.users.getAvatarUrl(recording.user_id)}
                           alt={recording.username}
+                          onError={() => handleAvatarError(recording.user_id)}
                         />
                         <AvatarFallback className="bg-danger/20 text-danger">
                           {recording.username[0].toUpperCase()}

@@ -28,7 +28,7 @@ class UserInfoService:
         result: dict = {}
         try:
             proc = subprocess.run(
-                ["tiktok-scraper", "user", username, "--json", "-t", "user", "-d"],
+                ["tiktok-scraper", "user", username, "-t", "json"],
                 capture_output=True,
                 text=True,
                 timeout=30,

@@ -130,7 +130,7 @@ class UnifiedAvatarService:
                             logger.info(f"Got avatar URL via HTML scraper for @{username}")
                             return avatar_url
                     except (json.JSONDecodeError, Exception) as exc:
-                        logger.debug(f"Avatar parse __UNIVERSAL_DATA__ failed for @{username}: {exc}")
+                        logger.warning(f"Avatar parse __UNIVERSAL_DATA__ failed for @{username}: {exc}")
 
                 # Strategy 2: og:image meta tag
                 og_image_pattern = r'<meta[^>]+property="og:image"[^>]+content="([^"]+)"'
@@ -164,8 +164,65 @@ class UnifiedAvatarService:
                     except (json.JSONDecodeError, Exception):
                         continue
 
+                # Strategy 5: SIGI_STATE script tag (TikTok's newer hydration data)
+                sigi_pattern = r'<script id="SIGI_STATE"[^>]*>(.*?)</script>'
+                sigi_match = re.search(sigi_pattern, html, re.DOTALL)
+                if sigi_match:
+                    try:
+                        sigi_data = json.loads(sigi_match.group(1).strip())
+                        user_module = sigi_data.get("UserModule", {})
+                        users = user_module.get("users", {})
+                        for user_data in users.values():
+                            avatar_url = (
+                                user_data.get("avatarLarger")
+                                or user_data.get("avatarMedium")
+                                or user_data.get("avatarThumb")
+                            )
+                            if avatar_url:
+                                logger.info(f"Got avatar URL via SIGI_STATE for @{username}")
+                                return avatar_url
+                    except (json.JSONDecodeError, Exception) as exc:
+                        logger.warning(f"Avatar parse SIGI_STATE failed for @{username}: {exc}")
+
+                # Strategy 6: __INITIAL_STATE__ script tag
+                initial_state_pattern = r'<script[^>]*>window\.__INITIAL_STATE__\s*=\s*(.*?)</script>'
+                initial_match = re.search(initial_state_pattern, html, re.DOTALL)
+                if initial_match:
+                    try:
+                        raw = initial_match.group(1).strip().rstrip(';')
+                        state = json.loads(raw)
+                        user_info = state.get("user", {})
+                        avatar_url = (
+                            user_info.get("avatarLarger")
+                            or user_info.get("avatarMedium")
+                            or user_info.get("avatarThumb")
+                        )
+                        if avatar_url:
+                            logger.info(f"Got avatar URL via __INITIAL_STATE__ for @{username}")
+                            return avatar_url
+                    except (json.JSONDecodeError, Exception) as exc:
+                        logger.warning(f"Avatar parse __INITIAL_STATE__ failed for @{username}: {exc}")
+
+                # Strategy 7: Broad image URL search for any tiktokcdn avatar
+                broad_img = re.search(
+                    r'(https?://[^"\'\s]+tiktokcdn\.com[^"\'\s]*avatar[^"\'\s]*)',
+                    html, re.IGNORECASE,
+                )
+                if broad_img:
+                    logger.info(f"Got avatar URL via broad search for @{username}")
+                    return broad_img.group(1)
+
+                # Strategy 8: Any tiktokcdn image URL that looks like a profile pic
+                profile_img = re.search(
+                    r'(https?://[^"\'\s]+tiktokcdn\.com[^"\'\s]*user[^"\'\s]*\.(?:jpg|jpeg|png|webp))',
+                    html, re.IGNORECASE,
+                )
+                if profile_img:
+                    logger.info(f"Got avatar URL via profile image search for @{username}")
+                    return profile_img.group(1)
+
                 # Nothing matched — log a snippet for debugging
-                snippet = re.sub(r'\s+', ' ', html[:500])
+                snippet = re.sub(r'\s+', ' ', html[:2000])
                 logger.warning(f"Avatar HTML scraper found no avatar for @{username}. Snippet: {snippet}")
 
         except Exception as exc:
@@ -181,7 +238,7 @@ class UnifiedAvatarService:
                 capture_output=True, text=True, timeout=20,
             )
             if proc.returncode != 0:
-                logger.debug(f"tiktok-scraper stderr for @{username}: {proc.stderr[:200]}")
+                logger.warning(f"tiktok-scraper failed for @{username} (rc={proc.returncode}): {proc.stderr[:500]}")
                 return None
             data = json.loads(proc.stdout)
             avatar_url = data.get("avatar_url") or data.get("avatar")
@@ -189,7 +246,7 @@ class UnifiedAvatarService:
                 logger.info(f"Got avatar URL via tiktok-scraper for @{username}")
                 return avatar_url
         except (json.JSONDecodeError, subprocess.TimeoutExpired, Exception) as exc:
-            logger.debug(f"tiktok-scraper avatar fetch failed for @{username}: {exc}")
+            logger.warning(f"tiktok-scraper avatar fetch failed for @{username}: {exc}")
         return None
 
     def fetch_and_cache(self, username: str, room_id: str | None = None, force: bool = False) -> str | None:
