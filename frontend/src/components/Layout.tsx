@@ -155,34 +155,23 @@ export default function Layout() {
         {/* Header */}
         <div className={cn(
           'flex items-center h-16 border-b border-border shrink-0',
-          miniMode ? 'justify-center px-2' : 'px-5 gap-2.5'
+          miniMode ? 'justify-between px-2' : 'px-5 gap-2.5'
         )}>
           <div className="h-8 w-8 rounded-full bg-red-500 shadow-lg shadow-red-500/40 shrink-0" />
           {!miniMode && (
-            <span className="text-xl font-bold text-foreground tracking-tight">TikRec</span>
+            <span className="text-xl font-bold text-foreground tracking-tight flex-1">TikRec</span>
           )}
-          {!miniMode && (
-            <button
-              onClick={() => setMiniMode(true)}
-              className="ml-auto flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
-              aria-label="Collapse sidebar"
-            >
-              <PanelLeft className="h-4 w-4" />
-            </button>
-          )}
-          {miniMode && (
-            <button
-              onClick={() => setMiniMode(false)}
-              className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors mt-2"
-              aria-label="Expand sidebar"
-            >
-              <PanelLeft className="h-4 w-4 rotate-180" />
-            </button>
-          )}
+          <button
+            onClick={() => setMiniMode(!miniMode)}
+            className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors shrink-0"
+            aria-label={miniMode ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <PanelLeft className={cn('h-4 w-4', miniMode && 'rotate-180')} />
+          </button>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto">
+        <nav className="flex-1 overflow-y-auto pt-2">
           <ul className={cn('flex flex-col gap-1', miniMode ? 'p-2' : 'p-3')}>
             {navItems.map((item) => {
               const Icon = item.icon
@@ -232,8 +221,8 @@ export default function Layout() {
                     const interval = monitorStatus?.check_interval ?? (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
                     const isReady = countdown === null || countdown <= 0
                     const value = isReady ? interval : Math.max(0, interval - countdown)
-                    const radius = 28
-                    const size = 64
+                    const radius = 22
+                    const size = 52
                     const strokeWidth = 4
                     const circumference = 2 * Math.PI * radius
                     const pct = interval > 0 ? Math.min(1, Math.max(0, value / interval)) : 0
@@ -286,7 +275,7 @@ export default function Layout() {
                 <div
                   onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
                   className={cn(
-                    'relative flex items-center justify-center w-16 h-16 rounded-full transition-colors cursor-pointer',
+                    'relative flex items-center justify-center w-[52px] h-[52px] rounded-full transition-colors cursor-pointer',
                     activeRecordings.length > 0
                       ? 'bg-red-500 text-white shadow-lg shadow-red-500/40 animate-pulse'
                       : 'bg-muted/60 text-muted-foreground'
@@ -294,13 +283,9 @@ export default function Layout() {
                 >
                   <Radio className="h-5 w-5" />
                   {activeRecordings.length > 0 && (
-                    <Badge
-                      variant="danger"
-                      size="sm"
-                      className="absolute -top-0.5 -right-0.5 min-w-[1.25rem] h-5 flex items-center justify-center px-1 text-[10px]"
-                    >
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 flex items-center justify-center px-1 rounded-full bg-white text-black text-[10px] font-semibold shadow-md">
                       {activeRecordings.length}
-                    </Badge>
+                    </span>
                   )}
                 </div>
               </TooltipTrigger>

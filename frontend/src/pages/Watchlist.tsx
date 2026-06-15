@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, memo, useRef } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -45,318 +45,52 @@ import {
   DrawerBody,
   DrawerClose,
 } from 'components/selia/drawer'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from 'components/selia/table'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
+import DataTable from 'react-data-table-component'
 import { api, type User, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
 import toast from 'react-hot-toast'
 import EmptyState from '@/components/EmptyState'
 
-// Memoized user table row
-const UserRow = memo(function UserRow({
-  user,
-  selectedIds,
-  isRefreshing,
-  isRecording,
-  isRemoving,
-  onToggleSelect,
-  onRowClick,
-  onRefresh,
-  onStartRecording,
-  onToggleMonitoring,
-  onRemove,
-  fmt,
-}: {
-  user: User
-  selectedIds: Set<number>
-  isRefreshing: boolean
-  isRecording: boolean
-  isRemoving: boolean
-  onToggleSelect: (id: number) => void
-  onRowClick: (id: number) => void
-  onRefresh: (id: number) => void
-  onStartRecording: (username: string) => void
-  onToggleMonitoring: (id: number, isMonitoring: boolean) => void
-  onRemove: (id: number) => void
-  fmt: (date: string | null | undefined) => string
-}) {
-  const hasRetriedRef = useRef(false)
-  const handleAvatarError = () => {
-    if (!hasRetriedRef.current) {
-      hasRetriedRef.current = true
-      onRefresh(user.id)
-    }
-  }
-  return (
-    <TableRow
-      key={user.id}
-      className="cursor-pointer"
-      onClick={() => onRowClick(user.id)}
-    >
-      <TableCell onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={selectedIds.has(user.id)}
-          onChange={() => onToggleSelect(user.id)}
-          className="h-4 w-4 rounded border-gray-300"
-        />
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
-            <img
-              src={api.users.getAvatarUrl(user.id)}
-              alt={user.username}
-              className="h-full w-full object-cover"
-              onError={(e) => {
-                const img = e.target as HTMLImageElement
-                img.style.display = 'none'
-                const fallback = img.nextElementSibling as HTMLElement
-                if (fallback) fallback.style.display = 'flex'
-                handleAvatarError()
-              }}
-            />
-            <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
-              {user.username[0].toUpperCase()}
-            </span>
-          </div>
-          <div className="min-w-0">
-            {user.display_name && (
-              <p className="font-medium text-sm leading-tight">{user.display_name}</p>
-            )}
-            <p className={user.display_name ? "text-xs text-muted-foreground" : "font-medium text-sm"}>
-              @{user.username}
-            </p>
-            {user.bio && (
-              <p className="text-xs text-muted-foreground truncate max-w-[200px]">{user.bio}</p>
-            )}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell>
-        {user.is_live ? (
-          <Badge variant="danger" className="gap-1">
-            <Radio className="h-3 w-3" />
-            LIVE
-          </Badge>
-        ) : (
-          <Badge variant="secondary">Offline</Badge>
-        )}
-      </TableCell>
-      <TableCell>
-        <Button
-          variant="plain"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleMonitoring(user.id, !user.is_monitoring)
-          }}
-        >
-          {user.is_monitoring ? (
-            <>
-              <Eye className="h-4 w-4 mr-1 text-success" />
-              <span className="text-success">On</span>
-            </>
-          ) : (
-            <>
-              <EyeOff className="h-4 w-4 mr-1 text-muted-foreground" />
-              <span className="text-muted-foreground">Off</span>
-            </>
-          )}
-        </Button>
-      </TableCell>
-      <TableCell className="text-muted-foreground text-sm">
-        {fmt(user.last_checked)}
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
-          <button
-            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-gray-500 text-white hover:bg-gray-600"
-            onClick={(e) => {
-              e.stopPropagation()
-              onRefresh(user.id)
-            }}
-            disabled={isRefreshing}
-            aria-label="Refresh user"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          {user.is_live && (
-            <button
-              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
-              onClick={(e) => {
-                e.stopPropagation()
-                onStartRecording(user.username)
-              }}
-              disabled={isRecording}
-              aria-label="Start recording"
-            >
-              <Play className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-            onClick={(e) => {
-              e.stopPropagation()
-              onRemove(user.id)
-            }}
-            disabled={isRemoving}
-            aria-label="Remove user"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </TableCell>
-    </TableRow>
-  )
-})
-
-// Mobile user card
-const UserCard = memo(function UserCard({
-  user,
-  selectedIds,
-  isRefreshing,
-  isRecording,
-  isRemoving,
-  onToggleSelect,
-  onRowClick,
-  onRefresh,
-  onStartRecording,
-  onToggleMonitoring,
-  onRemove,
-  fmt,
-}: {
-  user: User
-  selectedIds: Set<number>
-  isRefreshing: boolean
-  isRecording: boolean
-  isRemoving: boolean
-  onToggleSelect: (id: number) => void
-  onRowClick: (id: number) => void
-  onRefresh: (id: number) => void
-  onStartRecording: (username: string) => void
-  onToggleMonitoring: (id: number, isMonitoring: boolean) => void
-  onRemove: (id: number) => void
-  fmt: (date: string | null | undefined) => string
-}) {
-  const hasRetriedRef = useRef(false)
-  const handleAvatarError = () => {
-    if (!hasRetriedRef.current) {
-      hasRetriedRef.current = true
-      onRefresh(user.id)
-    }
-  }
-  return (
-    <div
-      className="rounded-lg border border-border bg-card p-4 space-y-3 cursor-pointer hover:bg-muted/20 transition-colors"
-      onClick={() => onRowClick(user.id)}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <div onClick={(e) => e.stopPropagation()} className="shrink-0">
-            <input
-              type="checkbox"
-              checked={selectedIds.has(user.id)}
-              onChange={() => onToggleSelect(user.id)}
-              className="h-4 w-4 rounded border-gray-300"
-            />
-          </div>
-          <div className="h-9 w-9 rounded-full bg-primary-subtle overflow-hidden shrink-0">
-            <img
-              src={api.users.getAvatarUrl(user.id)}
-              alt={user.username}
-              className="h-full w-full object-cover"
-              onError={(e) => {
-                const img = e.target as HTMLImageElement
-                img.style.display = 'none'
-                const fallback = img.nextElementSibling as HTMLElement
-                if (fallback) fallback.style.display = 'flex'
-                handleAvatarError()
-              }}
-            />
-            <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
-              {user.username[0].toUpperCase()}
-            </span>
-          </div>
-          <div className="min-w-0">
-            {user.display_name && (
-              <p className="font-medium text-sm leading-tight truncate">{user.display_name}</p>
-            )}
-            <p className="text-sm truncate">@{user.username}</p>
-          </div>
-        </div>
-        {user.is_live ? (
-          <Badge variant="danger" className="gap-1 shrink-0">
-            <Radio className="h-3 w-3" />
-            LIVE
-          </Badge>
-        ) : (
-          <Badge variant="secondary" className="shrink-0">Offline</Badge>
-        )}
-      </div>
-
-      {user.bio && (
-        <p className="text-xs text-muted-foreground line-clamp-2">{user.bio}</p>
-      )}
-
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>Monitoring: {user.is_monitoring ? 'On' : 'Off'}</span>
-        <span>{fmt(user.last_checked)}</span>
-      </div>
-
-      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <Button
-          variant="plain"
-          size="sm"
-          className="h-7 text-xs"
-          onClick={() => onToggleMonitoring(user.id, !user.is_monitoring)}
-        >
-          {user.is_monitoring ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
-          {user.is_monitoring ? 'Disable' : 'Enable'}
-        </Button>
-        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
-          <button
-            className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-gray-500 text-white hover:bg-gray-600"
-            onClick={() => onRefresh(user.id)}
-            disabled={isRefreshing}
-            aria-label="Refresh user"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
-          {user.is_live && (
-            <button
-              className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
-              onClick={() => onStartRecording(user.username)}
-              disabled={isRecording}
-              aria-label="Start recording"
-            >
-              <Play className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-            onClick={() => onRemove(user.id)}
-            disabled={isRemoving}
-            aria-label="Remove user"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-})
+const customStyles = {
+  table: { style: { backgroundColor: 'transparent' } },
+  headRow: {
+    style: {
+      backgroundColor: 'var(--table-head)',
+      color: 'var(--foreground)',
+      fontSize: '0.875rem',
+      fontWeight: 500,
+      borderBottom: '1px solid var(--border)',
+    },
+  },
+  headCells: {
+    style: { paddingLeft: '16px', paddingRight: '16px' },
+  },
+  rows: {
+    style: {
+      backgroundColor: 'var(--card)',
+      color: 'var(--foreground)',
+      fontSize: '0.875rem',
+      minHeight: '56px',
+      borderBottom: '1px solid var(--border)',
+    },
+    highlightOnHoverStyle: {
+      backgroundColor: 'var(--muted-hover)',
+    },
+  },
+  cells: {
+    style: { paddingLeft: '16px', paddingRight: '16px' },
+  },
+  pagination: {
+    style: {
+      backgroundColor: 'var(--card)',
+      color: 'var(--foreground)',
+      borderTop: '1px solid var(--border)',
+    },
+  },
+}
 
 export default function Watchlist() {
   const fmt = useDateFormat()
-  const isDesktop = useMediaQuery('(min-width: 768px)')
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importText, setImportText] = useState('')
@@ -367,7 +101,6 @@ export default function Watchlist() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const queryClient = useQueryClient()
-
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
@@ -457,6 +190,125 @@ export default function Watchlist() {
     },
   })
 
+  const columns = useMemo(() => [
+    {
+      name: 'User',
+      selector: (row: User) => row.username,
+      sortable: true,
+      cell: (row: User) => (
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full bg-primary-subtle flex items-center justify-center overflow-hidden">
+            <img
+              src={api.users.getAvatarUrl(row.id)}
+              alt={row.username}
+              className="h-full w-full object-cover"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement
+                img.style.display = 'none'
+                const fallback = img.nextElementSibling as HTMLElement
+                if (fallback) fallback.style.display = 'flex'
+                api.users.refresh(row.id, true)
+              }}
+            />
+            <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
+              {row.username[0].toUpperCase()}
+            </span>
+          </div>
+          <div className="min-w-0">
+            {row.display_name && <p className="font-medium text-sm leading-tight">{row.display_name}</p>}
+            <p className={row.display_name ? 'text-xs text-muted-foreground' : 'font-medium text-sm'}>
+              @{row.username}
+            </p>
+          </div>
+        </div>
+      ),
+      minWidth: '240px',
+    },
+    {
+      name: 'Status',
+      selector: (row: User) => (row.is_live ? 'Live' : 'Offline'),
+      sortable: true,
+      cell: (row: User) => (
+        row.is_live ? (
+          <Badge variant="danger" className="gap-1">
+            <Radio className="h-3 w-3" />
+            LIVE
+          </Badge>
+        ) : (
+          <Badge variant="secondary">Offline</Badge>
+        )
+      ),
+      width: '120px',
+    },
+    {
+      name: 'Monitoring',
+      selector: (row: User) => (row.is_monitoring ? 'On' : 'Off'),
+      sortable: true,
+      cell: (row: User) => (
+        <Button
+          variant="plain"
+          size="sm"
+          onClick={() => toggleMonitoringMutation.mutate({ id: row.id, isMonitoring: !row.is_monitoring })}
+        >
+          {row.is_monitoring ? (
+            <>
+              <Eye className="h-4 w-4 mr-1 text-success" />
+              <span className="text-success">On</span>
+            </>
+          ) : (
+            <>
+              <EyeOff className="h-4 w-4 mr-1 text-muted-foreground" />
+              <span className="text-muted-foreground">Off</span>
+            </>
+          )}
+        </Button>
+      ),
+      width: '140px',
+    },
+    {
+      name: 'Last Checked',
+      selector: (row: User) => row.last_checked || '',
+      sortable: true,
+      cell: (row: User) => <span className="text-muted-foreground text-sm">{fmt(row.last_checked)}</span>,
+      width: '160px',
+    },
+    {
+      name: 'Actions',
+      cell: (row: User) => (
+        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
+          <button
+            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-gray-500 text-white hover:bg-gray-600"
+            onClick={() => refreshUserMutation.mutate(row.id)}
+            disabled={refreshUserMutation.isPending}
+            aria-label="Refresh user"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+          {row.is_live && (
+            <button
+              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
+              onClick={() => startRecordingMutation.mutate(row.username)}
+              disabled={startRecordingMutation.isPending}
+              aria-label="Start recording"
+            >
+              <Play className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
+            onClick={() => removeFromWatchlistMutation.mutate(row.id)}
+            disabled={removeFromWatchlistMutation.isPending}
+            aria-label="Remove user"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ),
+      width: '140px',
+      right: true,
+    },
+  ], [fmt, refreshUserMutation.isPending, startRecordingMutation.isPending, removeFromWatchlistMutation.isPending])
+
   const handleAddUser = (e: React.FormEvent) => {
     e.preventDefault()
     if (newUsername.trim()) {
@@ -471,15 +323,6 @@ export default function Watchlist() {
       toast.success('All user statuses updated')
   }
 
-  const toggleSelect = useCallback((id: number) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }, [])
-
   const filteredUsers = useMemo(() => {
     let sorted = [...users].sort((a, b) => {
       if (a.is_live === b.is_live) return 0
@@ -493,13 +336,6 @@ export default function Watchlist() {
         (u.display_name && u.display_name.toLowerCase().includes(q))
     )
   }, [users, searchQuery])
-
-  const toggleSelectAll = useCallback(() => {
-    setSelectedIds((prev) => {
-      if (prev.size === filteredUsers.length) return new Set()
-      return new Set(filteredUsers.map((u) => u.id))
-    })
-  }, [filteredUsers])
 
   const selectedCount = selectedIds.size
 
@@ -685,144 +521,84 @@ export default function Watchlist() {
           </div>
         </CardHeader>
         <CardBody>
-          {isLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center gap-3 p-3">
-                  <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-                  <div className="space-y-1.5 flex-1">
-                    <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                    <div className="h-3 w-20 bg-muted animate-pulse rounded" />
-                  </div>
-                </div>
-              ))}
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-muted/40">
+              <span className="text-sm font-medium mr-2">{selectedCount} selected</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  batchToggleMonitoring.mutate({
+                    ids: Array.from(selectedIds),
+                    monitoring: true,
+                  })
+                }
+              >
+                <Eye className="h-3 w-3 mr-1" />
+                Enable Monitoring
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  batchToggleMonitoring.mutate({
+                    ids: Array.from(selectedIds),
+                    monitoring: false,
+                  })
+                }
+              >
+                <EyeOff className="h-3 w-3 mr-1" />
+                Disable Monitoring
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  Array.from(selectedIds).forEach((id) =>
+                    removeFromWatchlistMutation.mutate(id)
+                  )
+                }}
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Remove
+              </Button>
+              <Button
+                size="sm"
+                variant="plain"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Clear
+              </Button>
             </div>
-          ) : filteredUsers.length === 0 ? (
-            <EmptyState
-              icon={Users}
-              title={searchQuery ? 'No users match your search' : 'No users in your watchlist'}
-              description={searchQuery ? 'Try a different search term' : 'Add TikTok users to start monitoring their livestreams'}
-              actionLabel={searchQuery ? undefined : 'Add your first user'}
-              onAction={searchQuery ? undefined : () => setAddDialogOpen(true)}
-            />
-          ) : (
-            <>
-              {/* Batch action bar */}
-              {selectedCount > 0 && (
-                <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-muted/40">
-                  <span className="text-sm font-medium mr-2">{selectedCount} selected</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      batchToggleMonitoring.mutate({
-                        ids: Array.from(selectedIds),
-                        monitoring: true,
-                      })
-                    }
-                  >
-                    <Eye className="h-3 w-3 mr-1" />
-                    Enable Monitoring
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      batchToggleMonitoring.mutate({
-                        ids: Array.from(selectedIds),
-                        monitoring: false,
-                      })
-                    }
-                  >
-                    <EyeOff className="h-3 w-3 mr-1" />
-                    Disable Monitoring
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => {
-                      Array.from(selectedIds).forEach((id) =>
-                        removeFromWatchlistMutation.mutate(id)
-                      )
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3 mr-1" />
-                    Remove
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="plain"
-                    onClick={() => setSelectedIds(new Set())}
-                  >
-                    Clear
-                  </Button>
-                </div>
-              )}
-
-              {/* Desktop table */}
-              {isDesktop ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10">
-                        <input
-                          type="checkbox"
-                          checked={filteredUsers.length > 0 && selectedIds.size === filteredUsers.length}
-                          onChange={toggleSelectAll}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
-                      </TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Monitoring</TableHead>
-                      <TableHead>Last Checked</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredUsers.map((user: User) => (
-                      <UserRow
-                        key={user.id}
-                        user={user}
-                        selectedIds={selectedIds}
-                        isRefreshing={refreshUserMutation.isPending}
-                        isRecording={startRecordingMutation.isPending}
-                        isRemoving={removeFromWatchlistMutation.isPending}
-                        onToggleSelect={toggleSelect}
-                        onRowClick={(id) => setDetailUserId(id)}
-                        onRefresh={(id) => refreshUserMutation.mutate(id)}
-                        onStartRecording={(username) => startRecordingMutation.mutate(username)}
-                        onToggleMonitoring={(id, monitoring) => toggleMonitoringMutation.mutate({ id, isMonitoring: monitoring })}
-                        onRemove={(id) => removeFromWatchlistMutation.mutate(id)}
-                        fmt={fmt}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                /* Mobile cards */
-                <div className="space-y-3">
-                  {filteredUsers.map((user: User) => (
-                    <UserCard
-                      key={user.id}
-                      user={user}
-                      selectedIds={selectedIds}
-                      isRefreshing={refreshUserMutation.isPending}
-                      isRecording={startRecordingMutation.isPending}
-                      isRemoving={removeFromWatchlistMutation.isPending}
-                      onToggleSelect={toggleSelect}
-                      onRowClick={(id) => setDetailUserId(id)}
-                      onRefresh={(id) => refreshUserMutation.mutate(id)}
-                      onStartRecording={(username) => startRecordingMutation.mutate(username)}
-                      onToggleMonitoring={(id, monitoring) => toggleMonitoringMutation.mutate({ id, isMonitoring: monitoring })}
-                      onRemove={(id) => removeFromWatchlistMutation.mutate(id)}
-                      fmt={fmt}
-                    />
-                  ))}
-                </div>
-              )}
-            </>
           )}
+
+          <DataTable
+                columns={columns}
+                data={filteredUsers}
+                selectableRows
+                selectableRowsHighlight
+                onSelectedRowsChange={({ selectedRows }) => {
+                  setSelectedIds(new Set(selectedRows.map((r: User) => r.id)))
+                }}
+                pagination
+                paginationPerPage={20}
+                paginationRowsPerPageOptions={[10, 20, 50, 100]}
+                customStyles={customStyles}
+                onRowClicked={(row: User) => setDetailUserId(row.id)}
+                highlightOnHover
+                pointerOnHover
+                progressPending={isLoading}
+                progressComponent={<div className="py-8 text-center text-muted-foreground">Loading...</div>}
+                noDataComponent={
+                  <EmptyState
+                    icon={Users}
+                    title={searchQuery ? 'No users match your search' : 'No users in your watchlist'}
+                    description={searchQuery ? 'Try a different search term' : 'Add TikTok users to start monitoring their livestreams'}
+                    actionLabel={searchQuery ? undefined : 'Add your first user'}
+                    onAction={searchQuery ? undefined : () => setAddDialogOpen(true)}
+                  />
+                }
+              />
         </CardBody>
       </Card>
 

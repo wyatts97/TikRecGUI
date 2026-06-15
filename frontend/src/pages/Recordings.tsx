@@ -1,4 +1,4 @@
-import { useState, useEffect, memo, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -8,8 +8,6 @@ import {
   Play,
   Filter,
   Video,
-  CheckSquare,
-  Square,
   Loader2,
   ArrowUp,
   ArrowDown,
@@ -29,14 +27,7 @@ import {
   DialogTrigger,
   DialogBody,
 } from '@/components/selia/dialog'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/selia/table'
+import DataTable from 'react-data-table-component'
 import {
   Select,
   SelectItem,
@@ -46,7 +37,6 @@ import {
   SelectList,
 } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
@@ -60,204 +50,39 @@ const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'dange
   stopped: 'secondary-outline',
 }
 
-// Memoized recording row
-const RecordingRow = memo(function RecordingRow({
-  recording,
-  selectedIds,
-  stopPending,
-  deletePending,
-  onToggleSelect,
-  onStop,
-  onDownload,
-  onDelete,
-  fmt,
-}: {
-  recording: Recording
-  selectedIds: Set<number>
-  stopPending: boolean
-  deletePending: boolean
-  onToggleSelect: (id: number) => void
-  onStop: (id: number) => void
-  onDownload: (recording: Recording) => void
-  onDelete: (id: number) => void
-  fmt: (date: string | null | undefined) => string
-}) {
-  return (
-    <TableRow key={recording.id}>
-      <TableCell>
-        <button
-          onClick={() => onToggleSelect(recording.id)}
-          className="flex items-center justify-center"
-        >
-          {selectedIds.has(recording.id) ? (
-            <CheckSquare className="h-4 w-4 text-primary" />
-          ) : (
-            <Square className="h-4 w-4 text-muted-foreground" />
-          )}
-        </button>
-      </TableCell>
-      <TableCell>
-        <div>
-          <p className="font-medium">@{recording.username}</p>
-          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-            {recording.filename}
-          </p>
-        </div>
-      </TableCell>
-      <TableCell>
-        <Badge variant={statusVariantMap[recording.status] || 'default'}>
-          {recording.status}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        {recording.transcript_status === 'done' ? (
-          <Badge variant="success" className="text-xs">Done</Badge>
-        ) : recording.transcript_status === 'processing' ? (
-          <Badge variant="warning" className="text-xs">Processing</Badge>
-        ) : recording.transcript_status === 'pending' ? (
-          <Badge variant="secondary" className="text-xs">Pending</Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
-      </TableCell>
-      <TableCell>{formatDuration(recording.duration_seconds)}</TableCell>
-      <TableCell>{formatBytes(recording.file_size)}</TableCell>
-      <TableCell className="text-sm text-muted-foreground">
-        {fmt(recording.started_at || recording.created_at)}
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
-          {recording.status === 'recording' && (
-            <button
-              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-              onClick={() => onStop(recording.id)}
-              disabled={stopPending}
-              aria-label="Stop recording"
-            >
-              <StopCircle className="h-4 w-4" />
-            </button>
-          )}
-          {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <button
-              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
-              onClick={() => onDownload(recording)}
-              aria-label="Download recording"
-            >
-              <Download className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-            onClick={() => onDelete(recording.id)}
-            disabled={deletePending}
-            aria-label="Delete recording"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      </TableCell>
-    </TableRow>
-  )
-})
-
-// Mobile recording card
-const RecordingCard = memo(function RecordingCard({
-  recording,
-  selectedIds,
-  onToggleSelect,
-  onStop,
-  onDownload,
-  onDelete,
-  stopPending,
-  deletePending,
-  fmt,
-}: {
-  recording: Recording
-  selectedIds: Set<number>
-  stopPending: boolean
-  deletePending: boolean
-  onToggleSelect: (id: number) => void
-  onStop: (id: number) => void
-  onDownload: (recording: Recording) => void
-  onDelete: (id: number) => void
-  fmt: (date: string | null | undefined) => string
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2">
-          <button onClick={() => onToggleSelect(recording.id)} className="shrink-0">
-            {selectedIds.has(recording.id) ? (
-              <CheckSquare className="h-4 w-4 text-primary" />
-            ) : (
-              <Square className="h-4 w-4 text-muted-foreground" />
-            )}
-          </button>
-          <div>
-            <p className="font-medium text-sm">@{recording.username}</p>
-            <p className="text-xs text-muted-foreground truncate max-w-[180px]">
-              {recording.filename}
-            </p>
-          </div>
-        </div>
-        <Badge variant={statusVariantMap[recording.status] || 'default'} className="shrink-0">
-          {recording.status}
-        </Badge>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <span>Duration: {formatDuration(recording.duration_seconds)}</span>
-        <span>Size: {formatBytes(recording.file_size)}</span>
-        <span>{fmt(recording.started_at || recording.created_at)}</span>
-      </div>
-      <div className="flex items-center justify-between">
-        <div>
-          {recording.transcript_status === 'done' ? (
-            <Badge variant="success" className="text-[10px]">Transcript: Done</Badge>
-          ) : recording.transcript_status === 'processing' ? (
-            <Badge variant="warning" className="text-[10px]">Transcript: Processing</Badge>
-          ) : recording.transcript_status === 'pending' ? (
-            <Badge variant="secondary" className="text-[10px]">Transcript: Pending</Badge>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">No transcript</span>
-          )}
-        </div>
-        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
-          {recording.status === 'recording' && (
-            <button
-              className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-              onClick={() => onStop(recording.id)}
-              disabled={stopPending}
-              aria-label="Stop recording"
-            >
-              <StopCircle className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {(recording.status === 'completed' || recording.status === 'stopped') && (
-            <button
-              className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
-              onClick={() => onDownload(recording)}
-              aria-label="Download recording"
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            className="inline-flex items-center justify-center p-1.5 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
-            onClick={() => onDelete(recording.id)}
-            disabled={deletePending}
-            aria-label="Delete recording"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-})
+const customStyles = {
+  table: { style: { backgroundColor: 'transparent' } },
+  headRow: {
+    style: {
+      backgroundColor: 'var(--table-head)',
+      color: 'var(--foreground)',
+      fontSize: '0.875rem',
+      fontWeight: 500,
+      borderBottom: '1px solid var(--border)',
+    },
+  },
+  headCells: {
+    style: { paddingLeft: '16px', paddingRight: '16px' },
+  },
+  rows: {
+    style: {
+      backgroundColor: 'var(--card)',
+      color: 'var(--foreground)',
+      fontSize: '0.875rem',
+      minHeight: '56px',
+      borderBottom: '1px solid var(--border)',
+    },
+    highlightOnHoverStyle: {
+      backgroundColor: 'var(--muted-hover)',
+    },
+  },
+  cells: {
+    style: { paddingLeft: '16px', paddingRight: '16px' },
+  },
+}
 
 export default function Recordings() {
   const fmt = useDateFormat()
-  const isDesktop = useMediaQuery('(min-width: 768px)')
   const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(() => {
     const p = searchParams.get('page')
@@ -397,22 +222,6 @@ export default function Recordings() {
     document.body.removeChild(a)
   }
 
-  const toggleSelect = useCallback((id: number) => {
-    setSelectedIds((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(id)) newSet.delete(id)
-      else newSet.add(id)
-      return newSet
-    })
-  }, [])
-
-  const toggleSelectAll = useCallback(() => {
-    setSelectedIds((prev) => {
-      if (prev.size === recordings.length) return new Set()
-      return new Set(recordings.map(r => r.id))
-    })
-  }, [recordings])
-
   const handleBatchDownload = async () => {
     if (selectedIds.size === 0) return
     setIsDownloading(true)
@@ -438,6 +247,108 @@ export default function Recordings() {
     if (selectedIds.size === 0) return
     batchDeleteMutation.mutate(Array.from(selectedIds))
   }
+
+  const columns = useMemo(() => [
+    {
+      name: 'User',
+      selector: (row: Recording) => row.username,
+      sortable: true,
+      cell: (row: Recording) => (
+        <div>
+          <p className="font-medium">@{row.username}</p>
+          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+            {row.filename}
+          </p>
+        </div>
+      ),
+      minWidth: '200px',
+    },
+    {
+      name: 'Status',
+      selector: (row: Recording) => row.status,
+      sortable: true,
+      cell: (row: Recording) => (
+        <Badge variant={statusVariantMap[row.status] || 'default'}>
+          {row.status}
+        </Badge>
+      ),
+      width: '120px',
+    },
+    {
+      name: 'Transcript',
+      selector: (row: Recording) => row.transcript_status || '',
+      sortable: true,
+      cell: (row: Recording) => (
+        row.transcript_status === 'done' ? (
+          <Badge variant="success" className="text-xs">Done</Badge>
+        ) : row.transcript_status === 'processing' ? (
+          <Badge variant="warning" className="text-xs">Processing</Badge>
+        ) : row.transcript_status === 'pending' ? (
+          <Badge variant="secondary" className="text-xs">Pending</Badge>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        )
+      ),
+      width: '130px',
+    },
+    {
+      name: 'Duration',
+      selector: (row: Recording) => row.duration_seconds || 0,
+      sortable: true,
+      cell: (row: Recording) => formatDuration(row.duration_seconds),
+      width: '110px',
+    },
+    {
+      name: 'Size',
+      selector: (row: Recording) => row.file_size || 0,
+      sortable: true,
+      cell: (row: Recording) => formatBytes(row.file_size),
+      width: '100px',
+    },
+    {
+      name: 'Date',
+      selector: (row: Recording) => row.started_at || row.created_at || '',
+      sortable: true,
+      cell: (row: Recording) => <span className="text-sm text-muted-foreground">{fmt(row.started_at || row.created_at)}</span>,
+      width: '160px',
+    },
+    {
+      name: 'Actions',
+      cell: (row: Recording) => (
+        <div className="inline-flex -space-x-px rounded-lg shadow-sm">
+          {row.status === 'recording' && (
+            <button
+              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
+              onClick={() => stopRecordingMutation.mutate(row.id)}
+              disabled={stopRecordingMutation.isPending}
+              aria-label="Stop recording"
+            >
+              <StopCircle className="h-4 w-4" />
+            </button>
+          )}
+          {(row.status === 'completed' || row.status === 'stopped') && (
+            <button
+              className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-primary text-white hover:bg-primary-hover"
+              onClick={() => handleDownload(row)}
+              aria-label="Download recording"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            className="inline-flex items-center justify-center p-2 text-sm font-medium focus:z-10 focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer first:rounded-s-lg last:rounded-e-lg bg-red-600 text-white hover:bg-red-700"
+            onClick={() => deleteRecordingMutation.mutate(row.id)}
+            disabled={deleteRecordingMutation.isPending}
+            aria-label="Delete recording"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ),
+      width: '140px',
+      right: true,
+    },
+  ], [fmt, stopRecordingMutation.isPending, deleteRecordingMutation.isPending])
 
   return (
     <div className="space-y-6">
@@ -616,135 +527,83 @@ export default function Recordings() {
           )}
         </CardHeader>
         <CardBody>
-          {isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading...</div>
-          ) : recordings.length === 0 ? (
-            <EmptyState
-              icon={Video}
-              title="No recordings found"
-              description="Start a recording to capture TikTok live streams"
-              actionLabel="Start your first recording"
-              onAction={() => setRecordDialogOpen(true)}
-            />
-          ) : (
-            <>
-              {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2 mb-4 p-3 bg-primary-subtle rounded-lg">
-                  <span className="text-sm font-medium">
-                    {selectedIds.size} selected
-                  </span>
-                  <div className="flex-1" />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleBatchDownload}
-                    disabled={isDownloading}
-                  >
-                    {isDownloading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                    Download ZIP
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    onClick={() => setDeleteConfirmOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
-              )}
+          {selectedIds.size > 0 && recordings.length > 0 && (
+            <div className="flex items-center gap-2 mb-4 p-3 bg-primary-subtle rounded-lg">
+              <span className="text-sm font-medium">
+                {selectedIds.size} selected
+              </span>
+              <div className="flex-1" />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleBatchDownload}
+                disabled={isDownloading}
+              >
+                {isDownloading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
+                Download ZIP
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => setDeleteConfirmOpen(true)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </Button>
+            </div>
+          )}
 
-              {/* Desktop table */}
-              {isDesktop ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-12">
-                        <button
-                          onClick={toggleSelectAll}
-                          className="flex items-center justify-center"
-                        >
-                          {selectedIds.size === recordings.length && recordings.length > 0 ? (
-                            <CheckSquare className="h-4 w-4 text-primary" />
-                          ) : (
-                            <Square className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </button>
-                      </TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Transcript</TableHead>
-                      <TableHead>Duration</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recordings.map((recording: Recording) => (
-                      <RecordingRow
-                        key={recording.id}
-                        recording={recording}
-                        selectedIds={selectedIds}
-                        stopPending={stopRecordingMutation.isPending}
-                        deletePending={deleteRecordingMutation.isPending}
-                        onToggleSelect={toggleSelect}
-                        onStop={(id) => stopRecordingMutation.mutate(id)}
-                        onDownload={handleDownload}
-                        onDelete={(id) => deleteRecordingMutation.mutate(id)}
-                        fmt={fmt}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                /* Mobile cards */
-                <div className="space-y-3">
-                  {recordings.map((recording: Recording) => (
-                    <RecordingCard
-                      key={recording.id}
-                      recording={recording}
-                      selectedIds={selectedIds}
-                      stopPending={stopRecordingMutation.isPending}
-                      deletePending={deleteRecordingMutation.isPending}
-                      onToggleSelect={toggleSelect}
-                      onStop={(id) => stopRecordingMutation.mutate(id)}
-                      onDownload={handleDownload}
-                      onDelete={(id) => deleteRecordingMutation.mutate(id)}
-                      fmt={fmt}
-                    />
-                  ))}
-                </div>
-              )}
+          <DataTable
+            columns={columns}
+            data={recordings}
+            selectableRows
+            selectableRowsHighlight
+            onSelectedRowsChange={({ selectedRows }) => {
+              setSelectedIds(new Set(selectedRows.map((r: Recording) => r.id)))
+            }}
+            customStyles={customStyles}
+            progressPending={isLoading}
+            progressComponent={<div className="py-8 text-center text-muted-foreground">Loading...</div>}
+            noDataComponent={
+              <EmptyState
+                icon={Video}
+                title="No recordings found"
+                description="Start a recording to capture TikTok live streams"
+                actionLabel="Start your first recording"
+                onAction={() => setRecordDialogOpen(true)}
+              />
+            }
+            pagination={false}
+            highlightOnHover
+            pointerOnHover
+          />
 
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 mt-4">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    disabled={page === 1}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {page} of {totalPages}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={page === totalPages}
-                  >
-                    Next
-                  </Button>
-                </div>
-              )}
-            </>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+              >
+                Next
+              </Button>
+            </div>
           )}
         </CardBody>
       </Card>
