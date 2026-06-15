@@ -79,18 +79,6 @@ class RecordingTask:
             recording.started_at = datetime.utcnow()
             db.commit()
 
-        # Start live chat/gift capture (fire-and-forget — failure does not affect recording)
-        try:
-            live_chat_service.start_listening(
-                recording_id=self.recording_id,
-                username=self.username,
-                started_at=recording.started_at,
-                proxy=self.proxy,
-                cookies=self.cookies,
-            )
-        except Exception as e:
-            logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
-
         # --- Phase 2: validate room and get stream URL (no DB) ---
         api_cls = get_tiktok_api_class()
         api = api_cls(proxy=self.proxy, cookies=self.cookies)
@@ -103,6 +91,22 @@ class RecordingTask:
         if not live_url:
             _update_recording_status(self.recording_id, "failed", "Could not get live stream URL")
             return
+
+        # Start live chat/gift capture after stream URL is confirmed so that
+        # offset_seconds values align with the video start time rather than the
+        # earlier status-change time (Phase 1 can precede Phase 3 by 5-30 s).
+        _chat_started_at = datetime.utcnow()
+        try:
+            live_chat_service.start_listening(
+                recording_id=self.recording_id,
+                username=self.username,
+                room_id=self.room_id,
+                started_at=_chat_started_at,
+                proxy=self.proxy,
+                cookies=self.cookies,
+            )
+        except Exception as e:
+            logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
 
         # --- Phase 3: download stream (no DB session held) ---
         output_path = Path(settings.RECORDINGS_DIR) / filename

@@ -25,12 +25,14 @@ class LiveChatListener:
         self,
         recording_id: int,
         username: str,
+        room_id: str,
         started_at: datetime,
         proxy: Optional[str] = None,
         cookies: Optional[dict] = None,
     ):
         self.recording_id = recording_id
         self.username = username
+        self.room_id = room_id
         self.started_at = started_at
         self.proxy = proxy
         self.cookies = cookies
@@ -76,20 +78,17 @@ class LiveChatListener:
 
     async def _run_async(self):
         web_proxy, ws_proxy = self._make_proxy_objects()
+        # Pass cookies at construction so they apply to all HTTP requests
+        # (including the initial sign-server fetch), not just post-init.
+        httpx_kwargs: dict = {}
+        if self.cookies:
+            httpx_kwargs["cookies"] = self.cookies
         client = TikTokLiveClient(
             unique_id=f"@{self.username}",
             web_proxy=web_proxy,
             ws_proxy=ws_proxy,
+            httpx_kwargs=httpx_kwargs if httpx_kwargs else None,
         )
-
-        # Attach cookies for authenticated WebSocket access (sessionid_ss etc.)
-        if self.cookies:
-            try:
-                client.web.cookies.update(self.cookies)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to set cookies on TikTokLiveClient: %s", exc
-                )
 
         # --- Event handlers ---
 
@@ -135,7 +134,13 @@ class LiveChatListener:
             if self._stop_event.is_set():
                 await client.disconnect()
                 return
+            # Skip intermediate streak ticks — only save when the streak is complete
+            # (or for non-streakable gifts which are always final).
+            if event.gift.streakable and event.streaking:
+                return
             offset = (datetime.utcnow() - self.started_at).total_seconds()
+            repeat_count = event.repeat_count
+            diamond_count = getattr(event.gift, 'diamond_count', None)
             try:
                 with get_session() as db:
                     db.add(
@@ -146,8 +151,8 @@ class LiveChatListener:
                             user_nickname=event.user.nickname,
                             user_unique_id=event.user.unique_id,
                             gift_name=event.gift.name,
-                            gift_diamond_count=event.gift.diamond_count,
-                            gift_repeat_count=event.gift.repeat_count,
+                            gift_diamond_count=diamond_count,
+                            gift_repeat_count=repeat_count,
                         )
                     )
                     db.commit()
@@ -156,7 +161,7 @@ class LiveChatListener:
                     self.recording_id,
                     event.user.nickname,
                     event.gift.name,
-                    event.gift.repeat_count,
+                    repeat_count,
                 )
             except Exception as e:
                 logger.warning("Failed to save gift event: %s", e)
@@ -164,8 +169,15 @@ class LiveChatListener:
         # --- Connect and poll ---
 
         try:
-            # Start non-blocking so we can poll the stop event
-            connection_task = await client.start()
+            # Start non-blocking so we can poll the stop event.
+            # Pass room_id directly to skip HTML scraping (often blocked on servers).
+            # fetch_live_check=False because Phase 2 already confirmed the stream is live.
+            # fetch_gift_info=True enables gift name/metadata resolution.
+            connection_task = await client.start(
+                room_id=int(self.room_id),
+                fetch_live_check=False,
+                fetch_gift_info=True,
+            )
 
             # Poll until recording stops or the connection drops
             while not self._stop_event.is_set() and not connection_task.done():
@@ -207,6 +219,7 @@ class LiveChatService:
         self,
         recording_id: int,
         username: str,
+        room_id: str,
         started_at: datetime,
         proxy: Optional[str] = None,
         cookies: Optional[dict] = None,
@@ -222,6 +235,7 @@ class LiveChatService:
             listener = LiveChatListener(
                 recording_id=recording_id,
                 username=username,
+                room_id=room_id,
                 started_at=started_at,
                 proxy=proxy,
                 cookies=cookies,
