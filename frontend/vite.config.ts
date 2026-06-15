@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import preact from '@preact/preset-vite'
+import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import compression from 'vite-plugin-compression'
 import { imagetools } from 'vite-imagetools'
@@ -7,7 +7,7 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [
-    preact(),
+    react(),
     tailwindcss(),
     compression({
       algorithm: 'gzip',
@@ -33,7 +33,7 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             const match = id.match(/node_modules\/(?<pkg>@[^/]+\/[^/]+|[^/]+)/)
             const pkg = match?.groups?.pkg ?? ''
-            if (pkg.startsWith('preact')) return 'preact'
+            if (['react', 'react-dom', 'scheduler'].includes(pkg)) return 'react'
             if (pkg === 'react-router-dom' || pkg === 'react-router') return 'router'
             if (pkg === '@tanstack/react-query') return 'query'
             if (pkg === 'lucide-react') return 'icons'
