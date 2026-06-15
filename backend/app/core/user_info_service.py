@@ -1,6 +1,4 @@
-import json
 import logging
-import subprocess
 from pathlib import Path
 
 from app.config import settings
@@ -9,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class UserInfoService:
-    """Fetch TikTok user profile info using the tiktok-scraper npm CLI."""
+    """Fetch TikTok user profile info using the bundled recorder API."""
 
     AVATARS_DIR = Path(settings.DATA_DIR) / "avatars"
 
@@ -21,47 +19,35 @@ class UserInfoService:
 
     def fetch_user_info(self, username: str) -> dict:
         """
-        Run ``tiktok-scraper user <username>`` and parse the JSON output.
+        Use the recorder API to fetch user profile info.
         Returns a dict with: display_name, bio, follower_count, avatar_url.
         Returns an empty dict on any error so callers can degrade gracefully.
         """
         result: dict = {}
         try:
-            proc = subprocess.run(
-                ["tiktok-scraper", "user", username, "-t", "json"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if proc.returncode == 0 and proc.stdout.strip():
-                raw = json.loads(proc.stdout)
-                user_data: dict = {}
-                if isinstance(raw, list) and raw:
-                    user_data = raw[0]
-                elif isinstance(raw, dict):
-                    user_data = raw.get("userInfo", {}).get("user", raw)
+            from app.core.recorder_service import recorder_service
+            room_id = recorder_service.get_room_id(username)
+            if not room_id:
+                return result
 
-                result["display_name"] = (
-                    user_data.get("nickName")
-                    or user_data.get("nickname")
-                    or user_data.get("name")
-                )
-                result["bio"] = user_data.get("signature") or user_data.get("bio")
-                result["follower_count"] = (
-                    user_data.get("followerCount")
-                    or user_data.get("fans")
-                )
-                result["avatar_url"] = (
-                    user_data.get("avatarLarger")
-                    or user_data.get("avatarMedium")
-                    or user_data.get("avatarThumb")
-                )
-        except FileNotFoundError:
-            logger.warning("tiktok-scraper not found; profile info unavailable")
-        except subprocess.TimeoutExpired:
-            logger.warning(f"tiktok-scraper timed out for @{username}")
-        except (json.JSONDecodeError, Exception) as exc:
-            logger.warning(f"tiktok-scraper error for @{username}: {exc}")
+            api = recorder_service.get_api()
+            data = api.http_client.get(
+                f"https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={room_id}"
+            ).json()
+
+            owner = data.get("data", {}).get("owner", {})
+            follow_info = owner.get("follow_info", {})
+
+            result["display_name"] = owner.get("nickname")
+            result["bio"] = owner.get("bio_description")
+            result["follower_count"] = follow_info.get("follower_count")
+            result["avatar_url"] = (
+                owner.get("avatar_large", {}).get("url_list", [None])[0]
+                or owner.get("avatar_medium", {}).get("url_list", [None])[0]
+                or owner.get("avatar_thumb", {}).get("url_list", [None])[0]
+            )
+        except Exception as exc:
+            logger.warning(f"Recorder profile fetch failed for @{username}: {exc}")
 
         return result
 
@@ -79,7 +65,7 @@ class UserInfoService:
         if info.get("follower_count") is not None:
             db_user.follower_count = info["follower_count"]
 
-        # Cache avatar from tiktok-scraper result if available
+        # Cache avatar from recorder API result if available
         avatar_url = info.get("avatar_url")
         if avatar_url:
             try:
