@@ -22,10 +22,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       'lib': path.resolve(__dirname, './src/lib'),
       'components': path.resolve(__dirname, './src/components'),
-      'react': path.resolve(__dirname, './node_modules/preact/compat'),
-      'react-dom': path.resolve(__dirname, './node_modules/preact/compat'),
-      'react-dom/client': path.resolve(__dirname, './node_modules/preact/compat/client'),
-      'react/jsx-runtime': path.resolve(__dirname, './node_modules/preact/jsx-runtime'),
       '@swc/helpers/_/_extends': path.resolve(__dirname, './node_modules/@swc/helpers/esm/_extends.js'),
       '@swc/helpers/_/_object_without_properties_loose': path.resolve(__dirname, './node_modules/@swc/helpers/esm/_object_without_properties_loose.js'),
     },
@@ -37,7 +33,7 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             const match = id.match(/node_modules\/(?<pkg>@[^/]+\/[^/]+|[^/]+)/)
             const pkg = match?.groups?.pkg ?? ''
-            if (pkg === 'preact') return 'preact'
+            if (pkg.startsWith('preact')) return 'preact'
             if (pkg === 'react-router-dom' || pkg === 'react-router') return 'router'
             if (pkg === '@tanstack/react-query') return 'query'
             if (pkg === 'lucide-react') return 'icons'
