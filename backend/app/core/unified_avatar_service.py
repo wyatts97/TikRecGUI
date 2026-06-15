@@ -8,6 +8,8 @@ import logging
 import os
 import re
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 
@@ -27,11 +29,21 @@ class UnifiedAvatarService:
         "Chrome/120.0.0.0 Safari/537.36"
     )
 
+    # Exponential backoff for failed fetches (seconds)
+    _BACKOFF_BASE = 60      # 1 min
+    _BACKOFF_MAX = 3600     # 1 hour
+    _MAX_RETRIES = 5
+
     def __init__(self):
         self.AVATARS_DIR.mkdir(parents=True, exist_ok=True)
         # In-memory cache: username -> path. Avoids filesystem stat on every
         # GET /users call. Populated lazily by get_avatar_path / has_cached_avatar.
         self._cache: dict[str, str] = {}
+        # Prevent concurrent fetches for the same username
+        self._in_flight: set[str] = set()
+        self._lock = threading.Lock()
+        # Track failures for retry: username -> {last_attempt: ts, attempts: int}
+        self._failure_tracker: dict[str, dict] = {}
 
     def _avatar_path(self, username: str) -> Path:
         return self.AVATARS_DIR / f"{username}.jpg"
@@ -72,6 +84,40 @@ class UnifiedAvatarService:
         """Public wrapper to download and cache an avatar from a known URL."""
         return self._download_and_cache(username, url)
 
+    def _should_retry(self, username: str) -> bool:
+        """Check if enough time has passed since the last failed attempt."""
+        entry = self._failure_tracker.get(username)
+        if not entry:
+            return True
+        attempts = entry.get("attempts", 0)
+        if attempts >= self._MAX_RETRIES:
+            return False
+        last_attempt = entry.get("last_attempt", 0)
+        backoff = min(self._BACKOFF_BASE * (2 ** attempts), self._BACKOFF_MAX)
+        return (time.time() - last_attempt) >= backoff
+
+    def _record_failure(self, username: str) -> None:
+        entry = self._failure_tracker.get(username, {"attempts": 0})
+        entry["attempts"] = entry.get("attempts", 0) + 1
+        entry["last_attempt"] = time.time()
+        self._failure_tracker[username] = entry
+        logger.warning(f"Avatar fetch failed for @{username} (attempt {entry['attempts']})")
+
+    def _record_success(self, username: str) -> None:
+        self._failure_tracker.pop(username, None)
+
+    def reset_failure(self, username: str) -> None:
+        """Clear failure tracker for a user (e.g., manual refresh)."""
+        self._failure_tracker.pop(username, None)
+
+    def get_retryable_usernames(self) -> list[str]:
+        """Return usernames whose backoff has expired and are eligible for retry."""
+        return [
+            u for u, entry in self._failure_tracker.items()
+            if entry.get("attempts", 0) < self._MAX_RETRIES
+            and self._should_retry(u)
+        ]
+
     def _fetch_via_recorder(self, room_id: str) -> str | None:
         """Use the bundled TikTokAPI to get avatar URL from room info.
 
@@ -105,7 +151,20 @@ class UnifiedAvatarService:
                     timeout=15,
                     impersonate="chrome120",
                 )
-                response.raise_for_status()
+                status = response.status_code
+                content_type = response.headers.get("content-type", "")
+                logger.info(f"Avatar HTML fetch for @{username}: status={status}, content-type={content_type}")
+
+                if status != 200:
+                    logger.warning(f"Avatar HTML fetch non-200 for @{username}: status={status}")
+                    return None
+
+                # Detect captcha / challenge / rate-limit pages
+                html_lower = response.text.lower()
+                if "captcha" in html_lower or "verify" in html_lower or "challenge" in html_lower:
+                    logger.warning(f"Avatar HTML fetch hit captcha/verify for @{username}")
+                    return None
+
                 html = response.text
 
                 # Strategy 1: __UNIVERSAL_DATA_FOR_REHYDRATION__ script tag
@@ -221,6 +280,15 @@ class UnifiedAvatarService:
                     logger.info(f"Got avatar URL via profile image search for @{username}")
                     return profile_img.group(1)
 
+                # Strategy 9: Last-ditch catch-all — any avatarLarger/avatarMedium in raw source
+                catch_all = re.search(
+                    r'"avatarLarger"\s*:\s*"(https?://[^"]+)"',
+                    html,
+                )
+                if catch_all:
+                    logger.info(f"Got avatar URL via catch-all regex for @{username}")
+                    return catch_all.group(1)
+
                 # Nothing matched — log a snippet for debugging
                 snippet = re.sub(r'\s+', ' ', html[:2000])
                 logger.warning(f"Avatar HTML scraper found no avatar for @{username}. Snippet: {snippet}")
@@ -264,22 +332,49 @@ class UnifiedAvatarService:
         if not force and self.has_cached_avatar(username):
             return str(self._avatar_path(username))
 
-        # Try HTML profile page scraper first (fast, no external deps)
-        avatar_url: str | None = self._fetch_via_html_scraper(username)
+        # Clear failure tracker on manual force-refresh
+        if force:
+            self.reset_failure(username)
 
-        # Fallback to tiktok-scraper CLI (reliable, already used for profiles)
-        if not avatar_url:
-            avatar_url = self._fetch_via_tiktok_scraper(username)
+        # Retry backoff gate
+        if not self._should_retry(username):
+            logger.info(f"Avatar fetch for @{username} skipped: backoff active")
+            return None
 
-        # Attempt recorder API (disabled — see note in _fetch_via_recorder)
-        if not avatar_url and room_id:
-            avatar_url = self._fetch_via_recorder(room_id)
+        # Deduplication: prevent concurrent fetches for the same username
+        with self._lock:
+            if username in self._in_flight:
+                logger.info(f"Avatar fetch for @{username} already in flight")
+                return None
+            self._in_flight.add(username)
 
-        if avatar_url:
-            return self._download_and_cache(username, avatar_url)
+        try:
+            # Primary: tiktok-scraper CLI (more reliable against page changes)
+            avatar_url: str | None = self._fetch_via_tiktok_scraper(username)
 
-        logger.warning(f"All avatar fetch methods failed for @{username}")
-        return None
+            # Fallback: HTML profile page scraper (fast when it works)
+            if not avatar_url:
+                avatar_url = self._fetch_via_html_scraper(username)
+
+            # Attempt recorder API (disabled — see note in _fetch_via_recorder)
+            if not avatar_url and room_id:
+                avatar_url = self._fetch_via_recorder(room_id)
+
+            if avatar_url:
+                result = self._download_and_cache(username, avatar_url)
+                if result:
+                    self._record_success(username)
+                    return result
+                else:
+                    self._record_failure(username)
+                    return None
+
+            self._record_failure(username)
+            logger.warning(f"All avatar fetch methods failed for @{username}")
+            return None
+        finally:
+            with self._lock:
+                self._in_flight.discard(username)
 
     def get_avatar_path(self, username: str) -> str | None:
         """Return cached avatar path if it exists, else None."""

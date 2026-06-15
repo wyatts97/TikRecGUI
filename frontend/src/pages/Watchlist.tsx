@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus,
@@ -152,6 +152,7 @@ export default function Watchlist() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [detailUserId, setDetailUserId] = useState<number | null>(null)
   const queryClient = useQueryClient()
+  const retriedIdsRef = useRef<Set<number>>(new Set())
 
   const { data: users = [], isLoading } = useQuery({
     queryKey: ['users'],
@@ -258,7 +259,10 @@ export default function Watchlist() {
                 img.style.display = 'none'
                 const fallback = img.nextElementSibling as HTMLElement
                 if (fallback) fallback.style.display = 'flex'
-                api.users.refresh(row.id, true)
+                if (!retriedIdsRef.current.has(row.id)) {
+                  retriedIdsRef.current.add(row.id)
+                  api.users.refresh(row.id, true)
+                }
               }}
             />
             <span className="text-sm font-medium text-primary hidden items-center justify-center h-full w-full">
@@ -682,7 +686,10 @@ export default function Watchlist() {
                       img.style.display = 'none'
                       const fallback = img.nextElementSibling as HTMLElement
                       if (fallback) fallback.style.display = 'flex'
-                      api.users.refresh(detailUser.id, true)
+                      if (!retriedIdsRef.current.has(detailUser.id)) {
+                        retriedIdsRef.current.add(detailUser.id)
+                        api.users.refresh(detailUser.id, true)
+                      }
                     }}
                   />
                   <span className="hidden h-full w-full items-center justify-center text-2xl font-medium text-primary fallback-initial">

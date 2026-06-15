@@ -28,14 +28,11 @@ def list_users(
     if watchlist_only:
         query = query.filter(User.is_on_watchlist == True)
     users = query.offset(skip).limit(limit).all()
-    # Backfill profile_pic_url for users with cached avatars,
-    # and trigger background fetch for users without avatars
+    # Backfill profile_pic_url for users with cached avatars
     for user in users:
         if not user.profile_pic_url:
             if unified_avatar_service.get_avatar_path(user.username):
                 user.profile_pic_url = f"/api/users/{user.id}/avatar"
-            else:
-                run_background(unified_avatar_service.fetch_and_cache, user.username, user.room_id)
     db.commit()
     return users
 

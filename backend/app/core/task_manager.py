@@ -379,9 +379,21 @@ class MonitorService:
     def _check_once(self):
         from app.core.recorder_service import recorder_service
         from app.core.settings_store import settings_store
+        from app.core.unified_avatar_service import unified_avatar_service
 
         if not recorder_service.is_available():
             return
+
+        # --- Phase 0: retry failed avatar fetches ---
+        retryable = unified_avatar_service.get_retryable_usernames()
+        if retryable:
+            logger.info(f"Retrying avatar fetch for {len(retryable)} users")
+            for username in retryable:
+                if self._stop_event.is_set():
+                    return
+                unified_avatar_service.fetch_and_cache(username)
+                if self._stop_event.wait(timeout=1.5):
+                    return
 
         # --- Phase 1: fetch monitored users and active recordings (short session) ---
         with get_session() as db:
