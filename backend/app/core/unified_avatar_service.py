@@ -48,6 +48,17 @@ class UnifiedAvatarService:
     def _avatar_path(self, username: str) -> Path:
         return self.AVATARS_DIR / f"{username}.jpg"
 
+    def _save_debug(self, username: str, content: str, suffix: str = "html") -> None:
+        """Save raw response content for debugging blocked pages."""
+        try:
+            debug_dir = Path(settings.DATA_DIR) / "avatar-debug"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            path = debug_dir / f"{username}_{int(time.time())}.{suffix}"
+            path.write_text(content, encoding="utf-8")
+            logger.info(f"Saved debug snapshot for @{username} -> {path}")
+        except Exception:
+            pass
+
     def has_cached_avatar(self, username: str) -> bool:
         """Check if we have a cached avatar for this user."""
         if username in self._cache:
@@ -206,10 +217,15 @@ class UnifiedAvatarService:
                     logger.warning(f"Avatar HTML fetch non-200 for @{username}: status={status}")
                     return None
 
-                # Detect captcha / challenge / rate-limit pages
+                # Detect captcha / challenge / rate-limit / privacy-protection pages
                 html_lower = response.text.lower()
-                if "captcha" in html_lower or "verify" in html_lower or "challenge" in html_lower:
-                    logger.warning(f"Avatar HTML fetch hit captcha/verify for @{username}")
+                blocked_indicators = [
+                    "captcha", "verify", "challenge", "privacy_protection_framework",
+                    "serverless.tiktok.desktop", "tiktok_web_login_static",
+                ]
+                if any(ind in html_lower for ind in blocked_indicators):
+                    logger.warning(f"Avatar HTML fetch hit blocked page for @{username}")
+                    self._save_debug(username, response.text, "html")
                     return None
 
                 html = response.text
@@ -336,9 +352,10 @@ class UnifiedAvatarService:
                     logger.info(f"Got avatar URL via catch-all regex for @{username}")
                     return catch_all.group(1)
 
-                # Nothing matched — log a snippet for debugging
+                # Nothing matched — log a snippet and save full HTML for debugging
                 snippet = re.sub(r'\s+', ' ', html[:2000])
                 logger.warning(f"Avatar HTML scraper found no avatar for @{username}. Snippet: {snippet}")
+                self._save_debug(username, html, "html")
 
         except Exception as exc:
             logger.warning(f"Avatar HTML fetch failed for @{username}: {exc}")
@@ -360,6 +377,7 @@ class UnifiedAvatarService:
             )
             if proc.returncode != 0:
                 logger.warning(f"tiktok-scraper failed for @{username} (rc={proc.returncode}): {proc.stderr[:500]}")
+                self._save_debug(username, f"STDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}", "txt")
                 return None
 
             raw = json.loads(proc.stdout)
@@ -387,6 +405,7 @@ class UnifiedAvatarService:
             logger.debug(f"tiktok-scraper returned no avatar for @{username}; keys: {list(user_data.keys())[:10]}")
         except json.JSONDecodeError as exc:
             logger.warning(f"tiktok-scraper returned invalid JSON for @{username}: {exc}")
+            self._save_debug(username, f"STDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}", "txt")
         except subprocess.TimeoutExpired:
             logger.warning(f"tiktok-scraper timed out for @{username}")
         except Exception as exc:
@@ -425,12 +444,12 @@ class UnifiedAvatarService:
             self._in_flight.add(username)
 
         try:
-            # Primary: tiktok-scraper CLI (more reliable against page changes)
-            avatar_url: str | None = self._fetch_via_tiktok_scraper(username)
+            # Primary: HTML profile page scraper (fastest when it works)
+            avatar_url: str | None = self._fetch_via_html_scraper(username)
 
-            # Fallback: HTML profile page scraper (fast when it works)
+            # Fallback: tiktok-scraper CLI (often broken/deprecated)
             if not avatar_url:
-                avatar_url = self._fetch_via_html_scraper(username)
+                avatar_url = self._fetch_via_tiktok_scraper(username)
 
             # Attempt recorder API (disabled — see note in _fetch_via_recorder)
             if not avatar_url and room_id:

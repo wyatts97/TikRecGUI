@@ -86,6 +86,7 @@ class RecordingTask:
                 username=self.username,
                 started_at=recording.started_at,
                 proxy=self.proxy,
+                cookies=self.cookies,
             )
         except Exception as e:
             logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)

@@ -4,8 +4,9 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 
+import httpx
 from TikTokLive import TikTokLiveClient
-from TikTokLive.events import CommentEvent, GiftEvent
+from TikTokLive.events import CommentEvent, GiftEvent, ConnectEvent
 
 from app.db.database import get_session
 from app.db.models import LiveEvent
@@ -26,11 +27,13 @@ class LiveChatListener:
         username: str,
         started_at: datetime,
         proxy: Optional[str] = None,
+        cookies: Optional[dict] = None,
     ):
         self.recording_id = recording_id
         self.username = username
         self.started_at = started_at
         self.proxy = proxy
+        self.cookies = cookies
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -58,8 +61,46 @@ class LiveChatListener:
         finally:
             loop.close()
 
+    def _make_proxy_objects(self) -> tuple:
+        """Convert proxy string to httpx.Proxy objects for web and WS."""
+        if not self.proxy:
+            return None, None
+        try:
+            proxy_obj = httpx.Proxy(url=self.proxy)
+            return proxy_obj, proxy_obj
+        except Exception as exc:
+            logger.warning(
+                "Invalid proxy '%s' for chat listener: %s", self.proxy, exc
+            )
+            return None, None
+
     async def _run_async(self):
-        client = TikTokLiveClient(unique_id=f"@{self.username}", proxy=self.proxy)
+        web_proxy, ws_proxy = self._make_proxy_objects()
+        client = TikTokLiveClient(
+            unique_id=f"@{self.username}",
+            web_proxy=web_proxy,
+            ws_proxy=ws_proxy,
+        )
+
+        # Attach cookies for authenticated WebSocket access (sessionid_ss etc.)
+        if self.cookies:
+            try:
+                client.web.cookies.update(self.cookies)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to set cookies on TikTokLiveClient: %s", exc
+                )
+
+        # --- Event handlers ---
+
+        @client.on(ConnectEvent)
+        async def on_connect(event: ConnectEvent):
+            logger.info(
+                "Chat capture connected for @%s (recording %d, room=%s)",
+                self.username,
+                self.recording_id,
+                client.room_id,
+            )
 
         @client.on(CommentEvent)
         async def on_comment(event: CommentEvent):
@@ -80,6 +121,12 @@ class LiveChatListener:
                         )
                     )
                     db.commit()
+                logger.debug(
+                    "Chat event saved for recording %d: @%s: %s",
+                    self.recording_id,
+                    event.user.nickname,
+                    event.comment[:60] if event.comment else "",
+                )
             except Exception as e:
                 logger.warning("Failed to save chat event: %s", e)
 
@@ -104,14 +151,41 @@ class LiveChatListener:
                         )
                     )
                     db.commit()
+                logger.debug(
+                    "Gift event saved for recording %d: @%s sent %s x%d",
+                    self.recording_id,
+                    event.user.nickname,
+                    event.gift.name,
+                    event.gift.repeat_count,
+                )
             except Exception as e:
                 logger.warning("Failed to save gift event: %s", e)
 
+        # --- Connect and poll ---
+
         try:
-            await client.connect()
+            # Start non-blocking so we can poll the stop event
+            connection_task = await client.start()
+
+            # Poll until recording stops or the connection drops
+            while not self._stop_event.is_set() and not connection_task.done():
+                await asyncio.sleep(1)
+
+            # If we were asked to stop, disconnect cleanly
+            if self._stop_event.is_set() and client.connected:
+                logger.info(
+                    "Stopping chat capture for recording %d",
+                    self.recording_id,
+                )
+                await client.disconnect()
+
+            # Let the connection task finish cleanly
+            if not connection_task.done():
+                await connection_task
+
         except Exception:
             logger.warning(
-                "LiveChat client for recording %d disconnected",
+                "LiveChat client for recording %d error",
                 self.recording_id,
                 exc_info=True,
             )
@@ -135,6 +209,7 @@ class LiveChatService:
         username: str,
         started_at: datetime,
         proxy: Optional[str] = None,
+        cookies: Optional[dict] = None,
     ) -> bool:
         with self._lock:
             if recording_id in self._listeners:
@@ -149,6 +224,7 @@ class LiveChatService:
                 username=username,
                 started_at=started_at,
                 proxy=proxy,
+                cookies=cookies,
             )
             listener.start()
             self._listeners[recording_id] = listener
