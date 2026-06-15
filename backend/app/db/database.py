@@ -105,13 +105,16 @@ def init_db():
 
     inspector = inspect(engine)
 
-    # Only create tables via SQLAlchemy on a completely fresh database.
-    # On existing databases Alembic handles all schema changes, so we
-    # skip create_all() to avoid creating new tables (e.g. clips) before
-    # Alembic migrations try to create them.
     if "alembic_version" not in inspector.get_table_names():
+        # Completely fresh database — create all tables from models,
+        # then stamp at head so Alembic knows the schema is current.
+        # Running command.upgrade() afterwards would attempt to
+        # CREATE TABLE for new models (e.g. live_events) that already
+        # exist from create_all() → crash on SQLite.
         from app.db import models
         Base.metadata.create_all(bind=engine)
+        command.stamp(alembic_cfg, "head")
+        return
 
     # If alembic_version references a revision whose migration file no longer
     # exists (e.g. after replacing an initial "create all tables" migration
