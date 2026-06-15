@@ -146,11 +146,40 @@ class UnifiedAvatarService:
     def _fetch_via_recorder(self, room_id: str) -> str | None:
         """Use the bundled TikTokAPI to get avatar URL from room info.
 
-        NOTE: The bundled TikTokAPI does not expose a get_avatar_url method,
-        so this path is currently disabled. The HTML scraper and tiktok-scraper
-        CLI handle avatar fetching instead.
+        Calls the webcast room/info endpoint (which TikTok does not block
+        as aggressively as the profile page) and extracts avatar URLs from
+        the owner field.
         """
-        # The bundled recorder API has no avatar method; skip this path.
+        try:
+            from app.core.recorder_loader import get_tiktok_api_class
+            from app.core.settings_store import settings_store
+            from app.config import settings as app_settings
+
+            proxy = settings_store.get("proxy", app_settings.DEFAULT_PROXY)
+            cookies = None
+            if app_settings.COOKIES_FILE.exists():
+                import json as _json
+                with open(app_settings.COOKIES_FILE, "r") as f:
+                    cookies = _json.load(f)
+
+            api_cls = get_tiktok_api_class()
+            api = api_cls(proxy=proxy, cookies=cookies)
+
+            data = api.http_client.get(
+                f"https://webcast.tiktok.com/webcast/room/info/?aid=1988&room_id={room_id}"
+            ).json()
+
+            owner = data.get("data", {}).get("owner", {})
+            avatar_url = (
+                owner.get("avatar_large", {}).get("url_list", [None])[0]
+                or owner.get("avatar_medium", {}).get("url_list", [None])[0]
+                or owner.get("avatar_thumb", {}).get("url_list", [None])[0]
+            )
+            if avatar_url:
+                logger.info(f"Got avatar URL via recorder API (room_id={room_id})")
+                return avatar_url
+        except Exception as exc:
+            logger.warning(f"Recorder avatar fetch failed: {exc}")
         return None
 
     def _load_cookies_string(self) -> str:
@@ -444,16 +473,24 @@ class UnifiedAvatarService:
             self._in_flight.add(username)
 
         try:
-            # Primary: HTML profile page scraper (fastest when it works)
-            avatar_url: str | None = self._fetch_via_html_scraper(username)
+            # Primary: recorder API via webcast room/info (works reliably)
+            avatar_url: str | None = None
+            if not room_id:
+                try:
+                    from app.core.recorder_service import recorder_service
+                    room_id = recorder_service.get_room_id(username)
+                except Exception:
+                    pass
+            if room_id:
+                avatar_url = self._fetch_via_recorder(room_id)
 
-            # Fallback: tiktok-scraper CLI (often broken/deprecated)
+            # Fallback 1: HTML profile page scraper
+            if not avatar_url:
+                avatar_url = self._fetch_via_html_scraper(username)
+
+            # Fallback 2: tiktok-scraper CLI (often broken/deprecated)
             if not avatar_url:
                 avatar_url = self._fetch_via_tiktok_scraper(username)
-
-            # Attempt recorder API (disabled — see note in _fetch_via_recorder)
-            if not avatar_url and room_id:
-                avatar_url = self._fetch_via_recorder(room_id)
 
             if avatar_url:
                 result = self._download_and_cache(username, avatar_url)
