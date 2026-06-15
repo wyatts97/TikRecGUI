@@ -108,7 +108,7 @@ class LiveChatListener:
                 logger.warning("Failed to save gift event: %s", e)
 
         try:
-            await client.run()
+            await client.connect()
         except Exception:
             logger.warning(
                 "LiveChat client for recording %d disconnected",
