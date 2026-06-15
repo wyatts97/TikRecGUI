@@ -38,25 +38,26 @@ class CleanupService:
             return recordings
     
     def delete_recording(self, recording: Recording) -> bool:
-        """Delete a recording file and its thumbnail."""
+        """Delete all on-disk assets for a recording (video, thumbnail, sprite sheet, sprite VTT)."""
         file_path = Path(settings.RECORDINGS_DIR) / recording.filename
-        thumb_path = file_path.with_suffix("").with_name(file_path.stem + "_thumb.jpg")
-        
+
+        assets = [
+            file_path,
+            file_path.with_name(file_path.stem + "_thumb.jpg"),
+            file_path.with_name(file_path.stem + "_sprite.jpg"),
+            file_path.with_name(file_path.stem + "_sprite.vtt"),
+        ]
+
         deleted = False
-        
-        if file_path.exists():
-            try:
-                os.remove(file_path)
-                deleted = True
-            except OSError:
-                pass
-        
-        if thumb_path.exists():
-            try:
-                os.remove(thumb_path)
-            except OSError:
-                pass
-        
+        for path in assets:
+            if path.exists():
+                try:
+                    os.remove(path)
+                    if path == file_path:
+                        deleted = True
+                except OSError:
+                    pass
+
         return deleted
     
     def compress_recordings(self, recordings: list[Recording]) -> str | None:

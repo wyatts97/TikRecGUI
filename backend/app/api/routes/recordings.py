@@ -394,8 +394,10 @@ def delete_recording(recording_id: int, db: Session = Depends(get_db)):
             detail="Recording not found"
         )
     
-    if task_manager.is_recording(recording_id):
+    was_recording = task_manager.is_recording(recording_id)
+    if was_recording:
         task_manager.stop_recording(recording_id)
+        time.sleep(2)
     
     errors = _delete_recording_files(recording)
     
@@ -518,8 +520,10 @@ def batch_delete_recordings(
             errors.append(f"Recording {recording_id} not found")
             continue
         
-        if task_manager.is_recording(recording_id):
+        was_recording = task_manager.is_recording(recording_id)
+        if was_recording:
             task_manager.stop_recording(recording_id)
+            time.sleep(2)
         
         errors.extend(_delete_recording_files(recording))
         
