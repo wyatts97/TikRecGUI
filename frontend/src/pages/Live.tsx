@@ -17,6 +17,7 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
     try {
       setUrlError(false)
       const { live_url } = await api.recordings.getLiveUrl(recording.id)
+      console.debug('[Live] stream URL for', recording.username, ':', live_url)
       setLiveUrl(live_url)
     } catch {
       setUrlError(true)
@@ -41,9 +42,10 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
       <div className="relative aspect-video bg-black">
         {liveUrl && !urlError ? (
           <MediaPlayer
-            src={liveUrl}
+            src={{ src: liveUrl, type: 'application/x-mpegurl' }}
             title={`@${recording.username}`}
             className="w-full h-full"
+            autoPlay
             muted
           >
             <MediaProvider />

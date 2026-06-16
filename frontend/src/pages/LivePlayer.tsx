@@ -37,6 +37,7 @@ export default function LivePlayer() {
     try {
       setUrlError(false)
       const { live_url } = await api.recordings.getLiveUrl(recordingId)
+      console.debug('[LivePlayer] stream URL:', live_url)
       setLiveUrl(live_url)
     } catch {
       setUrlError(true)
@@ -148,7 +149,7 @@ export default function LivePlayer() {
           >
             {liveUrl && !urlError ? (
               <MediaPlayer
-                src={liveUrl}
+                src={{ src: liveUrl, type: 'application/x-mpegurl' }}
                 title={`@${recording.username}`}
                 className="w-full aspect-video"
               >

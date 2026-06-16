@@ -54,10 +54,11 @@ class LiveChatListener:
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(self._run_async())
-        except Exception:
+        except Exception as exc:
             logger.warning(
                 "LiveChatListener for recording %d ended: %s",
                 self.recording_id,
+                exc,
                 exc_info=True,
             )
         finally:
@@ -78,16 +79,10 @@ class LiveChatListener:
 
     async def _run_async(self):
         web_proxy, ws_proxy = self._make_proxy_objects()
-        # Pass cookies at construction so they apply to all HTTP requests
-        # (including the initial sign-server fetch), not just post-init.
-        httpx_kwargs: dict = {}
-        if self.cookies:
-            httpx_kwargs["cookies"] = self.cookies
         client = TikTokLiveClient(
             unique_id=f"@{self.username}",
             web_proxy=web_proxy,
             ws_proxy=ws_proxy,
-            httpx_kwargs=httpx_kwargs if httpx_kwargs else None,
         )
 
         # --- Event handlers ---
