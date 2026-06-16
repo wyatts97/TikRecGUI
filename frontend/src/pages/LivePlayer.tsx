@@ -1,10 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { MediaPlayer, MediaProvider } from '@vidstack/react'
-import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
-import '@vidstack/react/player/styles/default/theme.css'
-import '@vidstack/react/player/styles/default/layouts/video.css'
 import { ArrowLeft, Loader2, Radio, Square, Tv, Calendar, Clock, MessageCircle } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
@@ -12,6 +8,7 @@ import { api } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import ChatPanel from '@/components/ChatPanel'
+import FlvPlayer from '@/components/FlvPlayer'
 import toast from 'react-hot-toast'
 
 export default function LivePlayer() {
@@ -23,8 +20,6 @@ export default function LivePlayer() {
   const [showChat, setShowChat] = useState(false)
   const [liveUrl, setLiveUrl] = useState<string | null>(null)
   const [urlError, setUrlError] = useState(false)
-  const playerRef = useRef<HTMLDivElement>(null)
-
   const { data: recording, isLoading } = useQuery({
     queryKey: ['recording', recordingId],
     queryFn: () => api.recordings.get(recordingId),
@@ -64,8 +59,8 @@ export default function LivePlayer() {
   })
 
   const handleSeek = useCallback((seconds: number) => {
-    const video = playerRef.current?.querySelector('video') as HTMLVideoElement | null
-    if (video) video.currentTime = seconds
+    // No-op for live streams — seeking isn't supported
+    void seconds
   }, [])
 
   if (isLoading) {
@@ -143,21 +138,14 @@ export default function LivePlayer() {
       <div className="flex gap-6">
         {/* Left column — player + metadata */}
         <div className="flex-1 min-w-0 space-y-6">
-          <div
-            className="rounded-xl overflow-hidden bg-black border border-border shadow-sm"
-            ref={playerRef}
-          >
+          <div className="rounded-xl overflow-hidden bg-black border border-border shadow-sm">
             {liveUrl && !urlError ? (
-              <MediaPlayer
-                src={{ src: liveUrl, type: 'application/x-mpegurl' }}
-                title={`@${recording.username}`}
+              <FlvPlayer
+                src={liveUrl}
                 className="w-full aspect-video"
-              >
-                <MediaProvider />
-                <DefaultVideoLayout
-                  icons={defaultLayoutIcons}
-                />
-              </MediaPlayer>
+                autoPlay
+                controls
+              />
             ) : (
               <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-900">
                 {urlError ? (

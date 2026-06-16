@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { MediaPlayer, MediaProvider } from '@vidstack/react'
-import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import { Radio, Loader2, Tv, ArrowRight } from 'lucide-react'
-import { Button } from '@/components/selia/button'
 import { api, ActiveRecording } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
+import FlvPlayer from '@/components/FlvPlayer'
 
 function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
   const navigate = useNavigate()
@@ -41,19 +39,15 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
     >
       <div className="relative aspect-video bg-black">
         {liveUrl && !urlError ? (
-          <MediaPlayer
-            src={{ src: liveUrl, type: 'application/x-mpegurl' }}
-            title={`@${recording.username}`}
-            className="w-full h-full"
-            autoPlay
-            muted
-          >
-            <MediaProvider />
-            <DefaultVideoLayout
-              icons={defaultLayoutIcons}
-              className="opacity-0 group-hover:opacity-100 transition-opacity"
+          <div className="w-full h-full" onClick={(e) => e.stopPropagation()}>
+            <FlvPlayer
+              src={liveUrl}
+              className="w-full h-full"
+              autoPlay
+              muted
+              controls={false}
             />
-          </MediaPlayer>
+          </div>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
             <Tv className="h-8 w-8 text-gray-500 mb-2" />
