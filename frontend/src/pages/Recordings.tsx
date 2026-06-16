@@ -210,14 +210,14 @@ export default function Recordings() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">Recordings</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Recordings</h1>
           <p className="text-muted-foreground mt-1">
             View and manage your TikTok live recordings
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="danger"
             onClick={() => stopAllMutation.mutate()}
@@ -361,9 +361,9 @@ export default function Recordings() {
                       </th>
                       <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">User</th>
                       <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Status</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Transcript</th>
+                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Transcript</th>
                       <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Duration</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Size</th>
+                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Size</th>
                       <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Date</th>
                       <th scope="col" className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Actions</th>
                     </tr>
@@ -390,7 +390,7 @@ export default function Recordings() {
                         <td className="px-4 py-3">
                           <Badge variant={statusVariantMap[row.status] || 'secondary'}>{row.status}</Badge>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="hidden sm:table-cell px-4 py-3">
                           {row.transcript_status === 'done' ? (
                             <Badge variant="success" className="text-xs">Done</Badge>
                           ) : row.transcript_status === 'processing' ? (
@@ -404,7 +404,7 @@ export default function Recordings() {
                         <td className="px-4 py-3">
                           <span className="text-sm text-gray-600 dark:text-neutral-300">{formatDuration(row.duration_seconds)}</span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="hidden sm:table-cell px-4 py-3">
                           <span className="text-sm text-gray-600 dark:text-neutral-300">{formatBytes(row.file_size)}</span>
                         </td>
                         <td className="px-4 py-3">

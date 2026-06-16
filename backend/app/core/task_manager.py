@@ -55,6 +55,8 @@ class RecordingTask:
         self.proxy = proxy
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._output_path: Path | None = None
+        self._start_time: float | None = None
     
     def start(self):
         self._thread = threading.Thread(target=self._run_with_error_handling, daemon=True)
@@ -111,10 +113,12 @@ class RecordingTask:
         # --- Phase 3: download stream (no DB session held) ---
         output_path = Path(settings.RECORDINGS_DIR) / filename
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        self._output_path = output_path
 
         buffer_size = 512 * 1024
         buffer = bytearray()
         start_time = time.time()
+        self._start_time = start_time
 
         with open(output_path, "wb") as out_file:
             while not self._stop_event.is_set():
@@ -146,7 +150,24 @@ class RecordingTask:
                 out_file.write(buffer)
                 buffer.clear()
 
-        # --- Phase 4: finalize recording (short-lived session) ---
+        self._finalize_recording()
+
+    def _finalize_recording(self) -> None:
+        """Finalize a recording: flush file, update DB, stop chat, remux, thumbnails.
+        Called from _run() on normal exit and from _run_with_error_handling()
+        in finally to guarantee it always runs even on unexpected thread death.
+        """
+        output_path = self._output_path
+        start_time = self._start_time
+
+        if output_path is None or start_time is None:
+            # Recording never reached Phase 3 (no file created)
+            try:
+                live_chat_service.stop_listening(self.recording_id)
+            except Exception:
+                pass
+            return
+
         ended_at = datetime.utcnow()
         duration_seconds = int(time.time() - start_time)
         file_existed = output_path.exists()
@@ -156,24 +177,28 @@ class RecordingTask:
             if not recording:
                 return
 
-            recording.ended_at = ended_at
-            recording.duration_seconds = duration_seconds
+            # Only update if still active (don't overwrite already-finalized rows)
+            if recording.status in ("recording", "pending"):
+                recording.ended_at = ended_at
+                recording.duration_seconds = duration_seconds
 
-            if file_existed:
-                recording.file_size = output_path.stat().st_size
-                recording.status = "completed" if not self._stop_event.is_set() else "stopped"
-            else:
-                recording.status = "failed"
-                recording.error_message = "Output file not created"
+                if file_existed:
+                    recording.file_size = output_path.stat().st_size
+                    recording.status = "completed" if not self._stop_event.is_set() else "stopped"
+                else:
+                    recording.status = "failed"
+                    recording.error_message = recording.error_message or "Output file not created"
 
-            db.commit()
+                db.commit()
 
         # Stop live chat/gift capture
-        live_chat_service.stop_listening(self.recording_id)
+        try:
+            live_chat_service.stop_listening(self.recording_id)
+        except Exception:
+            pass
 
-        # --- Phase 5: post-processing (remux, thumbnails, sprites, transcription) ---
+        # Post-processing (remux, thumbnails, sprites, transcription)
         if file_existed:
-            # Log video health before processing
             health = analyze_video_health(output_path)
             if health.get("is_corrupt"):
                 logger.warning(
@@ -195,8 +220,6 @@ class RecordingTask:
                     recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
                     if recording:
                         recording.file_size = output_path.stat().st_size
-                        # Sync DB duration to the actual remuxed file duration so the
-                        # UI card and the browser player agree.
                         if actual_duration is not None:
                             actual_int = int(round(actual_duration))
                             if actual_int != recording.duration_seconds:
@@ -209,7 +232,6 @@ class RecordingTask:
                                 recording.duration_seconds = actual_int
                         db.commit()
             elif health.get("is_corrupt"):
-                # Remux with error-tolerant flags failed — try full repair
                 logger.info("Attempting full repair for corrupt recording %d", self.recording_id)
                 if repair_video(output_path):
                     with get_session() as db:
@@ -230,18 +252,14 @@ class RecordingTask:
                     db.commit()
                 transcription_service.enqueue(self.recording_id)
 
-        # --- Exception handler uses its own short-lived session ---
-    # (moved to outer try/except below)
     def _run_with_error_handling(self):
         try:
             self._run()
         except Exception as e:
             logger.error(f"Recording error: {e}", exc_info=True)
             _update_recording_status(self.recording_id, "failed", str(e))
-            try:
-                live_chat_service.stop_listening(self.recording_id)
-            except Exception:
-                pass
+        finally:
+            self._finalize_recording()
 
 
 class TaskManager:
@@ -423,11 +441,12 @@ class MonitorService:
             if not monitored:
                 return
 
-            active_ids = set(task_manager.get_active_recordings())
             recording_user_ids = {
                 rec.user_id
-                for rec in db.query(Recording).filter(Recording.id.in_(active_ids)).all()
-            } if active_ids else set()
+                for rec in db.query(Recording).filter(
+                    Recording.status.in_(["pending", "recording"])
+                ).all()
+            }
 
         cookies = recorder_service.load_cookies()
         proxy = settings_store.get("proxy", settings.DEFAULT_PROXY)

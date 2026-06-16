@@ -26,7 +26,7 @@ export function TabsList({
     <BaseTabs.List
       data-slot="tabs-list"
       className={cn(
-        'relative z-0 flex items-center bg-tabs p-1 rounded',
+        'relative z-0 flex items-center bg-tabs p-1 rounded overflow-x-auto scrollbar-hide',
         'inset-shadow-xs inset-shadow-black/10 dark:inset-shadow-none',
         className,
       )}

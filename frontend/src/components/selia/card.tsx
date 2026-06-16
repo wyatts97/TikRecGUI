@@ -19,7 +19,7 @@ export function Card({ className, ...props }: React.ComponentProps<'div'>) {
 
 export const cardHeaderVariants = cva(
   [
-    'p-6 gap-x-3.5 gap-y-2 border-b border-card-separator',
+    'p-4 sm:p-6 gap-x-3.5 gap-y-2 border-b border-card-separator',
     'grid grid-cols-[1fr_auto]',
     'has-[svg]:grid-cols-[auto_1fr_auto]',
     'has-[[data-slot=iconbox]]:*:data-[slot=card-description]:col-start-2',
@@ -101,8 +101,8 @@ export function CardBody({ className, ...props }: React.ComponentProps<'div'>) {
     <div
       data-slot="card-body"
       className={cn(
-        'p-6 **:data-[slot=item]:px-6',
-        '*:data-[slot=table-container]:-m-6 **:data-[slot=table-head]:border-t-0',
+        'p-4 sm:p-6 **:data-[slot=item]:px-4 sm:**:data-[slot=item]:px-6',
+        '*:data-[slot=table-container]:-m-4 sm:*:data-[slot=table-container]:-m-6 **:data-[slot=table-head]:border-t-0',
         '*:data-[slot=stack]:-m-6',
         'not-[:has(caption)]:[&_tbody>tr:last-child>td:first-child]:rounded-bl-xl',
         'not-[:has(caption)]:[&_tbody>tr:last-child>td:last-child]:rounded-br-xl',
@@ -122,7 +122,7 @@ export function CardFooter({
       data-slot="card-footer"
       className={cn(
         'flex items-center gap-1.5',
-        'p-6 bg-card-footer border-t border-card-separator rounded-b-xl',
+        'p-4 sm:p-6 bg-card-footer border-t border-card-separator rounded-b-xl',
         className,
       )}
       {...props}

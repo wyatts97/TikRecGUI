@@ -257,14 +257,14 @@ export default function Watchlist() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground tracking-tight">Watchlist</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Watchlist</h1>
           <p className="text-muted-foreground mt-1">
             Manage TikTok users you want to monitor and record
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
             <DialogTrigger>
               <Button variant="outline">
@@ -474,8 +474,8 @@ export default function Watchlist() {
                       </th>
                       <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Name</th>
                       <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Status</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Monitoring</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Last Checked</th>
+                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Monitoring</th>
+                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Last Checked</th>
                       <th scope="col" className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Actions</th>
                     </tr>
                   </thead>
@@ -539,7 +539,7 @@ export default function Watchlist() {
                             <Badge variant="secondary">Offline</Badge>
                           )}
                         </td>
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <td className="hidden sm:table-cell px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           <button
                             className="inline-flex items-center gap-1.5 text-sm"
                             onClick={() => toggleMonitoringMutation.mutate({ id: row.id, isMonitoring: !row.is_monitoring })}
@@ -551,7 +551,7 @@ export default function Watchlist() {
                             )}
                           </button>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="hidden sm:table-cell px-4 py-3">
                           <span className="text-sm text-gray-500 dark:text-neutral-400">{fmt(row.last_checked)}</span>
                         </td>
                         <td className="px-4 py-3 text-end" onClick={(e) => e.stopPropagation()}>

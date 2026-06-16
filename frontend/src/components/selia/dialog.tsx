@@ -43,7 +43,7 @@ export function DialogPopup({
           'bg-dialog text-dialog-foreground backdrop-blur-sm',
           'ring ring-dialog-border rounded-xl shadow',
           'scale-[calc(1-0.1*var(--nested-dialogs))]',
-          'outline-none transition-all w-md max-w-[calc(100%-2rem)]',
+          'outline-none transition-all w-md max-w-[calc(100%-1rem)] sm:max-w-[calc(100%-2rem)] px-4 sm:px-0',
           'data-[nested-dialog-open]:after:absolute',
           'data-[nested-dialog-open]:after:inset-0',
           'data-[nested-dialog-open]:after:rounded-xl',
@@ -69,7 +69,7 @@ export function DialogHeader({
     <header
       data-slot="dialog-header"
       {...props}
-      className={cn('px-6 pt-4.5 flex items-center gap-3.5', className)}
+      className={cn('px-4 pt-3 sm:px-6 sm:pt-4.5 flex items-center gap-3.5', className)}
     >
       {children}
     </header>
@@ -101,7 +101,7 @@ export function DialogBody({
     <div
       data-slot="dialog-body"
       {...props}
-      className={cn('px-6 py-4.5 space-y-1.5', className)}
+      className={cn('px-4 py-3 sm:px-6 sm:py-4.5 space-y-1.5', className)}
     >
       {children}
     </div>
@@ -134,8 +134,8 @@ export function DialogFooter({
       data-slot="dialog-footer"
       {...props}
       className={cn(
-        'flex items-center justify-end gap-1.5',
-        'px-6 py-3.5 bg-dialog-footer border-t border-dialog-border rounded-b-xl',
+        'flex items-center justify-end gap-1.5 flex-wrap',
+        'px-4 py-3 sm:px-6 sm:py-3.5 bg-dialog-footer border-t border-dialog-border rounded-b-xl',
         className,
       )}
     >

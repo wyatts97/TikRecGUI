@@ -393,7 +393,12 @@ def stop_recording(recording_id: int, db: Session = Depends(get_db)):
             detail=f"Recording is not active (status: {recording.status})"
         )
     
-    task_manager.stop_recording(recording_id)
+    stopped = task_manager.stop_recording(recording_id)
+    if not stopped and recording.status == "recording":
+        # Orphan recording — task no longer in memory (e.g. container restart)
+        recording.status = "stopped"
+        recording.ended_at = datetime.utcnow()
+        db.commit()
     
     db.refresh(recording)
     

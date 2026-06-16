@@ -38,7 +38,7 @@ export function TableHead({ ...props }: React.ComponentProps<'th'>) {
       data-slot="table-head"
       {...props}
       className={cn(
-        'px-6 py-2 text-muted font-medium bg-table-head border-y border-table-separator',
+        'px-3 py-2 sm:px-6 text-muted font-medium bg-table-head border-y border-table-separator',
         props.className,
       )}
     />
@@ -70,8 +70,8 @@ export function TableCell({ ...props }: React.ComponentProps<'td'>) {
       data-slot="table-cell"
       {...props}
       className={cn(
-        'px-6 py-4',
-        'has-[a]:p-0 *:[a]:px-6 *:[a]:py-4 *:[a]:inline-flex *:[a]:w-full',
+        'px-3 py-3 sm:px-6 sm:py-4',
+        'has-[a]:p-0 *:[a]:px-3 *:[a]:py-3 sm:*:[a]:px-6 sm:*:[a]:py-4 *:[a]:inline-flex *:[a]:w-full',
         props.className,
       )}
     />

@@ -198,7 +198,7 @@ export function DrawerHeader({
     <header
       data-slot="drawer-header"
       {...props}
-      className={cn('px-6 pt-4.5 flex items-center gap-3.5 cursor-default', className)}
+      className={cn('px-4 pt-3 sm:px-6 sm:pt-4.5 flex items-center gap-3.5 cursor-default', className)}
     >
       {children}
     </header>
@@ -239,7 +239,7 @@ export function DrawerBody({
         data-slot="drawer-body"
         {...props}
         className={cn(
-          'px-6 py-4.5 space-y-1.5 h-full overflow-y-auto',
+          'px-4 py-3 sm:px-6 sm:py-4.5 space-y-1.5 h-full overflow-y-auto',
           className,
         )}
       >
@@ -275,8 +275,8 @@ export function DrawerFooter({
       data-slot="drawer-footer"
       {...props}
       className={cn(
-        'flex items-center justify-end gap-1.5 mt-auto',
-        'px-6 py-3.5 bg-drawer-footer border-t border-drawer-border',
+        'flex items-center justify-end gap-1.5 mt-auto flex-wrap',
+        'px-4 py-3 sm:px-6 sm:py-3.5 bg-drawer-footer border-t border-drawer-border',
         className,
       )}
     >

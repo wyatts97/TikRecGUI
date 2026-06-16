@@ -396,7 +396,7 @@ export default function Dashboard() {
                 />
               </div>
             ) : (
-              <ul className="relative space-y-6 border-s-2 border-border ps-6">
+              <ul className="relative space-y-4 sm:space-y-6 border-s-2 border-border ps-4 sm:ps-6">
                 {activityItems.map((item) => {
                   const Icon = item.icon
                   const nodeColor = item.type === 'recording' ? 'bg-success' : 'bg-danger'
