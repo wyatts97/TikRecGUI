@@ -323,18 +323,39 @@ def generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
 # Remuxing
 # ----------------------------------------------------------------
 
-def remux_to_mp4(input_path: Path) -> bool:
+def _probe_duration(video_path: Path) -> float | None:
+    """Return the duration of *video_path* in seconds, or ``None``."""
+    try:
+        probe = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(video_path),
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        return float(probe.stdout.strip())
+    except Exception:
+        return None
+
+
+def remux_to_mp4(
+    input_path: Path,
+    expected_duration: float | None = None,
+) -> tuple[bool, float | None]:
     """Remux a raw stream to a faststart MP4 for browser seeking.
 
     Uses error-tolerant ffmpeg flags to handle mid-stream codec switches
     common in TikTok live recordings. Falls back to a full re-encode if
-    the stream-copy remux encounters corrupt frames.
+    the stream-copy remux encounters corrupt frames or if the resulting
+    duration diverges from *expected_duration* by >5 %% or >30 s.
 
-    Replaces *input_path* with the remuxed file in-place.  Returns
-    ``True`` on success.
+    Replaces *input_path* with the remuxed file in-place.
+    Returns ``(success, actual_duration)``.
     """
     if not input_path.exists():
-        return False
+        return False, None
 
     # Strategy 1 — error-tolerant stream copy (fast, preserves quality)
     temp_path = input_path.with_suffix(".tmp.mp4")
@@ -354,15 +375,33 @@ def remux_to_mp4(input_path: Path) -> bool:
             timeout=180,
         )
         if temp_path.exists() and temp_path.stat().st_size > 0:
-            temp_path.replace(input_path)
-            return True
+            actual_duration = _probe_duration(temp_path)
+            # Validate duration before replacing the original file
+            if expected_duration is not None and actual_duration is not None:
+                diff = abs(actual_duration - expected_duration)
+                threshold = max(expected_duration * 0.05, 30.0)
+                if diff > threshold:
+                    logger.warning(
+                        "Stream-copy remux duration mismatch for %s: "
+                        "expected %.1fs, got %.1fs (diff %.1fs > threshold %.1fs). "
+                        "Falling back to re-encode.",
+                        input_path.name, expected_duration, actual_duration, diff, threshold,
+                    )
+                    temp_path.unlink(missing_ok=True)
+                    # Fall through to Strategy 2
+                else:
+                    temp_path.replace(input_path)
+                    return True, actual_duration
+            else:
+                temp_path.replace(input_path)
+                return True, actual_duration
     except Exception:
         logger.warning("Stream-copy remux failed for %s, trying re-encode", input_path)
     finally:
         if temp_path.exists():
             temp_path.unlink(missing_ok=True)
 
-    # Strategy 2 — full re-encode (recovers corrupt frames at quality cost)
+    # Strategy 2 — full re-encode (recovers corrupt frames and fixes timestamps)
     reencode_path = input_path.with_suffix(".tmp.reencode.mp4")
     try:
         subprocess.run(
@@ -384,15 +423,16 @@ def remux_to_mp4(input_path: Path) -> bool:
             timeout=300,
         )
         if reencode_path.exists() and reencode_path.stat().st_size > 0:
+            actual_duration = _probe_duration(reencode_path)
             reencode_path.replace(input_path)
-            return True
+            return True, actual_duration
     except Exception:
         logger.error("Re-encode remux also failed for %s", input_path)
     finally:
         if reencode_path.exists():
             reencode_path.unlink(missing_ok=True)
 
-    return False
+    return False, None
 
 
 # ----------------------------------------------------------------

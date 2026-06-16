@@ -187,12 +187,26 @@ class RecordingTask:
                     health.get("duration"), health.get("has_video"), health.get("has_audio"),
                 )
 
-            remux_ok = remux_to_mp4(output_path)
+            remux_ok, actual_duration = remux_to_mp4(
+                output_path, expected_duration=duration_seconds
+            )
             if remux_ok:
                 with get_session() as db:
                     recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
                     if recording:
                         recording.file_size = output_path.stat().st_size
+                        # Sync DB duration to the actual remuxed file duration so the
+                        # UI card and the browser player agree.
+                        if actual_duration is not None:
+                            actual_int = int(round(actual_duration))
+                            if actual_int != recording.duration_seconds:
+                                logger.info(
+                                    "Updating recording %d duration %d -> %d (remux fix)",
+                                    self.recording_id,
+                                    recording.duration_seconds,
+                                    actual_int,
+                                )
+                                recording.duration_seconds = actual_int
                         db.commit()
             elif health.get("is_corrupt"):
                 # Remux with error-tolerant flags failed — try full repair
