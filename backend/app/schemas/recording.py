@@ -82,3 +82,4 @@ class ActiveRecordingResponse(BaseModel):
     status: str
     started_at: datetime | None = None
     duration_seconds: int | None = None
+    room_id: str | None = None

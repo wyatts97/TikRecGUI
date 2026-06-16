@@ -11,6 +11,8 @@ const Watchlist = lazy(() => import('./pages/Watchlist'))
 const Recordings = lazy(() => import('./pages/Recordings'))
 const Watch = lazy(() => import('./pages/Watch'))
 const WatchPlayer = lazy(() => import('./pages/WatchPlayer'))
+const Live = lazy(() => import('./pages/Live'))
+const LivePlayer = lazy(() => import('./pages/LivePlayer'))
 const Clips = lazy(() => import('./pages/Clips'))
 const ClipPlayer = lazy(() => import('./pages/ClipPlayer'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -65,6 +67,8 @@ function App() {
             <Route path="recordings" element={<Recordings />} />
             <Route path="watch" element={<Watch />} />
             <Route path="watch/:id" element={<WatchPlayer />} />
+            <Route path="live" element={<Live />} />
+            <Route path="live/:id" element={<LivePlayer />} />
             <Route path="clips" element={<Clips />} />
             <Route path="clips/:id" element={<ClipPlayer />} />
             <Route path="settings" element={<Settings />} />

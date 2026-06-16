@@ -115,6 +115,7 @@ export interface ActiveRecording {
   status: string
   started_at: string | null
   duration_seconds: number | null
+  room_id: string | null
 }
 
 export interface AutoCleanupConfig {
@@ -260,6 +261,9 @@ export const api = {
       fetchApi<void>(`/recordings/${id}`, { method: "DELETE" }),
     
     getActive: () => fetchApi<ActiveRecording[]>("/recordings/active"),
+
+    getLiveUrl: (id: number) =>
+      fetchApi<{ live_url: string }>(`/recordings/${id}/live-url`),
 
     toggleFavorite: (id: number) =>
       fetchApi<Recording>(`/recordings/${id}/favorite`, { method: "POST" }),

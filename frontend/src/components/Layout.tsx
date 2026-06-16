@@ -26,6 +26,7 @@ const navItems = [
   { to: '/watchlist', icon: Users, label: 'Watchlist' },
   { to: '/recordings', icon: Video, label: 'Recordings' },
   { to: '/watch', icon: Tv, label: 'Watch' },
+  { to: '/live', icon: Radio, label: 'Live' },
   { to: '/clips', icon: Scissors, label: 'Clips' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]

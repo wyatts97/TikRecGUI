@@ -331,10 +331,39 @@ def get_active_recordings(db: Session = Depends(get_db)):
             username=rec.user.username,
             status=rec.status,
             started_at=rec.started_at,
-            duration_seconds=duration
+            duration_seconds=duration,
+            room_id=rec.user.room_id,
         ))
 
     return out
+
+
+@router.get("/{recording_id}/live-url")
+def get_recording_live_url(recording_id: int, db: Session = Depends(get_db)):
+    """Fetch a fresh HLS live-stream URL for an active recording.
+
+    TikTok live URLs expire after ~5 minutes, so this endpoint re-resolves
+    the URL on every request rather than caching it.
+    """
+    recording = db.query(Recording).filter(Recording.id == recording_id).first()
+    if not recording or recording.status not in ("pending", "recording"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Recording not active"
+        )
+    room_id = recording.user.room_id
+    if not room_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No room_id for this recording"
+        )
+    live_url = recorder_service.get_live_url(room_id)
+    if not live_url:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not fetch live stream URL"
+        )
+    return {"live_url": live_url}
 
 
 @router.get("/{recording_id}", response_model=RecordingResponse)
