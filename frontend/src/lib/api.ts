@@ -158,6 +158,8 @@ export interface HealthStatus {
   recordings_dir: string
   recordings_dir_exists: boolean
   disk_usage: DiskUsage | null
+  cpu_percent: number | null
+  ram_percent: number | null
 }
 
 export interface MonitorStatus {

@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity, CheckCircle2 } from 'lucide-react'
+import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity, CheckCircle2, Cpu } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Badge } from 'components/selia/badge'
 import { Button } from 'components/selia/button'
@@ -169,60 +169,116 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Storage indicator card */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm font-medium">
-            <HardDrive className="h-4 w-4 text-muted-foreground" />
-            Storage
-          </CardTitle>
-          <Button
-            variant="plain"
-            size="sm"
-            onClick={() => navigate('/settings')}
-          >
-            <IconBox variant="secondary-subtle" size="sm">
-              <Settings className="h-3.5 w-3.5" />
-            </IconBox>
-          </Button>
-        </CardHeader>
-        <CardBody>
-          {health?.disk_usage ? (() => {
-            const { total, used, free, percent } = health.disk_usage
-            const freePercent = 100 - percent
-            const indicatorColor = freePercent > 20 ? 'bg-success' : freePercent > 10 ? 'bg-warning' : 'bg-danger'
-            const textColor = freePercent > 20 ? 'text-success' : freePercent > 10 ? 'text-warning' : 'text-danger'
-            return (
-              <Meter value={percent}>
-                <div className="flex items-center justify-between">
-                  <MeterValue>{formatBytes(used)} used</MeterValue>
-                  <MeterValue>{formatBytes(total)} total</MeterValue>
-                </div>
-                <MeterTrack>
-                  <MeterIndicator className={indicatorColor} />
-                </MeterTrack>
-                <div className="flex items-center justify-between text-xs">
-                  <span className={textColor}>
-                    {formatBytes(free)} free ({freePercent.toFixed(1)}%)
-                  </span>
-                  {freePercent <= 20 && (
-                    <Badge variant="danger" size="sm" className="text-[10px]">
-                      Low space
-                    </Badge>
-                  )}
-                </div>
-              </Meter>
-            )
-          })() : dirExists === false ? (
-            <p className="text-xs text-destructive flex items-center gap-1">
-              {/* Keep using a simple text indicator */}
-              Recordings directory does not exist. Check your settings.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground truncate">{recordingsDir}</p>
-          )}
-        </CardBody>
-      </Card>
+      {/* System resources grid */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Storage indicator card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <HardDrive className="h-4 w-4 text-muted-foreground" />
+              Storage
+            </CardTitle>
+            <Button
+              variant="plain"
+              size="sm"
+              onClick={() => navigate('/settings')}
+            >
+              <IconBox variant="secondary-subtle" size="sm">
+                <Settings className="h-3.5 w-3.5" />
+              </IconBox>
+            </Button>
+          </CardHeader>
+          <CardBody>
+            {health?.disk_usage ? (() => {
+              const { total, used, free, percent } = health.disk_usage
+              const freePercent = 100 - percent
+              const indicatorColor = freePercent > 20 ? 'bg-success' : freePercent > 10 ? 'bg-warning' : 'bg-danger'
+              const textColor = freePercent > 20 ? 'text-success' : freePercent > 10 ? 'text-warning' : 'text-danger'
+              return (
+                <Meter value={percent}>
+                  <div className="flex items-center justify-between">
+                    <MeterValue>{formatBytes(used)} used</MeterValue>
+                    <MeterValue>{formatBytes(total)} total</MeterValue>
+                  </div>
+                  <MeterTrack>
+                    <MeterIndicator className={indicatorColor} />
+                  </MeterTrack>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className={textColor}>
+                      {formatBytes(free)} free ({freePercent.toFixed(1)}%)
+                    </span>
+                    {freePercent <= 20 && (
+                      <Badge variant="danger" size="sm" className="text-[10px]">
+                        Low space
+                      </Badge>
+                    )}
+                  </div>
+                </Meter>
+              )
+            })() : dirExists === false ? (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                Recordings directory does not exist. Check your settings.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground truncate">{recordingsDir}</p>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* System Resources card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Cpu className="h-4 w-4 text-muted-foreground" />
+              System Resources
+            </CardTitle>
+          </CardHeader>
+          <CardBody className="space-y-4">
+            {health?.cpu_percent != null && health?.ram_percent != null ? (
+              <>
+                {/* CPU */}
+                <Meter value={health.cpu_percent}>
+                  <div className="flex items-center justify-between">
+                    <MeterValue>CPU</MeterValue>
+                    <MeterValue>{health.cpu_percent.toFixed(1)}%</MeterValue>
+                  </div>
+                  <MeterTrack>
+                    <MeterIndicator
+                      className={
+                        health.cpu_percent < 60
+                          ? 'bg-success'
+                          : health.cpu_percent < 80
+                            ? 'bg-warning'
+                            : 'bg-danger'
+                      }
+                    />
+                  </MeterTrack>
+                </Meter>
+                {/* RAM */}
+                <Meter value={health.ram_percent}>
+                  <div className="flex items-center justify-between">
+                    <MeterValue>RAM</MeterValue>
+                    <MeterValue>{health.ram_percent.toFixed(1)}%</MeterValue>
+                  </div>
+                  <MeterTrack>
+                    <MeterIndicator
+                      className={
+                        health.ram_percent < 60
+                          ? 'bg-success'
+                          : health.ram_percent < 80
+                            ? 'bg-warning'
+                            : 'bg-danger'
+                      }
+                    />
+                  </MeterTrack>
+                </Meter>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">System metrics unavailable</p>
+            )}
+          </CardBody>
+        </Card>
+      </div>
 
       {/* Quick actions */}
       <div className="flex flex-wrap gap-3">

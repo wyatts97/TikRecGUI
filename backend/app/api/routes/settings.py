@@ -1,5 +1,7 @@
 import json
 import shutil
+
+import psutil
 from fastapi import APIRouter, HTTPException, status
 
 from app.config import settings
@@ -136,6 +138,15 @@ async def health_check():
     except OSError:
         disk_usage = None
 
+    # CPU and RAM usage
+    try:
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        ram = psutil.virtual_memory()
+        ram_percent = round(ram.percent, 1)
+    except Exception:
+        cpu_percent = None
+        ram_percent = None
+
     return {
         "status": "healthy",
         "recorder_available": recorder_ready,
@@ -144,6 +155,8 @@ async def health_check():
         "recordings_dir": str(settings.RECORDINGS_DIR),
         "recordings_dir_exists": settings.RECORDINGS_DIR.exists(),
         "disk_usage": disk_usage,
+        "cpu_percent": cpu_percent,
+        "ram_percent": ram_percent,
     }
 
 
