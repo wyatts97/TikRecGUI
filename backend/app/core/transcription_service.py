@@ -32,7 +32,7 @@ def _get_model():
             return _model
         try:
             from faster_whisper import WhisperModel
-            model_size = "base"
+            model_size = "tiny"
             _WHISPER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
             logger.info("Loading Whisper model '%s' from cache: %s", model_size, _WHISPER_CACHE_DIR)
             _model = WhisperModel(
@@ -80,7 +80,7 @@ class TranscriptionService:
     so SQLite is never locked for the duration of a transcription job.
     """
 
-    MAX_WORKERS = 2
+    MAX_WORKERS = 1
 
     def __init__(self):
         self._queue: list[int] = []

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Play, Heart, Download, Loader2 } from 'lucide-react'
+import { Play, Heart, Download, Loader2, Wrench } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/selia/avatar'
 import { Button } from '@/components/selia/button'
 import { cn, formatBytes } from '@/lib/utils'
@@ -11,6 +11,7 @@ interface RecordingVideoCardProps {
   recording: Recording
   onFavorite: (e: React.MouseEvent) => void
   onDownload: (e: React.MouseEvent) => void
+  onRepair?: (e: React.MouseEvent) => void
   onClick: () => void
 }
 
@@ -18,6 +19,7 @@ export function RecordingVideoCard({
   recording,
   onFavorite,
   onDownload,
+  onRepair,
   onClick,
 }: RecordingVideoCardProps) {
   const fmt = useDateFormat()
@@ -117,6 +119,17 @@ export function RecordingVideoCard({
                   )}
                 />
               </Button>
+              {recording.status === 'failed' && onRepair && (
+                <Button
+                  variant="plain"
+                  size="icon"
+                  className="h-8 w-8 text-amber-500 hover:text-amber-600"
+                  onClick={onRepair}
+                  title="Repair recording"
+                >
+                  <Wrench className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 variant="plain"
                 size="icon"

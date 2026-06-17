@@ -57,6 +57,7 @@ export interface Recording {
   transcript_status: string | null
   transcript_text: string | null
   is_favorite: boolean
+  is_corrupt?: boolean
 }
 
 export interface RecordingListResponse {
@@ -299,6 +300,9 @@ export const api = {
       if (search) params.set("search", search)
       return fetchApi<LiveEventListResponse>(`/recordings/${id}/events?${params}`)
     },
+
+    repair: (id: number) =>
+      fetchApi<Recording>(`/recordings/${id}/repair`, { method: "POST" }),
 
     batchDownload: async (ids: number[]) => {
       const response = await fetch(`${API_BASE}/recordings/batch/download`, {

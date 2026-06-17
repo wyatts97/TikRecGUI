@@ -18,6 +18,8 @@ export default function Watch() {
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
 
+  const [repairingId, setRepairingId] = useState<number | null>(null)
+
   const toggleFavoriteMutation = useMutation({
     mutationFn: (id: number) => api.recordings.toggleFavorite(id),
     onSuccess: (updated: Recording) => {
@@ -33,9 +35,30 @@ export default function Watch() {
     },
   })
 
+  const handleRepair = async (id: number) => {
+    setRepairingId(id)
+    try {
+      const updated = await api.recordings.repair(id)
+      queryClient.setQueryData(['recordings', 'watchable'], (old: any) => {
+        if (!old) return old
+        return {
+          ...old,
+          recordings: old.recordings.map((r: Recording) =>
+            r.id === updated.id ? updated : r
+          ),
+        }
+      })
+      toast.success('Recording repaired successfully')
+    } catch (err: any) {
+      toast.error(err.message || 'Repair failed')
+    } finally {
+      setRepairingId(null)
+    }
+  }
+
   const { data, isLoading } = useQuery({
     queryKey: ['recordings', 'watchable'],
-    queryFn: () => api.recordings.list(1, 200, 'completed,stopped'),
+    queryFn: () => api.recordings.list(1, 200, 'completed,stopped,failed'),
     refetchInterval: (query) => {
       const recs = query.state.data?.recordings ?? []
       return recs.some((r) => !r.thumbnail_ready) ? 5000 : false
@@ -96,7 +119,7 @@ export default function Watch() {
       <div>
         <h1 className="text-3xl font-bold text-foreground tracking-tight">Watch</h1>
         <p className="text-muted-foreground mt-1">
-          Browse and play your completed recordings
+          Browse and play your completed, stopped, and failed recordings
         </p>
       </div>
 
@@ -161,6 +184,11 @@ export default function Watch() {
                   document.body.appendChild(a)
                   a.click()
                   document.body.removeChild(a)
+                }}
+                onRepair={(e) => {
+                  e.stopPropagation()
+                  if (repairingId === recording.id) return
+                  handleRepair(recording.id)
                 }}
               />
             ))}

@@ -43,7 +43,7 @@ Base = declarative_base()
 
 # -- Shared thread pool for fire-and-forget background tasks ----------
 background_executor = ThreadPoolExecutor(
-    max_workers=4,
+    max_workers=2,
     thread_name_prefix="bg",
 )
 
