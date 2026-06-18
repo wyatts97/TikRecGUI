@@ -1,10 +1,14 @@
 import os
+import re
 import time
 import logging
+import zipfile
+import tempfile
 from datetime import datetime
 from pathlib import Path
+from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
@@ -112,8 +116,19 @@ def _is_sprite_ready(clip: Clip) -> bool:
     return False
 
 
-def _generate_clip_filename(recording: Recording, start: int, end: int) -> str:
-    """Generate a unique filename for a clip."""
+_INVALID_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*]')
+
+
+def _generate_clip_filename(recording: Recording, start: int, end: int, title: str | None = None) -> str:
+    """Generate a unique filename for a clip.
+
+    If a user-provided title is given, sanitize it and use it as the filename.
+    Otherwise fall back to the default ``base_clip_start_end.mp4`` format.
+    """
+    if title:
+        safe = _INVALID_FILENAME_CHARS.sub("_", title.strip())
+        safe = safe.replace(" ", "_")
+        return f"{safe}.mp4"
     base = recording.filename.replace(".mp4", "")
     return f"{base}_clip_{start:05d}_{end:05d}.mp4"
 
@@ -162,7 +177,7 @@ def create_clip_endpoint(request: ClipCreate, db: Session = Depends(get_db)):
             detail=f"End time exceeds recording duration ({rec_duration}s)"
         )
 
-    filename = _generate_clip_filename(recording, request.start_time, request.end_time)
+    filename = _generate_clip_filename(recording, request.start_time, request.end_time, request.title)
     output_path = clip_directory() / filename
 
     # Prevent overwriting an existing clip file
@@ -220,12 +235,17 @@ def list_clips(
     page_size: int = 20,
     sort_by: str = "date",
     sort_order: str = "desc",
+    recording_id: int | None = None,
     db: Session = Depends(get_db)
 ):
     # Eagerly load the recording relationship so _build_clip_response
     # can access clip.recording.username without detached errors.
     query = db.query(Clip).options(joinedload(Clip.recording).joinedload(Recording.user))
     count_query = db.query(func.count()).select_from(Clip)
+
+    if recording_id is not None:
+        query = query.filter(Clip.recording_id == recording_id)
+        count_query = count_query.filter(Clip.recording_id == recording_id)
 
     total = count_query.scalar() or 0
 
@@ -421,3 +441,122 @@ def get_clip_sprite_vtt(clip_id: int, db: Session = Depends(get_db)):
     absolute_sprite_url = f"/api/clips/{clip_id}/sprite"
     content = content.replace("sprite#xywh=", f"{absolute_sprite_url}#xywh=")
     return Response(content=content, media_type="text/vtt")
+
+
+@router.post("/batch/delete", status_code=status.HTTP_200_OK)
+def batch_delete_clips(
+    clip_ids: List[int] = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Delete multiple clips at once."""
+    if not clip_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No clip IDs provided"
+        )
+
+    clips = db.query(Clip).filter(Clip.id.in_(clip_ids)).all()
+    deleted_count = 0
+    errors = []
+
+    for clip in clips:
+        file_errors = _delete_clip_files(clip)
+        db.delete(clip)
+        deleted_count += 1
+        errors.extend(file_errors)
+
+    db.commit()
+
+    return {
+        "deleted": deleted_count,
+        "errors": errors
+    }
+
+
+@router.post("/batch/download")
+def batch_download_clips(
+    clip_ids: List[int] = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Download multiple clips as a ZIP file."""
+    if not clip_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No clip IDs provided"
+        )
+
+    clips = db.query(Clip).filter(Clip.id.in_(clip_ids)).all()
+
+    if not clips:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No clips found"
+        )
+
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_path = temp_file.name
+    temp_file.close()
+
+    try:
+        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for clip in clips:
+                file_path = clip_directory() / clip.filename
+                if file_path.exists():
+                    zf.write(file_path, clip.filename)
+
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        zip_filename = f"clips_{timestamp}.zip"
+
+        return FileResponse(
+            path=temp_path,
+            filename=zip_filename,
+            media_type="application/zip",
+            background=None
+        )
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create ZIP file: {str(e)}"
+        )
+
+
+@router.post("/download-all")
+def download_all_clips(db: Session = Depends(get_db)):
+    """Download all clips as a ZIP file."""
+    clips = db.query(Clip).all()
+
+    if not clips:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No clips found"
+        )
+
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_path = temp_file.name
+    temp_file.close()
+
+    try:
+        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for clip in clips:
+                file_path = clip_directory() / clip.filename
+                if file_path.exists():
+                    zf.write(file_path, clip.filename)
+
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        zip_filename = f"all_clips_{timestamp}.zip"
+
+        return FileResponse(
+            path=temp_path,
+            filename=zip_filename,
+            media_type="application/zip",
+            background=None
+        )
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create ZIP file: {str(e)}"
+        )

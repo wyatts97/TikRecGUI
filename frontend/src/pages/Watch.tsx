@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Tv, Search } from 'lucide-react'
+import { Tv, Search, Trash2, Download, X, Package } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
 import { RecordingVideoCard } from '@/components/ui/recording-video-card'
 import { api, type Recording } from '@/lib/api'
+import toast from 'react-hot-toast'
 
 const ITEMS_PER_PAGE = 12
 
@@ -19,6 +20,67 @@ export default function Watch() {
   const [page, setPage] = useState(1)
 
   const [repairingId, setRepairingId] = useState<number | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+
+  const toggleSelection = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => api.recordings.batchDelete(ids),
+    onSuccess: (res) => {
+      toast.success(`${res.deleted} recording${res.deleted !== 1 ? 's' : ''} deleted`)
+      clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Batch delete failed')
+    },
+  })
+
+  const handleBatchDownload = async (ids: number[]) => {
+    try {
+      const blob = await api.recordings.batchDownload(ids)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `recordings_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success('Download started')
+    } catch (err: any) {
+      toast.error(err.message || 'Download failed')
+    }
+  }
+
+  const handleDownloadAll = async () => {
+    try {
+      const blob = await api.recordings.downloadAll()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `all_recordings_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success('Download started')
+    } catch (err: any) {
+      toast.error(err.message || 'Download failed')
+    }
+  }
 
   const toggleFavoriteMutation = useMutation({
     mutationFn: (id: number) => api.recordings.toggleFavorite(id),
@@ -149,10 +211,48 @@ export default function Watch() {
             </SelectList>
           </SelectPopup>
         </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownloadAll}
+          title="Download all recordings as ZIP"
+        >
+          <Package className="h-3.5 w-3.5 mr-1.5" />
+          Download All
+        </Button>
         <span className="text-xs text-muted-foreground">
           {filtered.length} recording{filtered.length !== 1 ? 's' : ''}
         </span>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/60 border border-border/50">
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleBatchDownload(Array.from(selectedIds))}
+          >
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Download Selected
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => batchDeleteMutation.mutate(Array.from(selectedIds))}
+            disabled={batchDeleteMutation.isPending}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Delete Selected
+          </Button>
+          <Button variant="plain" size="sm" onClick={clearSelection}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -189,6 +289,11 @@ export default function Watch() {
                   e.stopPropagation()
                   if (repairingId === recording.id) return
                   handleRepair(recording.id)
+                }}
+                selected={selectedIds.has(recording.id)}
+                onSelect={(e) => {
+                  e.stopPropagation()
+                  toggleSelection(recording.id)
                 }}
               />
             ))}

@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Play, Heart, Download, Loader2, Wrench } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/selia/avatar'
 import { Button } from '@/components/selia/button'
+import { Checkbox } from '@/components/selia/checkbox'
 import { cn, formatBytes } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { api, type Recording } from '@/lib/api'
@@ -13,6 +14,8 @@ interface RecordingVideoCardProps {
   onDownload: (e: React.MouseEvent) => void
   onRepair?: (e: React.MouseEvent) => void
   onClick: () => void
+  selected?: boolean
+  onSelect?: (e: React.MouseEvent) => void
 }
 
 export function RecordingVideoCard({
@@ -21,6 +24,8 @@ export function RecordingVideoCard({
   onDownload,
   onRepair,
   onClick,
+  selected,
+  onSelect,
 }: RecordingVideoCardProps) {
   const fmt = useDateFormat()
 
@@ -37,6 +42,18 @@ export function RecordingVideoCard({
       >
         {/* Thumbnail */}
         <div className="relative aspect-video overflow-hidden bg-muted">
+          {onSelect && (
+            <div
+              className="absolute top-2 left-2 z-10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Checkbox
+                checked={selected}
+                onClick={onSelect}
+                aria-label={`Select recording ${recording.id}`}
+              />
+            </div>
+          )}
           {recording.thumbnail_ready ? (
             <>
               <motion.img

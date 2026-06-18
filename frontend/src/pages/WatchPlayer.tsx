@@ -5,7 +5,7 @@ import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
 import '@vidstack/react/player/styles/default/theme.css'
 import '@vidstack/react/player/styles/default/layouts/video.css'
-import { ArrowLeft, Download, Trash2, Loader2, FileText, MessageCircle, Calendar, Clock, HardDrive, FileVideo, Scissors } from 'lucide-react'
+import { ArrowLeft, Download, Trash2, Loader2, FileText, MessageCircle, Calendar, Clock, HardDrive, FileVideo, Scissors, Film } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
 import {
@@ -24,6 +24,16 @@ import TranscriptPanel from '@/components/TranscriptPanel'
 import ChatPanel from '@/components/ChatPanel'
 import ClipDialog from '@/components/ClipDialog'
 import toast from 'react-hot-toast'
+
+function formatTimeInput(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+  }
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
 
 function downloadAsFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime })
@@ -107,6 +117,14 @@ export default function WatchPlayer() {
       return false
     },
   })
+
+  const { data: clipsData } = useQuery({
+    queryKey: ['clips', 'recording', recordingId],
+    queryFn: () => api.clips.list(1, 100, 'date', 'desc', recordingId),
+    enabled: !isNaN(recordingId) && recordingId > 0,
+  })
+
+  const recordingClips = clipsData?.clips || []
 
   const transcribeMutation = useMutation({
     mutationFn: () => api.recordings.transcribe(recordingId),
@@ -325,6 +343,63 @@ export default function WatchPlayer() {
             </Button>
           </div>
 
+          {/* Saved Clips */}
+          <div className="rounded-xl border border-border bg-card">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+              <Film className="h-4 w-4 text-muted-foreground" />
+              <h3 className="text-sm font-medium">Saved Clips</h3>
+              <span className="text-xs text-muted-foreground ml-auto">
+                {recordingClips.length} clip{recordingClips.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            {recordingClips.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <p className="text-sm text-muted-foreground">No clips yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use the Clip button to extract segments from this recording.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {recordingClips.map((clip) => {
+                  const startFmt = formatTimeInput(clip.start_time)
+                  const endFmt = formatTimeInput(clip.end_time)
+                  const label = clip.title
+                    ? clip.title
+                    : `Clip ${startFmt}–${endFmt}`
+                  return (
+                    <button
+                      key={clip.id}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
+                      onClick={() => navigate(`/clips/${clip.id}`)}
+                    >
+                      <div className="shrink-0 w-16 h-10 rounded-md bg-muted overflow-hidden">
+                        {clip.thumbnail_ready ? (
+                          <img
+                            src={api.clips.getThumbnailUrl(clip.id)}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {startFmt} – {endFmt} · {formatDuration(clip.duration_seconds)}
+                        </p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Mobile transcript tab */}
           <div className="border border-border rounded-xl overflow-hidden lg:hidden">
             <div className="flex border-b border-border bg-muted/40">
@@ -426,6 +501,9 @@ export default function WatchPlayer() {
           recording={recording}
           open={clipDialogOpen}
           onOpenChange={setClipDialogOpen}
+          onClipCreated={() => {
+            queryClient.invalidateQueries({ queryKey: ['clips', 'recording', recordingId] })
+          }}
         />
       )}
 

@@ -1,15 +1,17 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Scissors, Loader2, Search, Heart, Download } from 'lucide-react'
+import { Play, Scissors, Loader2, Search, Heart, Download, Trash2, X, Package } from 'lucide-react'
 import { Card } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
+import { Checkbox } from '@/components/selia/checkbox'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
 import { api, type Clip } from '@/lib/api'
 import { cn, formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
+import toast from 'react-hot-toast'
 
 const ITEMS_PER_PAGE = 12
 
@@ -19,8 +21,69 @@ export default function Clips() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   const queryClient = useQueryClient()
+
+  const toggleSelection = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const batchDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => api.clips.batchDelete(ids),
+    onSuccess: (res) => {
+      toast.success(`${res.deleted} clip${res.deleted !== 1 ? 's' : ''} deleted`)
+      clearSelection()
+      queryClient.invalidateQueries({ queryKey: ['clips'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Batch delete failed')
+    },
+  })
+
+  const handleBatchDownload = async (ids: number[]) => {
+    try {
+      const blob = await api.clips.batchDownload(ids)
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `clips_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success('Download started')
+    } catch (err: any) {
+      toast.error(err.message || 'Download failed')
+    }
+  }
+
+  const handleDownloadAll = async () => {
+    try {
+      const blob = await api.clips.downloadAll()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `all_clips_${new Date().toISOString().slice(0, 10)}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      toast.success('Download started')
+    } catch (err: any) {
+      toast.error(err.message || 'Download failed')
+    }
+  }
 
   const toggleFavoriteMutation = useMutation({
     mutationFn: (id: number) => api.clips.toggleFavorite(id),
@@ -56,32 +119,11 @@ export default function Clips() {
       )
     }
 
-    items.sort((a, b) => {
-      switch (sortBy) {
-        case 'newest':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        case 'oldest':
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case 'longest':
-          return (b.duration_seconds || 0) - (a.duration_seconds || 0)
-        case 'shortest':
-          return (a.duration_seconds || 0) - (b.duration_seconds || 0)
-        case 'largest':
-          return (b.file_size || 0) - (a.file_size || 0)
-        case 'favorites':
-          if (a.is_favorite && !b.is_favorite) return -1
-          if (!a.is_favorite && b.is_favorite) return 1
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        default:
-          return 0
-      }
-    })
-
     return items
-  }, [allClips, searchQuery, sortBy])
+  }, [allClips, searchQuery])
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
-  const clips = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
+  const totalPages = Math.ceil((data?.total || 0) / ITEMS_PER_PAGE)
+  const clips = searchQuery.trim() ? filtered : allClips
 
   const handleSearch = (val: string) => {
     setSearchQuery(val)
@@ -127,10 +169,49 @@ export default function Clips() {
             </SelectList>
           </SelectPopup>
         </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownloadAll}
+          title="Download all clips as ZIP"
+        >
+          <Package className="h-3.5 w-3.5 mr-1.5" />
+          Download All
+        </Button>
         <span className="text-xs text-muted-foreground">
-          {filtered.length} clip{filtered.length !== 1 ? 's' : ''}
+          {data?.total || 0} clip{(data?.total || 0) !== 1 ? 's' : ''}
+          {searchQuery.trim() && ` (${filtered.length} match${filtered.length !== 1 ? 'es' : ''})`}
         </span>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/60 border border-border/50">
+          <span className="text-sm font-medium">
+            {selectedIds.size} selected
+          </span>
+          <div className="flex-1" />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleBatchDownload(Array.from(selectedIds))}
+          >
+            <Download className="h-3.5 w-3.5 mr-1.5" />
+            Download Selected
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => batchDeleteMutation.mutate(Array.from(selectedIds))}
+            disabled={batchDeleteMutation.isPending}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            Delete Selected
+          </Button>
+          <Button variant="plain" size="sm" onClick={clearSelection}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
@@ -152,6 +233,19 @@ export default function Clips() {
                 onClick={() => navigate(`/clips/${clip.id}`)}
               >
                 <div className="relative aspect-video bg-muted overflow-hidden">
+                  <div
+                    className="absolute top-2 left-2 z-10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={selectedIds.has(clip.id)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleSelection(clip.id)
+                      }}
+                      aria-label={`Select clip ${clip.id}`}
+                    />
+                  </div>
                   {clip.thumbnail_ready ? (
                     <img
                       src={api.clips.getThumbnailUrl(clip.id)}

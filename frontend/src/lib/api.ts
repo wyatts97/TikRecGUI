@@ -318,6 +318,17 @@ export const api = {
       }
       return response.blob()
     },
+
+    downloadAll: async () => {
+      const response = await fetch(`${API_BASE}/recordings/download-all`, {
+        method: "POST",
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: "Download failed" }))
+        throw new Error(error.detail || "Download failed")
+      }
+      return response.blob()
+    },
   },
 
   clips: {
@@ -332,13 +343,14 @@ export const api = {
         body: JSON.stringify(data),
       }),
 
-    list: (page = 1, pageSize = 20, sortBy?: string, sortOrder?: string) => {
+    list: (page = 1, pageSize = 20, sortBy?: string, sortOrder?: string, recordingId?: number) => {
       const params = new URLSearchParams({
         page: page.toString(),
         page_size: pageSize.toString(),
       })
       if (sortBy) params.set("sort_by", sortBy)
       if (sortOrder) params.set("sort_order", sortOrder)
+      if (recordingId != null) params.set("recording_id", recordingId.toString())
       return fetchApi<ClipListResponse>(`/clips?${params}`)
     },
 
@@ -358,6 +370,36 @@ export const api = {
     getStreamUrl: (id: number) => `${API_BASE}/clips/${id}/stream`,
     getThumbnailUrl: (id: number) => `${API_BASE}/clips/${id}/thumbnail`,
     getSpriteVttUrl: (id: number) => `${API_BASE}/clips/${id}/thumbnails.vtt`,
+
+    batchDelete: (ids: number[]) =>
+      fetchApi<{ deleted: number; errors: string[] }>("/clips/batch/delete", {
+        method: "POST",
+        body: JSON.stringify({ clip_ids: ids }),
+      }),
+
+    batchDownload: async (ids: number[]) => {
+      const response = await fetch(`${API_BASE}/clips/batch/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clip_ids: ids }),
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: "Download failed" }))
+        throw new Error(error.detail || "Download failed")
+      }
+      return response.blob()
+    },
+
+    downloadAll: async () => {
+      const response = await fetch(`${API_BASE}/clips/download-all`, {
+        method: "POST",
+      })
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: "Download failed" }))
+        throw new Error(error.detail || "Download failed")
+      }
+      return response.blob()
+    },
   },
 
   settings: {

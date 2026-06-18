@@ -799,3 +799,43 @@ def list_live_events(
         events=[LiveEventResponse.model_validate(e) for e in events],
         total=total,
     )
+
+
+@router.post("/download-all")
+def download_all_recordings(db: Session = Depends(get_db)):
+    """Download all recordings as a ZIP file."""
+    recordings = db.query(Recording).all()
+
+    if not recordings:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No recordings found"
+        )
+
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    temp_path = temp_file.name
+    temp_file.close()
+
+    try:
+        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for recording in recordings:
+                file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+                if file_path.exists():
+                    zf.write(file_path, recording.filename)
+
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        zip_filename = f"all_recordings_{timestamp}.zip"
+
+        return FileResponse(
+            path=temp_path,
+            filename=zip_filename,
+            media_type="application/zip",
+            background=None
+        )
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create ZIP file: {str(e)}"
+        )
