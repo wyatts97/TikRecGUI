@@ -219,7 +219,7 @@ export default function Layout() {
         )}>
           <div className={cn(
             'flex',
-            miniMode ? 'flex-col items-center justify-evenly' : 'flex-row items-center justify-evenly'
+            miniMode ? 'flex-col items-center gap-2' : 'flex-row items-center justify-center gap-2'
           )}>
             {/* Circular Progress */}
             <Tooltip>
@@ -234,8 +234,8 @@ export default function Layout() {
                     const interval = monitorStatus?.check_interval ?? (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
                     const isReady = countdown === null || countdown <= 0
                     const value = isReady ? interval : Math.max(0, interval - countdown)
-                    const radius = 22
-                    const size = 52
+                    const radius = 16
+                    const size = 40
                     const strokeWidth = 4
                     const circumference = 2 * Math.PI * radius
                     const pct = interval > 0 ? Math.min(1, Math.max(0, value / interval)) : 0
@@ -290,14 +290,14 @@ export default function Layout() {
                   onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
                   aria-label={activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
                   className={cn(
-                    'relative flex items-center justify-center w-[52px] h-[52px] rounded-full transition-colors cursor-pointer',
+                    'relative flex items-center justify-center w-10 h-10 rounded-full transition-colors cursor-pointer',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-primary',
                     activeRecordings.length > 0
                       ? 'bg-red-500 text-white shadow-lg shadow-red-500/40 animate-pulse'
                       : 'bg-muted/60 text-muted-foreground'
                   )}
                 >
-                  <Radio className="h-5 w-5" />
+                  <Radio className="h-4 w-4" />
                   {activeRecordings.length > 0 && (
                     <span className="absolute -top-1 -right-1 min-w-[20px] h-5 flex items-center justify-center px-1 rounded-full bg-white text-black text-[10px] font-semibold shadow-md">
                       {activeRecordings.length}
@@ -309,14 +309,12 @@ export default function Layout() {
                 {activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
               </TooltipContent>
             </Tooltip>
+
+            {/* Notification bell */}
+            <NotificationCenter size="md" placement="top" />
           </div>
         </div>
       </aside>
-
-      {/* Desktop notification bell (fixed top-right) */}
-      <div className="hidden md:block fixed top-3 right-4 z-40">
-        <NotificationCenter />
-      </div>
 
       {/* Main content */}
       <main className={cn(

@@ -35,7 +35,13 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)}d ago`
 }
 
-export default function NotificationCenter() {
+export default function NotificationCenter({
+  size = 'sm',
+  placement = 'bottom',
+}: {
+  size?: 'sm' | 'md'
+  placement?: 'bottom' | 'top'
+}) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -151,13 +157,14 @@ export default function NotificationCenter() {
         onClick={toggleOpen}
         aria-label={unread > 0 ? `Notifications (${unread} unread)` : 'Notifications'}
         className={cn(
-          'relative flex items-center justify-center h-9 w-9 rounded-lg transition-colors',
+          'relative flex items-center justify-center rounded-lg transition-colors',
           'text-muted-foreground hover:bg-muted/60',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-primary',
-          open && 'bg-muted/60 text-foreground'
+          open && 'bg-muted/60 text-foreground',
+          size === 'md' ? 'h-10 w-10' : 'h-9 w-9'
         )}
       >
-        {unread > 0 ? <BellRing className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
+        {unread > 0 ? <BellRing className={cn('shrink-0', size === 'md' ? 'h-5 w-5' : 'h-[18px] w-[18px]')} /> : <Bell className={cn('shrink-0', size === 'md' ? 'h-5 w-5' : 'h-[18px] w-[18px]')} />}
         {unread > 0 && (
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold ring-2 ring-background">
             {unread > 9 ? '9+' : unread}
@@ -166,7 +173,10 @@ export default function NotificationCenter() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover text-popover-foreground shadow-lg z-50 overflow-hidden">
+        <div className={cn(
+          'absolute right-0 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover text-popover-foreground shadow-lg z-50 overflow-hidden',
+          placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+        )}>
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
             <p className="text-sm font-semibold">Notifications</p>
             {notifications.length > 0 && (

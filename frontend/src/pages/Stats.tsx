@@ -67,10 +67,10 @@ function StatCard({
 
 function ChartTooltipStyle() {
   return {
-    backgroundColor: 'var(--color-popover)',
-    border: '1px solid var(--color-border)',
+    backgroundColor: 'var(--popover)',
+    border: '1px solid var(--border)',
     borderRadius: '0.5rem',
-    color: 'var(--color-popover-foreground)',
+    color: 'var(--popover-foreground)',
     fontSize: '0.8rem',
   }
 }
@@ -149,20 +149,20 @@ export default function Stats() {
               <AreaChart data={perDay} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
                 <defs>
                   <linearGradient id="recGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--color-primary)" stopOpacity={0.35} />
-                    <stop offset="95%" stopColor="var(--color-primary)" stopOpacity={0} />
+                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis
                   dataKey="date"
-                  tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                   tickFormatter={(d: string) => d.slice(5)}
                   minTickGap={24}
                 />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
                 <Tooltip contentStyle={ChartTooltipStyle()} />
-                <Area type="monotone" dataKey="count" name="Recordings" stroke="var(--color-primary)" strokeWidth={2} fill="url(#recGradient)" />
+                <Area type="monotone" dataKey="count" name="Recordings" stroke="var(--primary)" strokeWidth={2} fill="url(#recGradient)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -182,10 +182,10 @@ export default function Stats() {
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={topStreamers} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
-                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} />
-                    <YAxis type="category" dataKey="username" width={90} tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} tickFormatter={(u: string) => `@${u}`} />
-                    <Tooltip contentStyle={ChartTooltipStyle()} cursor={{ fill: 'var(--color-accent)' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
+                    <YAxis type="category" dataKey="username" width={90} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickFormatter={(u: string) => `@${u}`} />
+                    <Tooltip contentStyle={ChartTooltipStyle()} cursor={{ fill: 'var(--accent)' }} />
                     <Bar dataKey="count" name="Recordings" radius={[0, 4, 4, 0]}>
                       {topStreamers.map((_, i) => (
                         <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
@@ -210,12 +210,12 @@ export default function Stats() {
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={storageData} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                    <XAxis dataKey="username" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} interval={0} angle={-20} textAnchor="end" height={50} />
-                    <YAxis tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} unit="GB" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="username" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} interval={0} angle={-20} textAnchor="end" height={50} />
+                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} unit="GB" />
                     <Tooltip
                       contentStyle={ChartTooltipStyle()}
-                      cursor={{ fill: 'var(--color-accent)' }}
+                      cursor={{ fill: 'var(--accent)' }}
                       formatter={(_v: any, _n: any, p: any) => [formatBytes(p.payload.bytes), 'Storage']}
                     />
                     <Bar dataKey="gb" name="Storage" radius={[4, 4, 0, 0]}>
@@ -243,11 +243,11 @@ export default function Stats() {
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={volumeData} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                  <XAxis dataKey="username" tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }} interval={0} angle={-20} textAnchor="end" height={50} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--color-muted-foreground)' }} />
-                  <Tooltip contentStyle={ChartTooltipStyle()} cursor={{ fill: 'var(--color-accent)' }} />
-                  <Bar dataKey="chat" name="Chat messages" stackId="a" fill="var(--color-primary)" radius={[0, 0, 0, 0]} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="username" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} interval={0} angle={-20} textAnchor="end" height={50} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
+                  <Tooltip contentStyle={ChartTooltipStyle()} cursor={{ fill: 'var(--accent)' }} />
+                  <Bar dataKey="chat" name="Chat messages" stackId="a" fill="var(--primary)" radius={[0, 0, 0, 0]} />
                   <Bar dataKey="gifts" name="Gifts" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

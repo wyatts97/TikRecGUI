@@ -76,11 +76,20 @@ def _delete_recording_files(recording: Recording) -> list[str]:
     return errors
 
 
-def _is_thumbnail_ready(recording: Recording) -> bool:
+def _is_thumbnail_ready(recording: Recording, db: Session | None = None) -> bool:
+    # Fast path: trust the cached DB flag and avoid a filesystem stat.
+    if recording.thumbnail_ready:
+        return True
+
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
     thumb_path = thumbnail_path(video_path)
     if thumb_path.exists() and thumb_path.stat().st_size > 0:
+        # Files exist but DB is out of sync — fix it.
+        if db is not None:
+            recording.thumbnail_ready = True
+            db.commit()
         return True
+
     # Kick off a background retry for finished recordings that lost their thumbnail
     if (
         recording.status in ("completed", "stopped", "failed")
@@ -88,20 +97,25 @@ def _is_thumbnail_ready(recording: Recording) -> bool:
         and recording.id not in _thumb_retry_in_progress
     ):
         _thumb_retry_in_progress.add(recording.id)
-        run_background(generate_thumbnail, video_path, thumb_path)
+        run_background(generate_thumbnail, video_path, thumb_path, recording.id)
     return False
 
 
 def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
+    # Fast path: trust the cached DB flag and avoid a filesystem stat.
+    if recording.sprite_ready:
+        return True
+
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
     vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
     if sprite_path.exists() and sprite_path.stat().st_size > 0 and vtt_path.exists() and vtt_path.stat().st_size > 0:
-        # Files exist but DB may be out of sync — fix it
-        if not recording.sprite_ready and db is not None:
+        # Files exist but DB is out of sync — fix it.
+        if db is not None:
             recording.sprite_ready = True
             db.commit()
         return True
+
     # Kick off a background retry for finished recordings missing sprites
     if (
         recording.status in ("completed", "stopped", "failed")
@@ -134,7 +148,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
         file_size=rec.file_size,
         error_message=rec.error_message,
         created_at=rec.created_at,
-        thumbnail_ready=_is_thumbnail_ready(rec),
+        thumbnail_ready=_is_thumbnail_ready(rec, db),
         sprite_ready=_is_sprite_ready(rec, db),
         transcript_status=rec.transcript_status,
         transcript_text=rec.transcript_text,
@@ -535,11 +549,15 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
     thumb_path = thumbnail_path(video_path)
 
     if not thumb_path.exists():
-        if not generate_thumbnail(video_path, thumb_path):
+        if not generate_thumbnail(video_path, thumb_path, recording.id):
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Could not generate thumbnail for this recording",
             )
+
+    if not recording.thumbnail_ready:
+        recording.thumbnail_ready = True
+        db.commit()
 
     return FileResponse(
         path=str(thumb_path),
@@ -835,7 +853,7 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
         db.refresh(recording)
 
         # Regenerate visual assets now that the file is healthy
-        run_background(generate_thumbnail, video_path, thumbnail_path(video_path))
+        run_background(generate_thumbnail, video_path, thumbnail_path(video_path), recording.id)
         run_background(generate_sprite, video_path)
 
         return _build_response(recording, db)

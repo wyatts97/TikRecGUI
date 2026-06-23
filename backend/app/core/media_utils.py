@@ -124,7 +124,7 @@ def thumbnail_path(video_path: Path) -> Path:
     return video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
 
 
-def generate_thumbnail(video_path: Path, thumb_path: Path | None = None) -> bool:
+def generate_thumbnail(video_path: Path, thumb_path: Path | None = None, recording_id: int | None = None) -> bool:
     """Extract a single JPEG thumbnail from *video_path*.
 
     If *thumb_path* is not provided it is derived from *video_path* via
@@ -142,6 +142,7 @@ def generate_thumbnail(video_path: Path, thumb_path: Path | None = None) -> bool
     thumb.parent.mkdir(parents=True, exist_ok=True)
 
     seek_positions = ["1", "0.5", "2", "0"]
+    success = False
 
     for seek_time in seek_positions:
         try:
@@ -158,13 +159,27 @@ def generate_thumbnail(video_path: Path, thumb_path: Path | None = None) -> bool
                 timeout=30,
             )
             if thumb.exists() and thumb.stat().st_size > 0:
-                return True
+                success = True
+                break
         except Exception as exc:
             logger.warning("Thumbnail seek=%s failed for %s: %s",
                            seek_time, video_path, exc)
             continue
 
-    return False
+    if success and recording_id is not None:
+        try:
+            from app.db.database import get_session
+            from app.db.models import Recording
+            with get_session() as db:
+                rec = db.query(Recording).filter(Recording.id == recording_id).first()
+                if rec:
+                    rec.thumbnail_ready = True
+                    db.commit()
+        except Exception as db_exc:
+            logger.warning("Failed to persist thumbnail_ready for %s: %s",
+                           video_path, db_exc)
+
+    return success
 
 
 # ----------------------------------------------------------------

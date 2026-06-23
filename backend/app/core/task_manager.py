@@ -273,11 +273,11 @@ class RecordingTask:
                             recording.error_message = "Recording was repaired (was corrupt)"
                             db.commit()
                     # Regenerate visual assets now that the file is healthy
-                    run_background(generate_thumbnail, output_path)
+                    run_background(generate_thumbnail, output_path, None, self.recording_id)
                     run_background(generate_sprite, output_path)
                     logger.info("Repair successful for recording %d (%.1fs)", self.recording_id, repair_duration or 0)
 
-            run_background(generate_thumbnail, output_path)
+            run_background(generate_thumbnail, output_path, None, self.recording_id)
             run_background(generate_sprite, output_path)
 
             with get_session() as db:
