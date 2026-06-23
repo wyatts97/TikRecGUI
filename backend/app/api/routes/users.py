@@ -238,6 +238,9 @@ def get_user_avatar(user_id: int, refresh: bool = False, db: Session = Depends(g
             path=cached,
             media_type="image/jpeg",
             content_disposition_type="inline",
+            headers={
+                "Cache-Control": "no-cache, no-store" if refresh else "public, max-age=31536000, immutable"
+            },
         )
 
     from fastapi.responses import Response as _Response

@@ -161,7 +161,7 @@ export default function NotificationCenter({
           'text-muted-foreground hover:bg-muted/60',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-primary',
           open && 'bg-muted/60 text-foreground',
-          size === 'md' ? 'h-10 w-10' : 'h-9 w-9'
+          size === 'md' ? 'h-12 w-12' : 'h-9 w-9'
         )}
       >
         {unread > 0 ? <BellRing className={cn('shrink-0', size === 'md' ? 'h-5 w-5' : 'h-[18px] w-[18px]')} /> : <Bell className={cn('shrink-0', size === 'md' ? 'h-5 w-5' : 'h-[18px] w-[18px]')} />}

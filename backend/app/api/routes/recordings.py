@@ -563,6 +563,7 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
         path=str(thumb_path),
         media_type="image/jpeg",
         content_disposition_type="inline",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 
@@ -726,7 +727,11 @@ def get_sprite(recording_id: int, db: Session = Depends(get_db)):
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
     if not sprite_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprite not yet generated")
-    return FileResponse(path=str(sprite_path), media_type="image/jpeg")
+    return FileResponse(
+        path=str(sprite_path),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/{recording_id}/thumbnails.vtt")
@@ -748,7 +753,11 @@ def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
     # can resolve them without depending on relative URL resolution.
     absolute_sprite_url = f"/api/recordings/{recording_id}/sprite"
     content = content.replace("sprite#xywh=", f"{absolute_sprite_url}#xywh=")
-    return Response(content=content, media_type="text/vtt")
+    return Response(
+        content=content,
+        media_type="text/vtt",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/{recording_id}/transcribe", response_model=RecordingResponse)

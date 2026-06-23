@@ -409,6 +409,7 @@ def thumbnail_clip(clip_id: int, db: Session = Depends(get_db)):
         path=str(thumb_path),
         media_type="image/jpeg",
         content_disposition_type="inline",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
 
 
@@ -422,7 +423,11 @@ def get_clip_sprite(clip_id: int, db: Session = Depends(get_db)):
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
     if not sprite_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprite not yet generated")
-    return FileResponse(path=str(sprite_path), media_type="image/jpeg")
+    return FileResponse(
+        path=str(sprite_path),
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/{clip_id}/thumbnails.vtt")
@@ -440,7 +445,11 @@ def get_clip_sprite_vtt(clip_id: int, db: Session = Depends(get_db)):
     content = vtt_path.read_text(encoding="utf-8")
     absolute_sprite_url = f"/api/clips/{clip_id}/sprite"
     content = content.replace("sprite#xywh=", f"{absolute_sprite_url}#xywh=")
-    return Response(content=content, media_type="text/vtt")
+    return Response(
+        content=content,
+        media_type="text/vtt",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.post("/batch/delete", status_code=status.HTTP_200_OK)

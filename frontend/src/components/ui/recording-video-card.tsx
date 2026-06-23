@@ -63,6 +63,7 @@ export function RecordingVideoCard({
                 alt={`${recording.username} recording`}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                 loading="lazy"
+                decoding="async"
                 onError={(e) => {
                   const img = e.target as HTMLImageElement
                   img.style.display = 'none'

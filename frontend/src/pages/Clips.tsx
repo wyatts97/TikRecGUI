@@ -261,6 +261,7 @@ export default function Clips() {
                       alt={`${clip.username} clip thumbnail`}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"
+                      decoding="async"
                       onError={(e) => {
                         const img = e.target as HTMLImageElement
                         img.style.display = 'none'

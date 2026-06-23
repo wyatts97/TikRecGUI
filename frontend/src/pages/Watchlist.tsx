@@ -521,6 +521,8 @@ export default function Watchlist() {
                                 src={api.users.getAvatarUrl(row.id)}
                                 alt={row.username}
                                 className="h-full w-full object-cover"
+                                loading="lazy"
+                                decoding="async"
                                 onError={(e) => {
                                   const img = e.target as HTMLImageElement
                                   img.style.display = 'none'
@@ -657,6 +659,8 @@ export default function Watchlist() {
                     src={api.users.getAvatarUrl(detailUser.id)}
                     alt={detailUser.username}
                     className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                     onError={(e) => {
                       const img = e.target as HTMLImageElement
                       img.style.display = 'none'
@@ -796,6 +800,8 @@ export default function Watchlist() {
                                 src={api.recordings.getThumbnailUrl(rec.id)}
                                 alt=""
                                 className="h-full w-full object-cover"
+                                loading="lazy"
+                                decoding="async"
                                 onError={(e) => {
                                   const img = e.target as HTMLImageElement
                                   img.style.display = 'none'

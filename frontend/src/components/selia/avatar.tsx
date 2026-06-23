@@ -44,6 +44,8 @@ export function AvatarImage({
     <BaseAvatar.Image
       data-slot="avatar-image"
       className={cn('size-full rounded-full', className)}
+      loading="lazy"
+      decoding="async"
       {...props}
     />
   );
