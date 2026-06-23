@@ -439,7 +439,7 @@ def remux_to_mp4(
 # Repair
 # ----------------------------------------------------------------
 
-def repair_video(input_path: Path, output_path: Path | None = None) -> bool:
+def repair_video(input_path: Path, output_path: Path | None = None) -> tuple[bool, float | None]:
     """Attempt to repair a corrupted TikTok recording.
 
     Uses two ffmpeg strategies in order:
@@ -447,18 +447,33 @@ def repair_video(input_path: Path, output_path: Path | None = None) -> bool:
     1. **Error-tolerant stream copy** — fast, preserves original quality.
        Adds ``-fflags +igndts+genpts``, ``-err_detect ignore_err``, and the
        ``h264_mp4toannexb`` bitstream filter to work around corrupt headers.
+       The output is validated: if ffprobe still cannot parse it or the
+       duration is missing, we fall through to the re-encode strategy.
 
-    2. **Full re-encode** — slower but can recover frames that the
-       stream-copy path skips.  Uses ``libx264 veryfast crf 23``.
+    2. **Full re-encode** — slower but can recover frames and rebuild
+       correct duration metadata.  Uses ``libx264 veryfast crf 23``.
 
     If *output_path* is not provided, the repaired file replaces the
-    original in-place.  Returns ``True`` on success.
+    original in-place.  Returns ``(True, duration)`` on success or
+    ``(False, None)`` on failure.
     """
     if not input_path.exists():
-        return False
+        return False, None
 
     target = output_path or input_path
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    def _is_valid_repair(path: Path) -> tuple[bool, float | None]:
+        health = analyze_video_health(path)
+        duration = _probe_duration(path)
+        valid = (
+            path.exists()
+            and path.stat().st_size > 0
+            and not health.get("is_corrupt", True)
+            and duration is not None
+            and duration > 0
+        )
+        return valid, duration
 
     # Strategy 1 — error-tolerant stream copy
     temp_path = target.with_suffix(".tmp.repair.mp4")
@@ -478,10 +493,15 @@ def repair_video(input_path: Path, output_path: Path | None = None) -> bool:
             check=True,
             timeout=180,
         )
-        if temp_path.exists() and temp_path.stat().st_size > 0:
+        valid, duration = _is_valid_repair(temp_path)
+        if valid:
             temp_path.replace(target)
-            logger.info("Repair (stream copy) succeeded for %s", input_path)
-            return True
+            logger.info("Repair (stream copy) succeeded for %s (%.1fs)", input_path, duration)
+            return True, duration
+        logger.warning(
+            "Stream-copy repair for %s produced an invalid file (duration=%s); trying re-encode",
+            input_path, duration,
+        )
     except Exception:
         logger.warning("Stream-copy repair failed for %s, trying re-encode", input_path)
     finally:
@@ -509,17 +529,19 @@ def repair_video(input_path: Path, output_path: Path | None = None) -> bool:
             check=True,
             timeout=300,
         )
-        if reencode_path.exists() and reencode_path.stat().st_size > 0:
+        valid, duration = _is_valid_repair(reencode_path)
+        if valid:
             reencode_path.replace(target)
-            logger.info("Repair (re-encode) succeeded for %s", input_path)
-            return True
+            logger.info("Repair (re-encode) succeeded for %s (%.1fs)", input_path, duration)
+            return True, duration
+        logger.warning("Re-encode repair for %s produced an invalid file (duration=%s)", input_path, duration)
     except Exception:
         logger.error("Re-encode repair also failed for %s", input_path)
     finally:
         if reencode_path.exists():
             reencode_path.unlink(missing_ok=True)
 
-    return False
+    return False, None
 
 
 # ----------------------------------------------------------------
@@ -582,7 +604,13 @@ def analyze_video_health(video_path: Path) -> dict:
             elif ctype == "audio":
                 result["has_audio"] = True
 
-        result["is_corrupt"] = False
+        # A file ffprobe can parse but with no usable duration is still broken
+        # for playback (bad duration metadata), so treat it as corrupt.
+        if result["duration"] is None or result["duration"] <= 0:
+            result["is_corrupt"] = True
+            result["error"] = "No valid duration detected"
+        else:
+            result["is_corrupt"] = False
 
     except json.JSONDecodeError as exc:
         result["error"] = f"Failed to parse ffprobe output: {exc}"

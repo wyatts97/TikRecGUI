@@ -13,11 +13,17 @@ import {
   X,
   PanelLeft,
   Timer,
+  Search,
+  BarChart3,
+  Database,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
+import { PageTransition } from '@/components/motion'
 import CommandPalette from '@/components/CommandPalette'
+import NotificationCenter from '@/components/NotificationCenter'
 import { Badge } from '@/components/selia/badge'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/selia/tooltip'
 
@@ -28,6 +34,9 @@ const navItems = [
   { to: '/watch', icon: Tv, label: 'Watch' },
   { to: '/live', icon: Radio, label: 'Live' },
   { to: '/clips', icon: Scissors, label: 'Clips' },
+  { to: '/stats', icon: BarChart3, label: 'Stats' },
+  { to: '/search', icon: Search, label: 'Search' },
+  { to: '/storage', icon: Database, label: 'Storage' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ]
 
@@ -101,6 +110,7 @@ export default function Layout() {
                 {activeRecordings.length}
               </button>
             )}
+            <NotificationCenter />
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
@@ -214,9 +224,11 @@ export default function Layout() {
             {/* Circular Progress */}
             <Tooltip>
               <TooltipTrigger>
-                <div
+                <button
+                  type="button"
                   onClick={() => !triggerCheckMutation.isPending && triggerCheckMutation.mutate()}
-                  className="cursor-pointer"
+                  aria-label={triggerCheckMutation.isPending ? 'Syncing' : 'Sync now'}
+                  className="cursor-pointer rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-primary"
                 >
                   {(() => {
                     const interval = monitorStatus?.check_interval ?? (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
@@ -263,7 +275,7 @@ export default function Layout() {
                       </div>
                     )
                   })()}
-                </div>
+                </button>
               </TooltipTrigger>
               <TooltipContent>
                 {triggerCheckMutation.isPending ? 'Syncing…' : 'Sync Now'}
@@ -273,10 +285,13 @@ export default function Layout() {
             {/* Recording indicator */}
             <Tooltip>
               <TooltipTrigger>
-                <div
+                <button
+                  type="button"
                   onClick={() => activeRecordings.length > 0 && navigate('/recordings')}
+                  aria-label={activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
                   className={cn(
                     'relative flex items-center justify-center w-[52px] h-[52px] rounded-full transition-colors cursor-pointer',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-primary',
                     activeRecordings.length > 0
                       ? 'bg-red-500 text-white shadow-lg shadow-red-500/40 animate-pulse'
                       : 'bg-muted/60 text-muted-foreground'
@@ -288,7 +303,7 @@ export default function Layout() {
                       {activeRecordings.length}
                     </span>
                   )}
-                </div>
+                </button>
               </TooltipTrigger>
               <TooltipContent>
                 {activeRecordings.length > 0 ? `${activeRecordings.length} recording(s) in progress` : 'No active recordings'}
@@ -298,6 +313,11 @@ export default function Layout() {
         </div>
       </aside>
 
+      {/* Desktop notification bell (fixed top-right) */}
+      <div className="hidden md:block fixed top-3 right-4 z-40">
+        <NotificationCenter />
+      </div>
+
       {/* Main content */}
       <main className={cn(
         'transition-all duration-300',
@@ -305,7 +325,11 @@ export default function Layout() {
         'pt-14 md:pt-0 pb-8'
       )}>
         <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-7xl mx-auto">
-          <Outlet />
+          <AnimatePresence mode="wait" initial={false}>
+            <PageTransition key={location.pathname}>
+              <Outlet />
+            </PageTransition>
+          </AnimatePresence>
         </div>
       </main>
     </div>

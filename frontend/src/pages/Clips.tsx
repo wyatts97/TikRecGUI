@@ -8,6 +8,8 @@ import { Checkbox } from '@/components/selia/checkbox'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
+import { VideoGridSkeleton } from '@/components/Skeleton'
+import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { api, type Clip } from '@/lib/api'
 import { cn, formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
@@ -87,17 +89,26 @@ export default function Clips() {
 
   const toggleFavoriteMutation = useMutation({
     mutationFn: (id: number) => api.clips.toggleFavorite(id),
-    onSuccess: (updated: Clip) => {
+    // Optimistic update: flip the flag instantly, roll back on error.
+    onMutate: async (id: number) => {
+      await queryClient.cancelQueries({ queryKey: ['clips', page, sortBy] })
+      const previous = queryClient.getQueryData(['clips', page, sortBy])
       queryClient.setQueryData(['clips', page, sortBy], (old: any) => {
         if (!old) return old
         return {
           ...old,
           clips: old.clips.map((c: Clip) =>
-            c.id === updated.id ? { ...c, is_favorite: updated.is_favorite } : c
+            c.id === id ? { ...c, is_favorite: !c.is_favorite } : c
           ),
         }
       })
-      queryClient.invalidateQueries({ queryKey: ['clips'] })
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['clips', page, sortBy], context.previous)
+      }
+      toast.error('Failed to update favorite')
     },
   })
 
@@ -214,9 +225,7 @@ export default function Clips() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <p className="text-muted-foreground">Loading clips…</p>
-        </div>
+        <VideoGridSkeleton count={8} />
       ) : clips.length === 0 ? (
         <EmptyState
           icon={Scissors}
@@ -225,10 +234,10 @@ export default function Clips() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {clips.map((clip) => (
+              <StaggerItem key={clip.id}>
               <Card
-                key={clip.id}
                 className="group overflow-hidden cursor-pointer border border-border bg-card hover:shadow-md transition-shadow"
                 onClick={() => navigate(`/clips/${clip.id}`)}
               >
@@ -326,8 +335,9 @@ export default function Clips() {
                   </div>
                 </div>
               </Card>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerContainer>
 
           {/* Pagination */}
           {totalPages > 1 && (

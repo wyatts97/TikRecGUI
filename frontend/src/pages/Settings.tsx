@@ -25,6 +25,7 @@ import { api, type Settings } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useTheme } from '@/hooks/useTheme'
+import AccentPicker from '@/components/AccentPicker'
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
@@ -69,8 +70,11 @@ export default function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-muted-foreground">Loading settings...</p>
+      <div className="flex items-center justify-center py-12" role="status" aria-label="Loading settings">
+        <svg className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <span className="sr-only">Loading settings…</span>
       </div>
     )
   }
@@ -620,9 +624,9 @@ export default function SettingsPage() {
             <Palette className="h-5 w-5" />
             Appearance
           </CardTitle>
-          <CardDescription>Choose your preferred theme</CardDescription>
+          <CardDescription>Choose your preferred theme and accent color</CardDescription>
         </CardHeader>
-        <CardBody className="space-y-4">
+        <CardBody className="space-y-5">
           <div className="grid grid-cols-3 gap-3">
             {[
               { value: 'light' as const, label: 'Light', bg: 'bg-white', border: 'border-gray-200', dot: 'bg-gray-400' },
@@ -642,6 +646,9 @@ export default function SettingsPage() {
                 </span>
               </button>
             ))}
+          </div>
+          <div className="border-t border-border pt-5">
+            <AccentPicker />
           </div>
         </CardBody>
       </Card>
@@ -990,9 +997,9 @@ export default function SettingsPage() {
                       <Palette className="h-5 w-5" />
                       Appearance
                     </CardTitle>
-                    <CardDescription>Choose your preferred theme</CardDescription>
+                    <CardDescription>Choose your preferred theme and accent color</CardDescription>
                   </CardHeader>
-                  <CardBody className="space-y-4">
+                  <CardBody className="space-y-5">
                     <div className="grid grid-cols-3 gap-3">
                       {[
                         { value: 'light' as const, label: 'Light', bg: 'bg-white', border: 'border-gray-200', dot: 'bg-gray-400' },
@@ -1012,6 +1019,9 @@ export default function SettingsPage() {
                           </span>
                         </button>
                       ))}
+                    </div>
+                    <div className="border-t border-border pt-5">
+                      <AccentPicker />
                     </div>
                   </CardBody>
                 </Card>

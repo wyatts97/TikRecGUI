@@ -18,6 +18,7 @@ from app.core.media_utils import (
 from app.core.recorder_loader import get_tiktok_api_class
 from app.core.transcription_service import transcription_service
 from app.core.live_chat_service import live_chat_service
+from app.core.notification_service import notification_service
 
 
 def _update_recording_status(recording_id: int, status: str, error_message: str | None = None) -> None:
@@ -33,6 +34,25 @@ def _update_recording_status(recording_id: int, status: str, error_message: str 
 
 
 logger = logging.getLogger("tikrec.task_manager")
+
+
+def _notify_recording_finished(recording_id: int, username: str, status: str, duration_seconds: int) -> None:
+    """Publish a notification when a recording reaches a terminal state."""
+    if status == "completed":
+        title = f"Recording completed: @{username}"
+        message = f"Recorded {duration_seconds // 60} min"
+    elif status == "stopped":
+        title = f"Recording stopped: @{username}"
+        message = f"Recorded {duration_seconds // 60} min"
+    else:  # failed
+        title = f"Recording failed: @{username}"
+        message = "The recording ended unexpectedly."
+    notification_service.publish(
+        type=f"recording_{status}",
+        title=title,
+        message=message,
+        data={"recording_id": recording_id, "username": username, "status": status},
+    )
 
 
 class RecordingTask:
@@ -171,6 +191,7 @@ class RecordingTask:
         ended_at = datetime.utcnow()
         duration_seconds = int(time.time() - start_time)
         file_existed = output_path.exists()
+        final_status: str | None = None
 
         with get_session() as db:
             recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
@@ -190,6 +211,14 @@ class RecordingTask:
                     recording.error_message = recording.error_message or "Output file not created"
 
                 db.commit()
+                final_status = recording.status
+
+        # Notify the UI that the recording finished (completed/stopped/failed)
+        if final_status:
+            try:
+                _notify_recording_finished(self.recording_id, self.username, final_status, duration_seconds)
+            except Exception:
+                logger.debug("Failed to publish recording-finished notification", exc_info=True)
 
         # Stop live chat/gift capture
         try:
@@ -233,14 +262,20 @@ class RecordingTask:
                         db.commit()
             elif health.get("is_corrupt"):
                 logger.info("Attempting full repair for corrupt recording %d", self.recording_id)
-                if repair_video(output_path):
+                repair_ok, repair_duration = repair_video(output_path)
+                if repair_ok:
                     with get_session() as db:
                         recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
                         if recording:
                             recording.file_size = output_path.stat().st_size
+                            if repair_duration is not None:
+                                recording.duration_seconds = int(round(repair_duration))
                             recording.error_message = "Recording was repaired (was corrupt)"
                             db.commit()
-                    logger.info("Repair successful for recording %d", self.recording_id)
+                    # Regenerate visual assets now that the file is healthy
+                    run_background(generate_thumbnail, output_path)
+                    run_background(generate_sprite, output_path)
+                    logger.info("Repair successful for recording %d (%.1fs)", self.recording_id, repair_duration or 0)
 
             run_background(generate_thumbnail, output_path)
             run_background(generate_sprite, output_path)
@@ -493,7 +528,19 @@ class MonitorService:
                     return
                 continue
 
-            # --- User is live: update user and create recording (short session) ---
+            # --- User is live: notify on transition, then record ---
+            if not user.is_live:
+                try:
+                    notification_service.publish(
+                        type="user_live",
+                        title=f"@{user.username} is live",
+                        message="A monitored user just went live — recording is starting.",
+                        data={"user_id": user.id, "username": user.username},
+                    )
+                except Exception:
+                    logger.debug("Failed to publish user-live notification", exc_info=True)
+
+            # --- update user and create recording (short session) ---
             filename = generate_recording_filename(user.username)
             with get_session() as db:
                 u = db.query(User).filter(User.id == user.id).first()

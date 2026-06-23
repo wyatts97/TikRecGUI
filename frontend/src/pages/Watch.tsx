@@ -6,6 +6,8 @@ import { Button } from '@/components/selia/button'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import EmptyState from '@/components/EmptyState'
+import { VideoGridSkeleton } from '@/components/Skeleton'
+import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { RecordingVideoCard } from '@/components/ui/recording-video-card'
 import { api, type Recording } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -84,16 +86,26 @@ export default function Watch() {
 
   const toggleFavoriteMutation = useMutation({
     mutationFn: (id: number) => api.recordings.toggleFavorite(id),
-    onSuccess: (updated: Recording) => {
+    // Optimistic update: flip the flag instantly, roll back on error.
+    onMutate: async (id: number) => {
+      await queryClient.cancelQueries({ queryKey: ['recordings', 'watchable'] })
+      const previous = queryClient.getQueryData(['recordings', 'watchable'])
       queryClient.setQueryData(['recordings', 'watchable'], (old: any) => {
         if (!old) return old
         return {
           ...old,
           recordings: old.recordings.map((r: Recording) =>
-            r.id === updated.id ? { ...r, is_favorite: updated.is_favorite } : r
+            r.id === id ? { ...r, is_favorite: !r.is_favorite } : r
           ),
         }
       })
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['recordings', 'watchable'], context.previous)
+      }
+      toast.error('Failed to update favorite')
     },
   })
 
@@ -255,9 +267,7 @@ export default function Watch() {
       )}
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <p className="text-muted-foreground">Loading recordings...</p>
-        </div>
+        <VideoGridSkeleton count={8} />
       ) : recordings.length === 0 ? (
         <EmptyState
           icon={Tv}
@@ -266,10 +276,10 @@ export default function Watch() {
         />
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {recordings.map((recording) => (
+              <StaggerItem key={recording.id}>
               <RecordingVideoCard
-                key={recording.id}
                 recording={recording}
                 onClick={() => navigate(`/watch/${recording.id}`)}
                 onFavorite={(e) => {
@@ -285,6 +295,7 @@ export default function Watch() {
                   a.click()
                   document.body.removeChild(a)
                 }}
+                isRepairing={repairingId === recording.id}
                 onRepair={(e) => {
                   e.stopPropagation()
                   if (repairingId === recording.id) return
@@ -296,8 +307,9 @@ export default function Watch() {
                   toggleSelection(recording.id)
                 }}
               />
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerContainer>
 
           {/* Pagination */}
           {totalPages > 1 && (

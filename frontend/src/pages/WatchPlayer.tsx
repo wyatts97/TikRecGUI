@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
@@ -94,6 +94,7 @@ export default function WatchPlayer() {
   const fmt = useDateFormat()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const recordingId = Number(id)
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'player' | 'transcript' | 'chat'>('player')
@@ -148,6 +149,32 @@ export default function WatchPlayer() {
     if (video) video.currentTime = seconds
   }, [])
 
+  // Jump to timestamp from ?t= query parameter (e.g. from search results)
+  useEffect(() => {
+    const t = searchParams.get('t')
+    if (!t || !recording) return
+    const seconds = Number(t)
+    if (isNaN(seconds) || seconds < 0) return
+
+    let attempts = 0
+    const maxAttempts = 30
+    const interval = setInterval(() => {
+      const video = playerRef.current?.querySelector('video') as HTMLVideoElement | null
+      if (video && video.readyState >= 2) {
+        video.currentTime = seconds
+        clearInterval(interval)
+        // Remove t from query string so refreshing won't re-seek
+        const next = new URLSearchParams(searchParams)
+        next.delete('t')
+        setSearchParams(next, { replace: true })
+        return
+      }
+      if (++attempts >= maxAttempts) clearInterval(interval)
+    }, 200)
+
+    return () => clearInterval(interval)
+  }, [recording, searchParams, setSearchParams])
+
   const handleDownloadSrt = useCallback(() => {
     if (!recording?.transcript_text) return
     const srt = formatTranscriptAsSrt(recording.transcript_text)
@@ -190,8 +217,9 @@ export default function WatchPlayer() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-muted-foreground">Loading...</p>
+      <div className="flex items-center justify-center py-12" role="status" aria-label="Loading">
+        <Loader2 className="h-6 w-6 text-primary animate-spin motion-reduce:animate-none" />
+        <span className="sr-only">Loading…</span>
       </div>
     )
   }

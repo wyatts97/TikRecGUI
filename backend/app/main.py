@@ -8,7 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db.database import init_db, get_session
 from app.db.models import Recording
-from app.api.routes import users, recordings, clips, settings as settings_routes
+from app.api.routes import (
+    users,
+    recordings,
+    clips,
+    settings as settings_routes,
+    stats as stats_routes,
+    notifications as notifications_routes,
+    search as search_routes,
+)
 from app.core.task_manager import task_manager, monitor_service
 
 logging.basicConfig(
@@ -64,6 +72,9 @@ app.include_router(users.router, prefix="/api")
 app.include_router(recordings.router, prefix="/api")
 app.include_router(clips.router, prefix="/api")
 app.include_router(settings_routes.router, prefix="/api")
+app.include_router(stats_routes.router, prefix="/api")
+app.include_router(notifications_routes.router, prefix="/api")
+app.include_router(search_routes.router, prefix="/api")
 
 
 @app.get("/api/health")

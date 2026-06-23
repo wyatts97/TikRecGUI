@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Radio, Loader2, Tv, ArrowRight } from 'lucide-react'
+import { Radio, Tv, ArrowRight } from 'lucide-react'
 import { api, ActiveRecording } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import FlvPlayer from '@/components/FlvPlayer'
+import EmptyState from '@/components/EmptyState'
+import { VideoGridSkeleton } from '@/components/Skeleton'
+import { StaggerContainer, StaggerItem } from '@/components/motion'
 
 function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
   const navigate = useNavigate()
@@ -106,23 +109,21 @@ export default function Live() {
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
-        </div>
+        <VideoGridSkeleton count={6} className="sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3" />
       ) : activeRecordings.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-dashed border-border bg-card/50">
-          <Tv className="h-10 w-10 text-muted-foreground/40 mb-3" />
-          <p className="text-lg font-medium text-foreground">No active recordings</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Start a recording to see live streams here.
-          </p>
-        </div>
+        <EmptyState
+          icon={Tv}
+          title="No active recordings"
+          description="Start a recording to see live streams here."
+        />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StaggerContainer className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {activeRecordings.map((rec) => (
-            <LiveStreamCard key={rec.id} recording={rec} />
+            <StaggerItem key={rec.id}>
+              <LiveStreamCard recording={rec} />
+            </StaggerItem>
           ))}
-        </div>
+        </StaggerContainer>
       )}
     </div>
   )

@@ -170,6 +170,116 @@ export interface MonitorStatus {
   check_interval: number
 }
 
+export interface StatsOverview {
+  total_recordings: number
+  total_hours: number
+  total_seconds: number
+  total_storage: number
+  clip_storage: number
+  total_clips: number
+  total_users: number
+  monitored_users: number
+  total_chat_messages: number
+  total_gifts: number
+  total_diamonds: number
+}
+
+export interface RecordingsPerDay {
+  date: string
+  count: number
+  hours: number
+}
+
+export interface TopStreamer {
+  user_id: number
+  username: string
+  count: number
+  hours: number
+}
+
+export interface StorageByUser {
+  user_id: number
+  username: string
+  count: number
+  bytes: number
+}
+
+export interface GiftChatVolume {
+  recording_id: number
+  username: string
+  chat_count: number
+  gift_count: number
+  diamonds: number
+}
+
+export interface LargestRecording {
+  id: number
+  username: string
+  filename: string
+  file_size: number
+  duration_seconds: number | null
+  status: string
+  created_at: string
+}
+
+export interface DiskUsage {
+  total: number
+  used: number
+  free: number
+  percent: number
+}
+
+export interface StorageStats {
+  total_storage: number
+  recording_storage: number
+  clip_storage: number
+  backup_storage: number
+  backup_count: number
+  total_recordings: number
+  total_clips: number
+  disk_usage: DiskUsage | null
+}
+
+export interface AppNotification {
+  id: number
+  type: string
+  title: string
+  message: string
+  data: Record<string, any>
+  created_at: string
+  read: boolean
+}
+
+export interface LiveClipStatus {
+  active: boolean
+  elapsed: number
+  error?: string | null
+  clip_id?: number
+  duration_seconds?: number
+}
+
+export interface GlobalSearchResult {
+  query: string
+  transcripts: {
+    recording_id: number
+    username: string
+    match_count: number
+    matches: { offset_seconds: number; snippet: string }[]
+  }[]
+  events: {
+    id: number
+    recording_id: number
+    username: string
+    offset_seconds: number
+    event_type: "chat" | "gift"
+    user_nickname: string
+    content: string | null
+    gift_name: string | null
+  }[]
+  transcript_count: number
+  event_count: number
+}
+
 export const api = {
   users: {
     list: (monitoringOnly = false, watchlistOnly = true) =>
@@ -292,6 +402,21 @@ export const api = {
 
     stopAll: () =>
       fetchApi<{ stopped: number }>("/recordings/stop-all", { method: "POST" }),
+
+    batchCompress: (ids: number[]) =>
+      fetchApi<{ compressed: number; deleted: number; backup_file: string }>(
+        "/recordings/batch/compress",
+        { method: "POST", body: JSON.stringify({ recording_ids: ids }) }
+      ),
+
+    liveClipStatus: (id: number) =>
+      fetchApi<LiveClipStatus>(`/recordings/${id}/live-clip/status`),
+
+    liveClipStart: (id: number) =>
+      fetchApi<LiveClipStatus>(`/recordings/${id}/live-clip/start`, { method: "POST" }),
+
+    liveClipStop: (id: number) =>
+      fetchApi<LiveClipStatus>(`/recordings/${id}/live-clip/stop`, { method: "POST" }),
     
     getEvents: (id: number, page = 1, pageSize = 100, eventType?: string, search?: string) => {
       const params = new URLSearchParams({
@@ -427,5 +552,37 @@ export const api = {
 
     triggerMonitorCheck: () =>
       fetchApi<{ triggered: boolean }>("/settings/monitor-check", { method: "POST" }),
+  },
+
+  stats: {
+    overview: () => fetchApi<StatsOverview>("/stats/overview"),
+    recordingsPerDay: (days = 30) =>
+      fetchApi<RecordingsPerDay[]>(`/stats/recordings-per-day?days=${days}`),
+    topStreamers: (limit = 10) =>
+      fetchApi<TopStreamer[]>(`/stats/top-streamers?limit=${limit}`),
+    storageByUser: (limit = 20) =>
+      fetchApi<StorageByUser[]>(`/stats/storage-by-user?limit=${limit}`),
+    giftChatVolume: (limit = 10) =>
+      fetchApi<GiftChatVolume[]>(`/stats/gift-chat-volume?limit=${limit}`),
+    largestRecordings: (limit = 20) =>
+      fetchApi<LargestRecording[]>(`/stats/largest-recordings?limit=${limit}`),
+    storage: () => fetchApi<StorageStats>("/stats/storage"),
+  },
+
+  notifications: {
+    list: (limit = 50) =>
+      fetchApi<{ notifications: AppNotification[]; unread: number }>(
+        `/notifications?limit=${limit}`
+      ),
+    markAllRead: () =>
+      fetchApi<{ unread: number }>("/notifications/read", { method: "POST" }),
+    streamUrl: () => `${API_BASE}/notifications/stream`,
+  },
+
+  search: {
+    global: (q: string, limit = 50) =>
+      fetchApi<GlobalSearchResult>(
+        `/search?q=${encodeURIComponent(q)}&limit=${limit}`
+      ),
   },
 }

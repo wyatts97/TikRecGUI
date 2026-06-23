@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, Radio, Square, Tv, Calendar, Clock, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, Radio, Square, Tv, Calendar, Clock, MessageCircle, Scissors } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
 import { api } from '@/lib/api'
@@ -58,6 +58,39 @@ export default function LivePlayer() {
     },
   })
 
+  const recordingActive = recording?.status === 'pending' || recording?.status === 'recording'
+
+  const { data: clipStatus } = useQuery({
+    queryKey: ['liveClip', recordingId],
+    queryFn: () => api.recordings.liveClipStatus(recordingId),
+    enabled: !isNaN(recordingId) && !!recordingActive,
+    refetchInterval: (q: any) => (q.state.data?.active ? 1000 : false),
+  })
+  const clipActive = clipStatus?.active ?? false
+  const clipElapsed = clipStatus?.elapsed ?? 0
+
+  const startClipMutation = useMutation({
+    mutationFn: () => api.recordings.liveClipStart(recordingId),
+    onSuccess: () => {
+      toast.success('Clip started — recording the live moment')
+      queryClient.invalidateQueries({ queryKey: ['liveClip', recordingId] })
+    },
+    onError: (e: Error) => toast.error(e.message || 'Failed to start clip'),
+  })
+
+  const stopClipMutation = useMutation({
+    mutationFn: () => api.recordings.liveClipStop(recordingId),
+    onSuccess: (res) => {
+      toast.success('Clip saved')
+      queryClient.invalidateQueries({ queryKey: ['liveClip', recordingId] })
+      queryClient.invalidateQueries({ queryKey: ['clips'] })
+      if (res.clip_id) {
+        toast('View it in Clips', { icon: '🎬' })
+      }
+    },
+    onError: (e: Error) => toast.error(e.message || 'Failed to save clip'),
+  })
+
   const handleSeek = useCallback((seconds: number) => {
     // No-op for live streams — seeking isn't supported
     void seconds
@@ -112,6 +145,19 @@ export default function LivePlayer() {
             <span>Recording #{recording.id}</span>
           </p>
         </div>
+        {isActive && (
+          <Button
+            variant={clipActive ? 'danger' : 'secondary'}
+            size="sm"
+            onClick={() => (clipActive ? stopClipMutation.mutate() : startClipMutation.mutate())}
+            disabled={startClipMutation.isPending || stopClipMutation.isPending}
+            className="shrink-0"
+            title={clipActive ? 'Stop and save this clip' : 'Start clipping from the live stream'}
+          >
+            <Scissors className="h-3.5 w-3.5 mr-1.5" />
+            {clipActive ? `Stop Clip · ${formatDuration(clipElapsed)}` : 'Start Clip'}
+          </Button>
+        )}
         {isActive && (
           <Button
             variant="outline"

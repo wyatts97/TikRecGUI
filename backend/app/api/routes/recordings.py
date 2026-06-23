@@ -25,6 +25,7 @@ from app.schemas.recording import (
 from app.schemas.live_event import LiveEventResponse, LiveEventListResponse
 from app.core.recorder_service import recorder_service
 from app.core.task_manager import task_manager
+from app.core.live_clip_service import live_clip_service
 from app.core.media_utils import (
     generate_recording_filename,
     generate_sprite,
@@ -80,9 +81,9 @@ def _is_thumbnail_ready(recording: Recording) -> bool:
     thumb_path = thumbnail_path(video_path)
     if thumb_path.exists() and thumb_path.stat().st_size > 0:
         return True
-    # Kick off a background retry for completed recordings that lost their thumbnail
+    # Kick off a background retry for finished recordings that lost their thumbnail
     if (
-        recording.status in ("completed", "stopped")
+        recording.status in ("completed", "stopped", "failed")
         and video_path.exists()
         and recording.id not in _thumb_retry_in_progress
     ):
@@ -101,9 +102,9 @@ def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
             recording.sprite_ready = True
             db.commit()
         return True
-    # Kick off a background retry for completed recordings missing sprites
+    # Kick off a background retry for finished recordings missing sprites
     if (
-        recording.status in ("completed", "stopped")
+        recording.status in ("completed", "stopped", "failed")
         and video_path.exists()
         and recording.id not in _sprite_retry_in_progress
     ):
@@ -366,6 +367,34 @@ def get_recording_live_url(recording_id: int, db: Session = Depends(get_db)):
     return {"live_url": live_url}
 
 
+@router.get("/{recording_id}/live-clip/status")
+def live_clip_status(recording_id: int):
+    """Return whether a live clip is currently being captured for this recording."""
+    return live_clip_service.status(recording_id)
+
+
+@router.post("/{recording_id}/live-clip/start")
+def live_clip_start(recording_id: int):
+    """Begin capturing a clip from the live stream (does not affect recording)."""
+    try:
+        return live_clip_service.start(recording_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e))
+
+
+@router.post("/{recording_id}/live-clip/stop")
+def live_clip_stop(recording_id: int):
+    """Stop the live clip, finalize the MP4, and create the clip."""
+    try:
+        return live_clip_service.stop(recording_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 @router.get("/{recording_id}", response_model=RecordingResponse)
 def get_recording(recording_id: int, db: Session = Depends(get_db)):
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
@@ -572,6 +601,53 @@ def batch_delete_recordings(
     }
 
 
+@router.post("/batch/compress", status_code=status.HTTP_200_OK)
+def batch_compress_recordings(
+    recording_ids: List[int] = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    """Compress selected recordings into a backup ZIP and delete the originals.
+
+    Used by the storage-management view to reclaim space while keeping an
+    archived copy in the backups folder.
+    """
+    from app.core.cleanup_service import cleanup_service
+
+    if not recording_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No recording IDs provided"
+        )
+
+    recordings = (
+        db.query(Recording)
+        .filter(Recording.id.in_(recording_ids))
+        .filter(Recording.status.in_(("completed", "stopped", "failed")))
+        .all()
+    )
+    if not recordings:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No eligible recordings found"
+        )
+
+    backup_file = cleanup_service.compress_recordings(recordings)
+    if not backup_file:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create backup archive"
+        )
+
+    deleted = 0
+    for rec in recordings:
+        _delete_recording_files(rec)
+        db.delete(rec)
+        deleted += 1
+    db.commit()
+
+    return {"compressed": deleted, "deleted": deleted, "backup_file": backup_file}
+
+
 @router.post("/batch/download")
 def batch_download_recordings(
     recording_ids: List[int] = Body(..., embed=True),
@@ -730,7 +806,9 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
     as fallback) to recover playback from recordings damaged by TikTok's
     mid-stream codec/resolution switches.
 
-    The repaired file **replaces** the original in-place.
+    The repaired file **replaces** the original in-place. On success the
+    recording duration is updated, its status is moved to ``completed`` if
+    it was ``failed``, and visual assets are regenerated.
     """
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
@@ -745,11 +823,21 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
     if not video_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording file not found")
 
-    if repair_video(video_path):
+    repair_ok, actual_duration = repair_video(video_path)
+    if repair_ok:
         recording.file_size = video_path.stat().st_size
+        if actual_duration is not None:
+            recording.duration_seconds = int(round(actual_duration))
+        if recording.status == "failed":
+            recording.status = "completed"
         recording.error_message = "Recording was repaired"
         db.commit()
         db.refresh(recording)
+
+        # Regenerate visual assets now that the file is healthy
+        run_background(generate_thumbnail, video_path, thumbnail_path(video_path))
+        run_background(generate_sprite, video_path)
+
         return _build_response(recording, db)
 
     raise HTTPException(

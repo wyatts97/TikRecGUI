@@ -128,7 +128,23 @@ export default function Watchlist() {
   const toggleMonitoringMutation = useMutation({
     mutationFn: ({ id, isMonitoring }: { id: number; isMonitoring: boolean }) =>
       api.users.update(id, { is_monitoring: isMonitoring }),
-    onSuccess: () => {
+    // Optimistic update so the switch responds instantly; roll back on error.
+    onMutate: async ({ id, isMonitoring }) => {
+      await queryClient.cancelQueries({ queryKey: ['users'] })
+      const previous = queryClient.getQueryData(['users'])
+      queryClient.setQueryData(['users'], (old: any) => {
+        if (!Array.isArray(old)) return old
+        return old.map((u: any) => (u.id === id ? { ...u, is_monitoring: isMonitoring } : u))
+      })
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(['users'], context.previous)
+      }
+      toast.error('Failed to update monitoring')
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
   })

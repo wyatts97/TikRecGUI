@@ -13,6 +13,7 @@ interface RecordingVideoCardProps {
   onFavorite: (e: React.MouseEvent) => void
   onDownload: (e: React.MouseEvent) => void
   onRepair?: (e: React.MouseEvent) => void
+  isRepairing?: boolean
   onClick: () => void
   selected?: boolean
   onSelect?: (e: React.MouseEvent) => void
@@ -23,6 +24,7 @@ export function RecordingVideoCard({
   onFavorite,
   onDownload,
   onRepair,
+  isRepairing,
   onClick,
   selected,
   onSelect,
@@ -136,15 +138,20 @@ export function RecordingVideoCard({
                   )}
                 />
               </Button>
-              {recording.status === 'failed' && onRepair && (
+              {(recording.status === 'failed' || recording.is_corrupt) && onRepair && (
                 <Button
                   variant="plain"
                   size="icon"
                   className="h-8 w-8 text-amber-500 hover:text-amber-600"
                   onClick={onRepair}
+                  disabled={isRepairing}
                   title="Repair recording"
                 >
-                  <Wrench className="h-4 w-4" />
+                  {isRepairing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wrench className="h-4 w-4" />
+                  )}
                 </Button>
               )}
               <Button
