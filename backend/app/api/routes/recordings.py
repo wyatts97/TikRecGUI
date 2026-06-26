@@ -340,7 +340,10 @@ def get_active_recordings(db: Session = Depends(get_db)):
     recent_threshold = datetime.utcnow() - timedelta(hours=24)
     db_active = db.query(Recording).filter(
         Recording.status.in_(["recording", "pending"]),
-        Recording.started_at >= recent_threshold,
+        or_(
+            Recording.started_at >= recent_threshold,
+            Recording.started_at.is_(None),
+        ),
     ).all()
 
     # Warn about orphaned recordings (DB says active, but no task is running)
