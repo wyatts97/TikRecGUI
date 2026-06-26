@@ -36,6 +36,61 @@ def _update_recording_status(recording_id: int, status: str, error_message: str 
 
 logger = logging.getLogger("tikrec.task_manager")
 
+# Capture is treated as stalled if the .ts output file does not grow for this
+# many seconds while ffmpeg is still running (dead socket with no reconnect).
+_STALL_TIMEOUT_SECONDS = 90
+
+
+def _read_log_tail(log_path: Path | None, max_chars: int = 600) -> str | None:
+    """Return the last *max_chars* of an ffmpeg log file, if it exists."""
+    if log_path is None or not log_path.exists():
+        return None
+    try:
+        data = log_path.read_text(encoding="utf-8", errors="replace").strip()
+    except Exception:
+        return None
+    if not data:
+        return None
+    return data[-max_chars:]
+
+
+def _build_capture_cmd(
+    live_url: str,
+    ts_path: Path,
+    duration: int | None,
+    proxy: str | None,
+    cookies: dict | None,
+) -> list[str]:
+    """Build the ffmpeg capture command, wiring proxy/cookies when present.
+
+    ffmpeg consumes the live URL directly (HLS m3u8 or FLV) and writes a single
+    continuous MPEG-TS. Proxy and cookies are passed so a geo-restricted stream
+    reachable only through the same proxy/session as URL discovery still works.
+    """
+    cmd = [
+        "ffmpeg", "-y", "-hide_banner", "-loglevel", "warning",
+        "-reconnect", "1",
+        "-reconnect_streamed", "1",
+        "-reconnect_at_eof", "1",
+        "-reconnect_delay_max", "5",
+    ]
+    if proxy:
+        cmd += ["-http_proxy", proxy]
+    if cookies:
+        cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items() if k)
+        if cookie_header:
+            cmd += ["-headers", f"Cookie: {cookie_header}\r\n"]
+    cmd += [
+        "-fflags", "+igndts+genpts",
+        "-i", live_url,
+        "-c", "copy",
+        "-f", "mpegts",
+    ]
+    if duration:
+        cmd += ["-t", str(duration)]
+    cmd.append(str(ts_path))
+    return cmd
+
 
 def _notify_recording_finished(recording_id: int, username: str, status: str, duration_seconds: int) -> None:
     """Publish a notification when a recording reaches a terminal state."""
@@ -78,8 +133,10 @@ class RecordingTask:
         self._thread: threading.Thread | None = None
         self._output_path: Path | None = None
         self._ts_path: Path | None = None
+        self._log_path: Path | None = None
         self._proc: subprocess.Popen | None = None
         self._start_time: float | None = None
+        self._capture_error: str | None = None
     
     def start(self):
         self._thread = threading.Thread(target=self._run_with_error_handling, daemon=True)
@@ -159,41 +216,60 @@ class RecordingTask:
         self._output_path = output_path
         ts_path = output_path.with_suffix(".ts")
         self._ts_path = ts_path
+        log_path = output_path.with_suffix(".ffmpeg.log")
+        self._log_path = log_path
 
         start_time = time.time()
         self._start_time = start_time
 
-        cmd = [
-            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-            "-reconnect", "1",
-            "-reconnect_streamed", "1",
-            "-reconnect_at_eof", "1",
-            "-reconnect_delay_max", "5",
-            "-fflags", "+igndts+genpts",
-            "-i", live_url,
-            "-c", "copy",
-            "-f", "mpegts",
-        ]
-        if self.duration:
-            cmd += ["-t", str(self.duration)]
-        cmd.append(str(ts_path))
+        cmd = _build_capture_cmd(live_url, ts_path, self.duration, self.proxy, self.cookies)
 
+        # ffmpeg stderr is written to a per-recording log so capture failures
+        # (bad/expired URL, geo-block, missing codec) are diagnosable instead
+        # of being silently discarded.
+        try:
+            log_fh = open(log_path, "wb")
+        except Exception:
+            log_fh = None
         try:
             self._proc = subprocess.Popen(
                 cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=(log_fh or subprocess.DEVNULL),
             )
         except Exception as e:
             logger.error("Failed to start ffmpeg capture for recording %d: %s",
                          self.recording_id, e)
-            _update_recording_status(self.recording_id, "failed", f"Capture failed to start: {e}")
+            if log_fh:
+                log_fh.close()
+            self._capture_error = f"Capture failed to start: {e}"
+            _update_recording_status(self.recording_id, "failed", self._capture_error)
             return
 
-        # Hold until asked to stop, the duration elapses, or the stream ends.
+        # Hold until asked to stop, the duration elapses, the stream ends, or
+        # the capture stalls (no new bytes written for _STALL_TIMEOUT_SECONDS).
+        last_size = -1
+        last_growth = time.time()
         while not self._stop_event.is_set():
             if self._proc.poll() is not None:
+                break
+            try:
+                cur_size = ts_path.stat().st_size if ts_path.exists() else 0
+            except OSError:
+                cur_size = 0
+            now = time.time()
+            if cur_size > last_size:
+                last_size = cur_size
+                last_growth = now
+            elif now - last_growth > _STALL_TIMEOUT_SECONDS:
+                logger.warning(
+                    "Recording %d: capture stalled (no growth for %ds), stopping",
+                    self.recording_id, _STALL_TIMEOUT_SECONDS,
+                )
+                self._capture_error = (
+                    f"Capture stalled — no data for {_STALL_TIMEOUT_SECONDS}s"
+                )
                 break
             time.sleep(0.5)
 
@@ -210,6 +286,12 @@ class RecordingTask:
                     self._proc.wait(timeout=5)
                 except Exception:
                     self._proc.kill()
+
+        if log_fh:
+            try:
+                log_fh.close()
+            except Exception:
+                pass
 
         self._finalize_recording()
 
@@ -254,7 +336,13 @@ class RecordingTask:
                     recording.status = "completed" if not self._stop_event.is_set() else "stopped"
                 else:
                     recording.status = "failed"
-                    recording.error_message = recording.error_message or "Output file not created"
+                    # Prefer a specific capture error (with the ffmpeg log tail)
+                    # over the generic message so failures are diagnosable.
+                    log_tail = _read_log_tail(self._log_path)
+                    detail = self._capture_error or "Output file not created"
+                    if log_tail:
+                        detail = f"{detail} | ffmpeg: {log_tail}"
+                    recording.error_message = recording.error_message or detail
 
                 db.commit()
                 final_status = recording.status
@@ -271,6 +359,13 @@ class RecordingTask:
             live_chat_service.stop_listening(self.recording_id)
         except Exception:
             pass
+
+        # Diagnostic log cleanup: if the final MP4 is in place, the capture was
+        # successful and the log is no longer needed. Otherwise keep it for
+        # debugging (failed capture, remux failure, etc.).
+        log_path = self._log_path
+        if log_path is not None and output_path is not None and output_path.exists():
+            log_path.unlink(missing_ok=True)
 
         # Post-processing — only when a fresh .ts capture is awaiting remux.
         # (Guards against the double-invocation from _run_with_error_handling.)

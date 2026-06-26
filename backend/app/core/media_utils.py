@@ -339,7 +339,13 @@ def generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
 # ----------------------------------------------------------------
 
 def _probe_duration(video_path: Path) -> float | None:
-    """Return the duration of *video_path* in seconds, or ``None``."""
+    """Return the duration of *video_path* in seconds, or ``None``.
+
+    First tries the container's ``format.duration``. If that is missing (common
+    for MPEG-TS files before remux), it falls back to the last packet timestamp
+    so callers still get a usable duration estimate without misclassifying a
+    healthy stream as corrupt.
+    """
     try:
         probe = subprocess.run(
             [
@@ -350,9 +356,36 @@ def _probe_duration(video_path: Path) -> float | None:
             ],
             capture_output=True, text=True, timeout=15,
         )
-        return float(probe.stdout.strip())
+        value = probe.stdout.strip()
+        if value:
+            duration = float(value)
+            if duration > 0:
+                return duration
     except Exception:
-        return None
+        pass
+
+    # Fallback: estimate duration from the last video packet timestamp.
+    # This is slower but necessary for containers without a global duration.
+    try:
+        probe = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "v:0",
+                "-show_entries", "packet=pts_time",
+                "-of", "csv=p=0",
+                str(video_path),
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        timestamps = [float(line.strip()) for line in probe.stdout.splitlines() if line.strip()]
+        if timestamps:
+            max_ts = max(timestamps)
+            if max_ts > 0:
+                return max_ts
+    except Exception:
+        pass
+
+    return None
 
 
 def remux_to_mp4(

@@ -2,6 +2,7 @@ import os
 import json
 import time
 import logging
+import shutil
 import zipfile
 import tempfile
 
@@ -850,8 +851,24 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
     if not video_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording file not found")
 
-    repair_ok, actual_duration = repair_video(video_path)
+    # Non-destructive repair: keep a backup copy while we attempt to fix the
+    # file. If repair fails, restore the original so the user can retry.
+    backup_path = video_path.with_suffix(video_path.suffix + ".backup")
+    try:
+        shutil.copy2(video_path, backup_path)
+    except Exception as exc:
+        logger.warning("Failed to create backup before repair for %s: %s", video_path, exc)
+        backup_path = None
+
+    try:
+        repair_ok, actual_duration = repair_video(video_path)
+    except Exception as exc:
+        logger.exception("Repair raised an exception for recording %d", recording_id)
+        repair_ok = False
+
     if repair_ok:
+        if backup_path is not None:
+            backup_path.unlink(missing_ok=True)
         recording.file_size = video_path.stat().st_size
         if actual_duration is not None:
             recording.duration_seconds = int(round(actual_duration))
@@ -867,6 +884,13 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
 
         return _build_response(recording, db)
 
+    # Repair failed: restore the original from the backup if we made one.
+    if backup_path is not None and backup_path.exists():
+        try:
+            backup_path.replace(video_path)
+            logger.info("Restored original file for recording %d from %s", recording_id, backup_path)
+        except Exception as exc:
+            logger.error("Failed to restore backup for recording %d: %s", recording_id, exc)
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail="Repair failed — recording may be beyond recovery",
