@@ -358,30 +358,41 @@ def _probe_duration(video_path: Path) -> float | None:
 def remux_to_mp4(
     input_path: Path,
     expected_duration: float | None = None,
+    output_path: Path | None = None,
 ) -> tuple[bool, float | None]:
-    """Remux a raw stream to a faststart MP4 for browser seeking.
+    """Remux a captured stream to a faststart MP4 for browser seeking.
 
     Uses error-tolerant ffmpeg flags to handle mid-stream codec switches
     common in TikTok live recordings. Falls back to a full re-encode if
     the stream-copy remux encounters corrupt frames or if the resulting
     duration diverges from *expected_duration* by >5 %% or >30 s.
 
-    Replaces *input_path* with the remuxed file in-place.
+    When *output_path* is given the remuxed MP4 is written there (the
+    typical flow: ``.ts`` source → ``.mp4`` output); otherwise *input_path*
+    is replaced in-place.
+
+    Note: no explicit ``h264_mp4toannexb`` bitstream filter is used — when
+    copying H.264 from MPEG-TS/FLV into MP4, ffmpeg automatically applies
+    the correct AVCC conversion. Forcing Annex-B start codes into an MP4
+    container produces files that ffprobe can read but real players reject.
+
     Returns ``(success, actual_duration)``.
     """
     if not input_path.exists():
         return False, None
 
+    target = output_path or input_path
+
     # Strategy 1 — error-tolerant stream copy (fast, preserves quality)
-    temp_path = input_path.with_suffix(".tmp.mp4")
+    temp_path = target.with_suffix(".tmp.mp4")
     try:
         subprocess.run(
             [
                 "ffmpeg", "-y",
                 "-fflags", "+igndts+genpts",
+                "-err_detect", "ignore_err",
                 "-i", str(input_path),
                 "-c", "copy",
-                "-bsf:v", "h264_mp4toannexb",
                 "-movflags", "+faststart",
                 str(temp_path),
             ],
@@ -405,10 +416,10 @@ def remux_to_mp4(
                     temp_path.unlink(missing_ok=True)
                     # Fall through to Strategy 2
                 else:
-                    temp_path.replace(input_path)
+                    temp_path.replace(target)
                     return True, actual_duration
             else:
-                temp_path.replace(input_path)
+                temp_path.replace(target)
                 return True, actual_duration
     except Exception:
         logger.warning("Stream-copy remux failed for %s, trying re-encode", input_path)
@@ -417,7 +428,7 @@ def remux_to_mp4(
             temp_path.unlink(missing_ok=True)
 
     # Strategy 2 — full re-encode (recovers corrupt frames and fixes timestamps)
-    reencode_path = input_path.with_suffix(".tmp.reencode.mp4")
+    reencode_path = target.with_suffix(".tmp.reencode.mp4")
     try:
         subprocess.run(
             [
@@ -439,7 +450,7 @@ def remux_to_mp4(
         )
         if reencode_path.exists() and reencode_path.stat().st_size > 0:
             actual_duration = _probe_duration(reencode_path)
-            reencode_path.replace(input_path)
+            reencode_path.replace(target)
             return True, actual_duration
     except Exception:
         logger.error("Re-encode remux also failed for %s", input_path)
@@ -460,10 +471,12 @@ def repair_video(input_path: Path, output_path: Path | None = None) -> tuple[boo
     Uses two ffmpeg strategies in order:
 
     1. **Error-tolerant stream copy** — fast, preserves original quality.
-       Adds ``-fflags +igndts+genpts``, ``-err_detect ignore_err``, and the
-       ``h264_mp4toannexb`` bitstream filter to work around corrupt headers.
-       The output is validated: if ffprobe still cannot parse it or the
-       duration is missing, we fall through to the re-encode strategy.
+       Adds ``-fflags +igndts+genpts`` and ``-err_detect ignore_err`` to work
+       around corrupt headers/timestamps. No ``h264_mp4toannexb`` filter is
+       used: forcing Annex-B start codes into MP4 yields files ffprobe can
+       read but players reject. The output is validated: if ffprobe still
+       cannot parse it or the duration is missing, we fall through to the
+       re-encode strategy.
 
     2. **Full re-encode** — slower but can recover frames and rebuild
        correct duration metadata.  Uses ``libx264 veryfast crf 23``.
@@ -500,7 +513,6 @@ def repair_video(input_path: Path, output_path: Path | None = None) -> tuple[boo
                 "-err_detect", "ignore_err",
                 "-i", str(input_path),
                 "-c", "copy",
-                "-bsf:v", "h264_mp4toannexb",
                 "-movflags", "+faststart",
                 str(temp_path),
             ],

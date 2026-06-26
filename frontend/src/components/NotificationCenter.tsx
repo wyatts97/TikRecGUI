@@ -38,9 +38,11 @@ function timeAgo(iso: string): string {
 export default function NotificationCenter({
   size = 'sm',
   placement = 'bottom',
+  align = 'right',
 }: {
   size?: 'sm' | 'md'
   placement?: 'bottom' | 'top'
+  align?: 'left' | 'right'
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -174,8 +176,9 @@ export default function NotificationCenter({
 
       {open && (
         <div className={cn(
-          'absolute right-0 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover text-popover-foreground shadow-lg z-50 overflow-hidden',
-          placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
+          'absolute w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-popover text-popover-foreground shadow-lg z-50 overflow-hidden',
+          placement === 'top' ? 'bottom-full mb-2' : 'top-full mt-2',
+          align === 'left' ? 'left-0' : 'right-0'
         )}>
           <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
             <p className="text-sm font-semibold">Notifications</p>

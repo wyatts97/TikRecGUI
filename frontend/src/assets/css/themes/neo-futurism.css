@@ -470,9 +470,9 @@
   
   /* MUTED */
   --muted: var(--color-neo-futurism-gray-800);
-  --muted-foreground: var(--color-neo-futurism-gray-500);
+  --muted-foreground: var(--color-neo-futurism-gray-300);
   --muted-foreground-1: var(--color-neo-futurism-gray-400);
-  --muted-foreground-2: var(--color-neo-futurism-gray-300);
+  --muted-foreground-2: var(--color-neo-futurism-gray-500);
   --muted-hover: var(--color-neo-futurism-gray-700);
   --muted-focus: var(--color-neo-futurism-gray-700);
   --muted-active: var(--color-neo-futurism-gray-700);

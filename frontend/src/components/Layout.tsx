@@ -311,7 +311,7 @@ export default function Layout() {
             </Tooltip>
 
             {/* Notification bell */}
-            <NotificationCenter size="md" placement="top" />
+            <NotificationCenter size="md" placement="top" align="left" />
           </div>
         </div>
       </aside>

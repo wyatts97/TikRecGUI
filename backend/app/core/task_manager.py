@@ -1,3 +1,4 @@
+import subprocess
 import time
 import logging
 import threading
@@ -76,6 +77,8 @@ class RecordingTask:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._output_path: Path | None = None
+        self._ts_path: Path | None = None
+        self._proc: subprocess.Popen | None = None
         self._start_time: float | None = None
     
     def start(self):
@@ -84,8 +87,23 @@ class RecordingTask:
     
     def stop(self):
         self._stop_event.set()
+        # Ask the capture ffmpeg to finish gracefully so the final GOP and
+        # the MPEG-TS trailer are flushed before we remux.
+        proc = self._proc
+        if proc and proc.poll() is None:
+            try:
+                if proc.stdin:
+                    proc.stdin.write(b"q")
+                    proc.stdin.flush()
+                proc.wait(timeout=10)
+            except Exception:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=5)
+                except Exception:
+                    proc.kill()
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=10)
+            self._thread.join(timeout=15)
     
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -130,45 +148,68 @@ class RecordingTask:
         except Exception as e:
             logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
 
-        # --- Phase 3: download stream (no DB session held) ---
+        # --- Phase 3: capture stream with ffmpeg (no DB session held) ---
+        # ffmpeg consumes the live URL directly (HLS m3u8 or FLV) and writes a
+        # single continuous MPEG-TS file. TS tolerates mid-stream codec/
+        # resolution switches and reconnects far better than appending raw
+        # bytes to one file, which previously produced timestamp resets
+        # (slow-mo / glitching / audio dropouts) and broke on HLS playlists.
         output_path = Path(settings.RECORDINGS_DIR) / filename
         output_path.parent.mkdir(parents=True, exist_ok=True)
         self._output_path = output_path
+        ts_path = output_path.with_suffix(".ts")
+        self._ts_path = ts_path
 
-        buffer_size = 512 * 1024
-        buffer = bytearray()
         start_time = time.time()
         self._start_time = start_time
 
-        with open(output_path, "wb") as out_file:
-            while not self._stop_event.is_set():
+        cmd = [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-reconnect", "1",
+            "-reconnect_streamed", "1",
+            "-reconnect_at_eof", "1",
+            "-reconnect_delay_max", "5",
+            "-fflags", "+igndts+genpts",
+            "-i", live_url,
+            "-c", "copy",
+            "-f", "mpegts",
+        ]
+        if self.duration:
+            cmd += ["-t", str(self.duration)]
+        cmd.append(str(ts_path))
+
+        try:
+            self._proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            logger.error("Failed to start ffmpeg capture for recording %d: %s",
+                         self.recording_id, e)
+            _update_recording_status(self.recording_id, "failed", f"Capture failed to start: {e}")
+            return
+
+        # Hold until asked to stop, the duration elapses, or the stream ends.
+        while not self._stop_event.is_set():
+            if self._proc.poll() is not None:
+                break
+            time.sleep(0.5)
+
+        # Stream ended on its own or duration -t finished: ensure ffmpeg exits.
+        if self._proc.poll() is None:
+            try:
+                if self._proc.stdin:
+                    self._proc.stdin.write(b"q")
+                    self._proc.stdin.flush()
+                self._proc.wait(timeout=10)
+            except Exception:
                 try:
-                    if not api.is_room_alive(self.room_id):
-                        break
-
-                    for chunk in api.download_live_stream(live_url):
-                        if self._stop_event.is_set():
-                            break
-
-                        buffer.extend(chunk)
-                        if len(buffer) >= buffer_size:
-                            out_file.write(buffer)
-                            buffer.clear()
-
-                        elapsed = time.time() - start_time
-                        if self.duration and elapsed >= self.duration:
-                            self._stop_event.set()
-                            break
-
-                except Exception as e:
-                    logger.warning(f"Stream error, retrying: {e}")
-                    time.sleep(2)
-                    if self._stop_event.is_set():
-                        break
-
-            if buffer:
-                out_file.write(buffer)
-                buffer.clear()
+                    self._proc.terminate()
+                    self._proc.wait(timeout=5)
+                except Exception:
+                    self._proc.kill()
 
         self._finalize_recording()
 
@@ -188,9 +229,13 @@ class RecordingTask:
                 pass
             return
 
+        ts_path = self._ts_path
         ended_at = datetime.utcnow()
         duration_seconds = int(time.time() - start_time)
-        file_existed = output_path.exists()
+        # The capture writes an intermediate MPEG-TS file; the final .mp4 is
+        # produced by the remux below. Treat the .ts (or a previously-remuxed
+        # .mp4) as evidence that capture actually produced data.
+        captured = (ts_path is not None and ts_path.exists()) or output_path.exists()
         final_status: str | None = None
 
         with get_session() as db:
@@ -203,8 +248,9 @@ class RecordingTask:
                 recording.ended_at = ended_at
                 recording.duration_seconds = duration_seconds
 
-                if file_existed:
-                    recording.file_size = output_path.stat().st_size
+                if captured:
+                    src = ts_path if (ts_path and ts_path.exists()) else output_path
+                    recording.file_size = src.stat().st_size
                     recording.status = "completed" if not self._stop_event.is_set() else "stopped"
                 else:
                     recording.status = "failed"
@@ -226,29 +272,39 @@ class RecordingTask:
         except Exception:
             pass
 
-        # Post-processing (remux, thumbnails, sprites, transcription)
-        if file_existed:
-            health = analyze_video_health(output_path)
+        # Post-processing — only when a fresh .ts capture is awaiting remux.
+        # (Guards against the double-invocation from _run_with_error_handling.)
+        if ts_path is not None and ts_path.exists():
+            health = analyze_video_health(ts_path)
             if health.get("is_corrupt"):
                 logger.warning(
                     "Recording %d (%s) may be corrupt: %s",
-                    self.recording_id, output_path.name, health.get("error"),
+                    self.recording_id, ts_path.name, health.get("error"),
                 )
             else:
                 logger.info(
                     "Recording %d (%s) healthy — %.1fs, video=%s audio=%s",
-                    self.recording_id, output_path.name,
+                    self.recording_id, ts_path.name,
                     health.get("duration"), health.get("has_video"), health.get("has_audio"),
                 )
 
+            # Remux .ts → faststart .mp4 (stream-copy, re-encode fallback).
             remux_ok, actual_duration = remux_to_mp4(
-                output_path, expected_duration=duration_seconds
+                ts_path, expected_duration=duration_seconds, output_path=output_path
             )
-            if remux_ok:
+            if not remux_ok:
+                logger.info("Remux failed for recording %d, attempting full repair", self.recording_id)
+                remux_ok, actual_duration = repair_video(ts_path, output_path=output_path)
+
+            if remux_ok and output_path.exists():
+                # Capture succeeded and the playable .mp4 is in place — drop the .ts.
+                ts_path.unlink(missing_ok=True)
                 with get_session() as db:
                     recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
                     if recording:
                         recording.file_size = output_path.stat().st_size
+                        if recording.status == "failed":
+                            recording.status = "completed" if not self._stop_event.is_set() else "stopped"
                         if actual_duration is not None:
                             actual_int = int(round(actual_duration))
                             if actual_int != recording.duration_seconds:
@@ -260,32 +316,29 @@ class RecordingTask:
                                 )
                                 recording.duration_seconds = actual_int
                         db.commit()
-            elif health.get("is_corrupt"):
-                logger.info("Attempting full repair for corrupt recording %d", self.recording_id)
-                repair_ok, repair_duration = repair_video(output_path)
-                if repair_ok:
-                    with get_session() as db:
-                        recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
-                        if recording:
-                            recording.file_size = output_path.stat().st_size
-                            if repair_duration is not None:
-                                recording.duration_seconds = int(round(repair_duration))
-                            recording.error_message = "Recording was repaired (was corrupt)"
-                            db.commit()
-                    # Regenerate visual assets now that the file is healthy
-                    run_background(generate_thumbnail, output_path, None, self.recording_id)
-                    run_background(generate_sprite, output_path)
-                    logger.info("Repair successful for recording %d (%.1fs)", self.recording_id, repair_duration or 0)
 
-            run_background(generate_thumbnail, output_path, None, self.recording_id)
-            run_background(generate_sprite, output_path)
+                run_background(generate_thumbnail, output_path, None, self.recording_id)
+                run_background(generate_sprite, output_path)
 
-            with get_session() as db:
-                recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
-                if recording and recording.transcript_status is None:
-                    recording.transcript_status = "pending"
-                    db.commit()
-                transcription_service.enqueue(self.recording_id)
+                with get_session() as db:
+                    recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+                    if recording and recording.transcript_status is None:
+                        recording.transcript_status = "pending"
+                        db.commit()
+                    transcription_service.enqueue(self.recording_id)
+            else:
+                # Remux + repair both failed — keep the .ts so the user can
+                # retry, and surface the failure.
+                logger.error(
+                    "Recording %d: remux and repair both failed; keeping %s",
+                    self.recording_id, ts_path.name,
+                )
+                with get_session() as db:
+                    recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+                    if recording:
+                        recording.status = "failed"
+                        recording.error_message = "Remux failed — captured stream could not be converted"
+                        db.commit()
 
     def _run_with_error_handling(self):
         try:
