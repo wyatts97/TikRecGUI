@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, Radio, Square, Tv, Calendar, Clock, MessageCircle, Scissors } from 'lucide-react'
+import { ArrowLeft, LoaderCircle, Radio, Square, Tv, Calendar, Clock, MessageCircle, Scissors } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
 import { api } from '@/lib/api'
@@ -9,6 +9,7 @@ import { formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import ChatPanel from '@/components/ChatPanel'
 import FlvPlayer from '@/components/FlvPlayer'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import toast from 'react-hot-toast'
 
 export default function LivePlayer() {
@@ -19,7 +20,9 @@ export default function LivePlayer() {
   const recordingId = Number(id)
   const [showChat, setShowChat] = useState(false)
   const [liveUrl, setLiveUrl] = useState<string | null>(null)
+  const [streamType, setStreamType] = useState<'hls' | 'flv' | 'rtmp'>('flv')
   const [urlError, setUrlError] = useState(false)
+  const [playerError, setPlayerError] = useState(false)
   const { data: recording, isLoading } = useQuery({
     queryKey: ['recording', recordingId],
     queryFn: () => api.recordings.get(recordingId),
@@ -31,11 +34,14 @@ export default function LivePlayer() {
     if (isNaN(recordingId)) return
     try {
       setUrlError(false)
-      const { live_url } = await api.recordings.getLiveUrl(recordingId)
-      console.debug('[LivePlayer] stream URL:', live_url)
+      const { live_url, type } = await api.recordings.getLiveUrl(recordingId)
+      console.debug('[LivePlayer] stream URL:', live_url, type)
       setLiveUrl(live_url)
-    } catch {
+      setStreamType(type)
+      setPlayerError(false)
+    } catch (e: any) {
       setUrlError(true)
+      toast.error(e?.message || 'Stream URL unavailable')
     }
   }, [recordingId])
 
@@ -44,6 +50,16 @@ export default function LivePlayer() {
     const interval = setInterval(fetchLiveUrl, 30000)
     return () => clearInterval(interval)
   }, [fetchLiveUrl])
+
+  // When the player reports an error, immediately refresh the URL. TikTok live
+  // URLs expire after ~5 minutes, so a fresh URL often fixes playback.
+  useEffect(() => {
+    if (!playerError) return
+    const timeout = setTimeout(() => {
+      fetchLiveUrl()
+    }, 500)
+    return () => clearTimeout(timeout)
+  }, [playerError, fetchLiveUrl])
 
   const stopMutation = useMutation({
     mutationFn: () => api.recordings.stop(recordingId),
@@ -124,7 +140,7 @@ export default function LivePlayer() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/live')}>
+        <Button variant="plain" size="icon" onClick={() => navigate('/live')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
@@ -171,7 +187,7 @@ export default function LivePlayer() {
           </Button>
         )}
         <Button
-          variant={showChat ? 'default' : 'outline'}
+          variant={showChat ? 'primary' : 'outline'}
           size="sm"
           className="hidden lg:inline-flex"
           onClick={() => setShowChat((s) => !s)}
@@ -184,14 +200,29 @@ export default function LivePlayer() {
       <div className="flex gap-6">
         {/* Left column — player + metadata */}
         <div className="flex-1 min-w-0 space-y-6">
-          <div className="rounded-xl overflow-hidden bg-black border border-border shadow-sm">
+          <div className="relative rounded-xl overflow-hidden bg-black border border-border shadow-sm">
             {liveUrl && !urlError ? (
-              <FlvPlayer
-                src={liveUrl}
-                className="w-full aspect-video"
-                autoPlay
-                controls
-              />
+              <ErrorBoundary
+                fallback={
+                  <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-900">
+                    <Tv className="h-10 w-10 text-gray-500 mb-3" />
+                    <p className="text-gray-400 text-sm">Player crashed</p>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={fetchLiveUrl}>
+                      Retry
+                    </Button>
+                  </div>
+                }
+              >
+                <FlvPlayer
+                  src={liveUrl}
+                  type={streamType}
+                  className="w-full aspect-video"
+                  autoPlay
+                  controls
+                  onError={() => setPlayerError(true)}
+                  onReady={() => setPlayerError(false)}
+                />
+              </ErrorBoundary>
             ) : (
               <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-900">
                 {urlError ? (
@@ -202,12 +233,26 @@ export default function LivePlayer() {
                       Retry
                     </Button>
                   </>
+                ) : !isActive ? (
+                  <>
+                    <Radio className="h-10 w-10 text-gray-500 mb-3" />
+                    <p className="text-gray-400 text-sm">This recording is no longer live</p>
+                  </>
                 ) : (
                   <>
-                    <Loader2 className="h-10 w-10 text-gray-400 animate-spin mb-3" />
+                    <LoaderCircle className="h-10 w-10 text-gray-400 animate-spin mb-3" />
                     <p className="text-gray-400 text-sm">Loading stream…</p>
                   </>
                 )}
+              </div>
+            )}
+            {isActive && liveUrl && (
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                </span>
+                {streamType}
               </div>
             )}
           </div>
@@ -284,7 +329,7 @@ export default function LivePlayer() {
 
         {/* Desktop sidebar chat */}
         {showChat && (
-          <div className="hidden lg:flex lg:flex-col">
+          <div className="hidden lg:flex lg:flex-col w-96 shrink-0 border border-border rounded-xl bg-card overflow-hidden">
             <ChatPanel
               recording={recording}
               chatSearch=""

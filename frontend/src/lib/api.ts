@@ -376,7 +376,7 @@ export const api = {
     getActive: () => fetchApi<ActiveRecording[]>("/recordings/active"),
 
     getLiveUrl: (id: number) =>
-      fetchApi<{ live_url: string }>(`/recordings/${id}/live-url`),
+      fetchApi<{ live_url: string; type: 'hls' | 'flv' | 'rtmp' }>(`/recordings/${id}/live-url`),
 
     toggleFavorite: (id: number) =>
       fetchApi<Recording>(`/recordings/${id}/favorite`, { method: "POST" }),

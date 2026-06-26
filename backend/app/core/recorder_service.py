@@ -1,7 +1,10 @@
 import json
+import logging
 from typing import Any
 
 from app.config import settings
+
+logger = logging.getLogger("tikrec.recorder_service")
 from app.core.recorder_loader import get_tiktok_api_class, recorder_available
 from app.core.settings_store import settings_store
 
@@ -68,12 +71,22 @@ class RecorderService:
         except Exception:
             return None
     
-    def get_live_url(self, room_id: str) -> str | None:
+    def get_live_url(self, room_id: str) -> str:
+        """Resolve a fresh live-stream URL for *room_id*.
+
+        Raises an exception with a useful message if the room is not live,
+        restricted, or the API call fails. Callers can therefore surface the
+        real reason instead of a generic "could not get URL" failure.
+        """
         api = self.get_api()
         try:
-            return api.get_live_url(room_id)
-        except Exception:
-            return None
+            url = api.get_live_url(room_id)
+        except Exception as e:
+            logger.warning("Failed to resolve live URL for room %s: %s", room_id, e)
+            raise RuntimeError(f"Failed to resolve live URL: {e}") from e
+        if not url:
+            raise RuntimeError("TikTok returned no live stream URL")
+        return url
     
     def is_country_blacklisted(self) -> bool:
         api = self.get_api()

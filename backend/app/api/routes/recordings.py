@@ -328,8 +328,31 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
 
 @router.get("/active", response_model=list[ActiveRecordingResponse])
 def get_active_recordings(db: Session = Depends(get_db)):
+    """Return all active recordings.
+
+    Merges the in-memory task manager IDs with any DB rows whose status is
+    still ``recording`` or ``pending``. This prevents active recordings from
+    disappearing after a backend restart, when the in-memory task map is empty.
+    """
     task_manager.cleanup_finished()
-    active_ids = task_manager.get_active_recordings()
+    in_memory_ids = set(task_manager.get_active_recordings())
+
+    recent_threshold = datetime.utcnow() - timedelta(hours=24)
+    db_active = db.query(Recording).filter(
+        Recording.status.in_(["recording", "pending"]),
+        Recording.started_at >= recent_threshold,
+    ).all()
+
+    # Warn about orphaned recordings (DB says active, but no task is running)
+    for rec in db_active:
+        if rec.id not in in_memory_ids:
+            logger.warning(
+                "Recording %d is active in DB but has no in-memory task manager entry; "
+                "it may be an orphaned recording from a previous process restart.",
+                rec.id,
+            )
+
+    active_ids = in_memory_ids | {rec.id for rec in db_active}
     if not active_ids:
         return []
 
@@ -354,9 +377,26 @@ def get_active_recordings(db: Session = Depends(get_db)):
     return out
 
 
+def _live_url_type(url: str) -> str:
+    """Return the player type for a given live URL."""
+    lower = url.lower()
+    if lower.endswith(".m3u8") or "/playlist" in lower or "/master" in lower:
+        return "hls"
+    if lower.endswith(".flv") or "/flv" in lower:
+        return "flv"
+    if lower.startswith("rtmp://") or lower.startswith("rtmps://"):
+        return "rtmp"
+    # Some TikTok URLs contain the container type in query parameters
+    if "flv" in lower:
+        return "flv"
+    if "hls" in lower or "m3u8" in lower:
+        return "hls"
+    return "flv"
+
+
 @router.get("/{recording_id}/live-url")
 def get_recording_live_url(recording_id: int, db: Session = Depends(get_db)):
-    """Fetch a fresh HLS live-stream URL for an active recording.
+    """Fetch a fresh live-stream URL for an active recording.
 
     TikTok live URLs expire after ~5 minutes, so this endpoint re-resolves
     the URL on every request rather than caching it.
@@ -373,13 +413,23 @@ def get_recording_live_url(recording_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No room_id for this recording"
         )
-    live_url = recorder_service.get_live_url(room_id)
-    if not live_url:
+
+    try:
+        live_url = recorder_service.get_live_url(room_id)
+    except RuntimeError as e:
+        logger.warning("Live URL resolution failed for recording %d: %s", recording_id, e)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Could not fetch live stream URL"
+            detail=str(e)
         )
-    return {"live_url": live_url}
+    except Exception as e:
+        logger.exception("Unexpected error resolving live URL for recording %d", recording_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Could not resolve live stream URL: {e}"
+        )
+
+    return {"live_url": live_url, "type": _live_url_type(live_url)}
 
 
 @router.get("/{recording_id}/live-clip/status")

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { Radio, Tv, ArrowRight } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Radio, Tv, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react'
+import { Button } from '@/components/selia/button'
 import { api, ActiveRecording } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import FlvPlayer from '@/components/FlvPlayer'
@@ -12,16 +13,24 @@ import { StaggerContainer, StaggerItem } from '@/components/motion'
 function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
   const navigate = useNavigate()
   const [liveUrl, setLiveUrl] = useState<string | null>(null)
+  const [streamType, setStreamType] = useState<'hls' | 'flv' | 'rtmp'>('flv')
   const [urlError, setUrlError] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [playerError, setPlayerError] = useState(false)
 
   const fetchLiveUrl = useCallback(async () => {
+    setIsLoading(true)
+    setUrlError(false)
     try {
-      setUrlError(false)
-      const { live_url } = await api.recordings.getLiveUrl(recording.id)
-      console.debug('[Live] stream URL for', recording.username, ':', live_url)
+      const { live_url, type } = await api.recordings.getLiveUrl(recording.id)
+      console.debug('[Live] stream URL for', recording.username, ':', live_url, type)
       setLiveUrl(live_url)
+      setStreamType(type)
+      setPlayerError(false)
     } catch {
       setUrlError(true)
+    } finally {
+      setIsLoading(false)
     }
   }, [recording.id])
 
@@ -35,31 +44,56 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
     ? formatDuration(recording.duration_seconds)
     : '--:--'
 
+  const showPlayer = liveUrl && !urlError && !playerError
+  const showError = urlError || playerError
+
   return (
     <div
-      className="rounded-xl overflow-hidden bg-card border border-border shadow-sm cursor-pointer group hover:border-primary/50 transition-colors"
+      className="rounded-xl overflow-hidden bg-card border border-border shadow-sm cursor-pointer group hover:border-primary/50 hover:shadow-md transition-all"
       onClick={() => navigate(`/live/${recording.id}`)}
     >
       <div className="relative aspect-video bg-black">
-        {liveUrl && !urlError ? (
+        {showPlayer ? (
           <div className="w-full h-full" onClick={(e) => e.stopPropagation()}>
             <FlvPlayer
               src={liveUrl}
+              type={streamType}
               className="w-full h-full"
               autoPlay
               muted
               controls={false}
+              onError={() => setPlayerError(true)}
+              onReady={() => setPlayerError(false)}
             />
           </div>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center bg-gray-900">
-            <Tv className="h-8 w-8 text-gray-500 mb-2" />
-            <p className="text-gray-500 text-xs">
-              {urlError ? 'Stream unavailable' : 'Loading stream…'}
-            </p>
+            {showError ? (
+              <>
+                <AlertCircle className="h-8 w-8 text-red-500 mb-2" />
+                <p className="text-red-400 text-xs mb-2">Stream unavailable</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    fetchLiveUrl()
+                  }}
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Retry
+                </Button>
+              </>
+            ) : (
+              <>
+                <Tv className="h-8 w-8 text-gray-500 mb-2 animate-pulse" />
+                <p className="text-gray-500 text-xs">Loading stream…</p>
+              </>
+            )}
           </div>
         )}
-        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+        <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
           <span className="relative flex h-1.5 w-1.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
             <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-white" />
@@ -82,11 +116,16 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
 }
 
 export default function Live() {
+  const queryClient = useQueryClient()
   const { data: activeRecordings = [], isLoading } = useQuery({
     queryKey: ['activeRecordings'],
     queryFn: () => api.recordings.getActive(),
     refetchInterval: 5000,
   })
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
+  }
 
   return (
     <div className="space-y-6">
@@ -106,6 +145,10 @@ export default function Live() {
             </p>
           </div>
         </div>
+        <Button variant="outline" size="sm" onClick={refresh}>
+          <RefreshCw className="h-4 w-4 mr-1.5" />
+          Refresh
+        </Button>
       </div>
 
       {isLoading ? (
