@@ -59,7 +59,10 @@ export function RecordingVideoCard({
           {recording.thumbnail_ready ? (
             <>
               <motion.img
-                src={api.recordings.getThumbnailUrl(recording.id)}
+                src={api.recordings.getThumbnailUrl(
+                  recording.id,
+                  recording.file_size ?? recording.created_at,
+                )}
                 alt={`${recording.username} recording`}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
                 loading="lazy"

@@ -405,11 +405,20 @@ def thumbnail_clip(clip_id: int, db: Session = Depends(get_db)):
                 detail="Could not generate thumbnail for this clip"
             )
 
+    # Revalidatable cache — see recordings.py thumbnail endpoint for rationale.
+    stat = thumb_path.stat()
+    etag = f'"{stat.st_mtime_ns}-{stat.st_size}"'
+    last_modified = datetime.utcfromtimestamp(stat.st_mtime).strftime("%a, %d %b %Y %H:%M:%S GMT")
+
     return FileResponse(
         path=str(thumb_path),
         media_type="image/jpeg",
         content_disposition_type="inline",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={
+            "Cache-Control": "public, max-age=86400, must-revalidate",
+            "ETag": etag,
+            "Last-Modified": last_modified,
+        },
     )
 
 

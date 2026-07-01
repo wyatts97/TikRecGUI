@@ -102,7 +102,10 @@ export default function ClipPlayer() {
           {clip.thumbnail_ready ? (
             <MediaPlayer
               src={api.clips.getStreamUrl(clip.id)}
-              poster={api.clips.getThumbnailUrl(clip.id)}
+              poster={api.clips.getThumbnailUrl(
+                clip.id,
+                clip.file_size ?? clip.created_at,
+              )}
               title={clip.title || `@${clip.username} clip`}
               className="w-full aspect-video"
             >

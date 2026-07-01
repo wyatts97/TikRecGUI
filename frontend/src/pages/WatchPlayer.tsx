@@ -280,7 +280,10 @@ export default function WatchPlayer() {
             {recording.thumbnail_ready ? (
               <MediaPlayer
                 src={api.recordings.getStreamUrl(recording.id)}
-                poster={api.recordings.getThumbnailUrl(recording.id)}
+                poster={api.recordings.getThumbnailUrl(
+                  recording.id,
+                  recording.file_size ?? recording.created_at,
+                )}
                 title={`@${recording.username}`}
                 className="w-full aspect-video"
               >
@@ -404,7 +407,10 @@ export default function WatchPlayer() {
                       <div className="shrink-0 w-16 h-10 rounded-md bg-muted overflow-hidden">
                         {clip.thumbnail_ready ? (
                           <img
-                            src={api.clips.getThumbnailUrl(clip.id)}
+                            src={api.clips.getThumbnailUrl(
+                              clip.id,
+                              clip.file_size ?? clip.created_at,
+                            )}
                             alt=""
                             className="w-full h-full object-cover"
                             loading="lazy"

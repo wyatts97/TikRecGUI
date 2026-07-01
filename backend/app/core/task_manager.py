@@ -15,6 +15,7 @@ from app.core.media_utils import (
     remux_to_mp4,
     repair_video,
     analyze_video_health,
+    concat_ts_segments,
 )
 from app.core.recorder_loader import get_tiktok_api_class
 from app.core.transcription_service import transcription_service
@@ -40,6 +41,13 @@ logger = logging.getLogger("tikrec.task_manager")
 # many seconds while ffmpeg is still running (dead socket with no reconnect).
 _STALL_TIMEOUT_SECONDS = 90
 
+# Resumable live capture settings — when a TikTok live URL expires, ffmpeg exits
+# and we re-resolve a fresh URL instead of finalizing the recording.
+_MAX_RESUME_ATTEMPTS = 30
+_RESUME_BACKOFF_SECONDS = (3, 5, 10, 15, 30)
+_OFFLINE_CONFIRMATION_SECONDS = 90
+_SEGMENT_CHECK_INTERVAL = 0.5
+
 
 def _read_log_tail(log_path: Path | None, max_chars: int = 600) -> str | None:
     """Return the last *max_chars* of an ffmpeg log file, if it exists."""
@@ -52,6 +60,57 @@ def _read_log_tail(log_path: Path | None, max_chars: int = 600) -> str | None:
     if not data:
         return None
     return data[-max_chars:]
+
+
+def _check_live_with_backoff(
+    username: str,
+    api: object,
+    recorder_service: object,
+    max_retries: int = 3,
+    backoff_seconds: tuple[int, ...] = (5, 10, 15),
+) -> tuple[bool, str | None]:
+    """Confirm whether *username* is currently live.
+
+    Performs up to *max_retries* room-alive checks with backoff to tolerate
+    transient TikTok API blips. Returns ``(is_live, room_id)``; room_id may be
+    updated even if the user is not live.
+    """
+    for attempt in range(max_retries):
+        try:
+            status = recorder_service.check_user_live(username)
+            is_live = status.get("is_live", False)
+            room_id = status.get("room_id")
+            if is_live and room_id:
+                return True, room_id
+            if not is_live and room_id:
+                # User not live but we got a room_id — try the room directly
+                try:
+                    if api.is_room_alive(room_id):
+                        return True, room_id
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.debug("Live check attempt %d failed for @%s: %s", attempt + 1, username, exc)
+        if attempt < max_retries - 1:
+            delay = backoff_seconds[min(attempt, len(backoff_seconds) - 1)]
+            time.sleep(delay)
+    return False, None
+
+
+def _resolve_fresh_live_url(room_id: str, api: object) -> str | None:
+    """Resolve a fresh live URL for an active room_id.
+
+    TikTok live URLs expire quickly; this re-fetches a brand new URL that can be
+    used to start the next segment.
+    """
+    try:
+        if not api.is_room_alive(room_id):
+            return None
+        url = api.get_live_url(room_id)
+        return url
+    except Exception as exc:
+        logger.debug("Failed to resolve fresh URL for room %s: %s", room_id, exc)
+        return None
 
 
 def _build_capture_cmd(
@@ -137,6 +196,10 @@ class RecordingTask:
         self._proc: subprocess.Popen | None = None
         self._start_time: float | None = None
         self._capture_error: str | None = None
+        self._segments: list[Path] = []
+        self._finalized = False
+        self._segment_index = 0
+        self._total_elapsed_seconds: float | None = None
     
     def start(self):
         self._thread = threading.Thread(target=self._run_with_error_handling, daemon=True)
@@ -176,9 +239,10 @@ class RecordingTask:
             recording.started_at = datetime.utcnow()
             db.commit()
 
-        # --- Phase 2: validate room and get stream URL (no DB) ---
+        # --- Phase 2: validate room and get initial stream URL (no DB) ---
         api_cls = get_tiktok_api_class()
         api = api_cls(proxy=self.proxy, cookies=self.cookies)
+        from app.core.recorder_service import recorder_service
 
         if not api.is_room_alive(self.room_id):
             _update_recording_status(self.recording_id, "failed", "User is not live")
@@ -205,94 +269,186 @@ class RecordingTask:
         except Exception as e:
             logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
 
-        # --- Phase 3: capture stream with ffmpeg (no DB session held) ---
-        # ffmpeg consumes the live URL directly (HLS m3u8 or FLV) and writes a
-        # single continuous MPEG-TS file. TS tolerates mid-stream codec/
-        # resolution switches and reconnects far better than appending raw
-        # bytes to one file, which previously produced timestamp resets
-        # (slow-mo / glitching / audio dropouts) and broke on HLS playlists.
+        # --- Phase 3: resumable capture into sequential segments ---
+        # TikTok live URLs expire every few minutes. Instead of finalizing the
+        # recording when ffmpeg exits, we re-resolve a fresh URL and start a new
+        # segment, then concatenate all segments into one continuous file at
+        # finalize time. This keeps one live session as one recording.
         output_path = Path(settings.RECORDINGS_DIR) / filename
         output_path.parent.mkdir(parents=True, exist_ok=True)
         self._output_path = output_path
-        ts_path = output_path.with_suffix(".ts")
-        self._ts_path = ts_path
-        log_path = output_path.with_suffix(".ffmpeg.log")
-        self._log_path = log_path
+        self._ts_path = output_path.with_suffix(".ts")
+        self._log_path = output_path.with_suffix(".ffmpeg.log")
+        self._start_time = time.time()
 
-        start_time = time.time()
-        self._start_time = start_time
+        room_id = self.room_id
+        resumed = False
+        resume_attempts = 0
+        session_done = False
+        self._capture_error = None
 
-        cmd = _build_capture_cmd(live_url, ts_path, self.duration, self.proxy, self.cookies)
+        while not session_done:
+            # Manual stop or duration cap ends the session immediately.
+            if self._stop_event.is_set():
+                break
 
-        # ffmpeg stderr is written to a per-recording log so capture failures
-        # (bad/expired URL, geo-block, missing codec) are diagnosable instead
-        # of being silently discarded.
-        try:
-            log_fh = open(log_path, "wb")
-        except Exception:
+            elapsed = time.time() - self._start_time
+            if self.duration is not None and elapsed >= self.duration:
+                logger.info("Recording %d: duration cap reached (%d s)", self.recording_id, self.duration)
+                break
+
+            segment_remaining = None
+            if self.duration is not None:
+                segment_remaining = max(1, int(self.duration - elapsed))
+
+            segment_index = len(self._segments) + 1
+            segment_path = output_path.with_suffix(f".part{segment_index:03d}.ts")
+
+            cmd = _build_capture_cmd(live_url, segment_path, segment_remaining, self.proxy, self.cookies)
             log_fh = None
-        try:
-            self._proc = subprocess.Popen(
-                cmd,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.DEVNULL,
-                stderr=(log_fh or subprocess.DEVNULL),
+            proc = None
+            try:
+                log_fh = open(self._log_path, "ab")
+            except Exception:
+                log_fh = None
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
+                    stderr=(log_fh or subprocess.DEVNULL),
+                )
+            except Exception as e:
+                logger.error("Failed to start ffmpeg capture for recording %d: %s", self.recording_id, e)
+                if log_fh:
+                    log_fh.close()
+                self._capture_error = f"Capture failed to start: {e}"
+                break
+
+            self._proc = proc
+            logger.info(
+                "Recording %d: started segment %d%s",
+                self.recording_id, segment_index, " (resumed)" if resumed else "",
             )
-        except Exception as e:
-            logger.error("Failed to start ffmpeg capture for recording %d: %s",
-                         self.recording_id, e)
-            if log_fh:
-                log_fh.close()
-            self._capture_error = f"Capture failed to start: {e}"
-            _update_recording_status(self.recording_id, "failed", self._capture_error)
-            return
 
-        # Hold until asked to stop, the duration elapses, the stream ends, or
-        # the capture stalls (no new bytes written for _STALL_TIMEOUT_SECONDS).
-        last_size = -1
-        last_growth = time.time()
-        while not self._stop_event.is_set():
-            if self._proc.poll() is not None:
-                break
-            try:
-                cur_size = ts_path.stat().st_size if ts_path.exists() else 0
-            except OSError:
-                cur_size = 0
-            now = time.time()
-            if cur_size > last_size:
-                last_size = cur_size
-                last_growth = now
-            elif now - last_growth > _STALL_TIMEOUT_SECONDS:
-                logger.warning(
-                    "Recording %d: capture stalled (no growth for %ds), stopping",
-                    self.recording_id, _STALL_TIMEOUT_SECONDS,
-                )
-                self._capture_error = (
-                    f"Capture stalled — no data for {_STALL_TIMEOUT_SECONDS}s"
-                )
-                break
-            time.sleep(0.5)
-
-        # Stream ended on its own or duration -t finished: ensure ffmpeg exits.
-        if self._proc.poll() is None:
-            try:
-                if self._proc.stdin:
-                    self._proc.stdin.write(b"q")
-                    self._proc.stdin.flush()
-                self._proc.wait(timeout=10)
-            except Exception:
+            # Monitor this segment until it ends, stalls, or is manually stopped.
+            last_size = -1
+            last_growth = time.time()
+            segment_failed = False
+            while not self._stop_event.is_set():
+                if proc.poll() is not None:
+                    break
                 try:
-                    self._proc.terminate()
-                    self._proc.wait(timeout=5)
+                    cur_size = segment_path.stat().st_size if segment_path.exists() else 0
+                except OSError:
+                    cur_size = 0
+                now = time.time()
+                if cur_size > last_size:
+                    last_size = cur_size
+                    last_growth = now
+                elif now - last_growth > _STALL_TIMEOUT_SECONDS:
+                    logger.warning(
+                        "Recording %d: segment %d stalled (no growth for %ds)",
+                        self.recording_id, segment_index, _STALL_TIMEOUT_SECONDS,
+                    )
+                    self._capture_error = (
+                        f"Segment {segment_index} stalled — no data for {_STALL_TIMEOUT_SECONDS}s"
+                    )
+                    segment_failed = True
+                    break
+                time.sleep(_SEGMENT_CHECK_INTERVAL)
+
+            # Ensure the segment ffmpeg exits cleanly.
+            if proc and proc.poll() is None:
+                try:
+                    if proc.stdin:
+                        proc.stdin.write(b"q")
+                        proc.stdin.flush()
+                    proc.wait(timeout=10)
                 except Exception:
-                    self._proc.kill()
+                    try:
+                        proc.terminate()
+                        proc.wait(timeout=5)
+                    except Exception:
+                        proc.kill()
+            if log_fh:
+                try:
+                    log_fh.close()
+                except Exception:
+                    pass
+            self._proc = None
 
-        if log_fh:
-            try:
-                log_fh.close()
-            except Exception:
-                pass
+            # Record the segment if it produced any data.
+            if segment_path.exists() and segment_path.stat().st_size > 0:
+                self._segments.append(segment_path)
+                self._capture_error = None  # a good segment clears prior transient errors
+            elif not self._stop_event.is_set():
+                logger.warning(
+                    "Recording %d: segment %d produced no data; treating as end-of-stream",
+                    self.recording_id, segment_index,
+                )
+                segment_failed = True
 
+            # Manual stop or duration cap ends the session.
+            if self._stop_event.is_set():
+                break
+            elapsed = time.time() - self._start_time
+            if self.duration is not None and elapsed >= self.duration:
+                break
+
+            # Otherwise, decide whether the session really ended or just needs a fresh URL.
+            if segment_failed or proc.poll() is not None:
+                resume_attempts += 1
+                if resume_attempts > _MAX_RESUME_ATTEMPTS:
+                    logger.warning(
+                        "Recording %d: exceeded max resume attempts (%d), finalizing",
+                        self.recording_id, _MAX_RESUME_ATTEMPTS,
+                    )
+                    break
+
+                backoff = _RESUME_BACKOFF_SECONDS[
+                    min(resume_attempts - 1, len(_RESUME_BACKOFF_SECONDS) - 1)
+                ]
+                logger.info(
+                    "Recording %d: ffmpeg exited/segment failed; waiting %ds before re-checking live status",
+                    self.recording_id, backoff,
+                )
+                time.sleep(backoff)
+
+                is_live, fresh_room_id = _check_live_with_backoff(
+                    self.username,
+                    api,
+                    recorder_service,
+                    max_retries=3,
+                    backoff_seconds=(10, 20, _OFFLINE_CONFIRMATION_SECONDS // 3),
+                )
+                if not is_live or not fresh_room_id:
+                    logger.info(
+                        "Recording %d: user @%s confirmed offline, finalizing session",
+                        self.recording_id, self.username,
+                    )
+                    break
+
+                # User is still live — refresh the URL and resume.
+                fresh_url = _resolve_fresh_live_url(fresh_room_id, api)
+                if not fresh_url:
+                    logger.warning(
+                        "Recording %d: user still live but could not resolve fresh URL; retrying",
+                        self.recording_id,
+                    )
+                    continue
+                room_id = fresh_room_id
+                live_url = fresh_url
+                resumed = True
+                logger.info(
+                    "Recording %d: resuming session with fresh URL (room %s)",
+                    self.recording_id, room_id,
+                )
+            else:
+                # This path should be unreachable; treat as session end to be safe.
+                break
+
+        self._total_elapsed_seconds = time.time() - self._start_time
         self._finalize_recording()
 
     def _finalize_recording(self) -> None:
@@ -300,6 +456,10 @@ class RecordingTask:
         Called from _run() on normal exit and from _run_with_error_handling()
         in finally to guarantee it always runs even on unexpected thread death.
         """
+        if self._finalized:
+            return
+        self._finalized = True
+
         output_path = self._output_path
         start_time = self._start_time
 
@@ -313,7 +473,30 @@ class RecordingTask:
 
         ts_path = self._ts_path
         ended_at = datetime.utcnow()
-        duration_seconds = int(time.time() - start_time)
+        duration_seconds = int(self._total_elapsed_seconds or (time.time() - start_time))
+
+        # Concatenate the resumable segments into the single .ts used for remux.
+        # If there are no segments (capture failed before writing), the old
+        # single-segment path is still supported because a lone .ts could exist.
+        if self._segments:
+            logger.info(
+                "Recording %d: concatenating %d segment(s) into %s",
+                self.recording_id, len(self._segments), ts_path.name,
+            )
+            concat_ok = concat_ts_segments(self._segments, ts_path)
+            if not concat_ok:
+                logger.error(
+                    "Recording %d: segment concatenation failed; keeping %d segment(s)",
+                    self.recording_id, len(self._segments),
+                )
+            # Clean up the individual part files regardless of concat success.
+            for part in self._segments:
+                try:
+                    part.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            self._segments = []
+
         # The capture writes an intermediate MPEG-TS file; the final .mp4 is
         # produced by the remux below. Treat the .ts (or a previously-remuxed
         # .mp4) as evidence that capture actually produced data.
@@ -368,7 +551,6 @@ class RecordingTask:
             log_path.unlink(missing_ok=True)
 
         # Post-processing — only when a fresh .ts capture is awaiting remux.
-        # (Guards against the double-invocation from _run_with_error_handling.)
         if ts_path is not None and ts_path.exists():
             health = analyze_video_health(ts_path)
             if health.get("is_corrupt"):

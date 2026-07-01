@@ -257,7 +257,10 @@ export default function Clips() {
                   </div>
                   {clip.thumbnail_ready ? (
                     <img
-                      src={api.clips.getThumbnailUrl(clip.id)}
+                      src={api.clips.getThumbnailUrl(
+                        clip.id,
+                        clip.file_size ?? clip.created_at,
+                      )}
                       alt={`${clip.username} clip thumbnail`}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"

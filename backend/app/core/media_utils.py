@@ -182,6 +182,55 @@ def generate_thumbnail(video_path: Path, thumb_path: Path | None = None, recordi
     return success
 
 
+def concat_ts_segments(segment_paths: list[Path], output_path: Path) -> bool:
+    """Concatenate MPEG-TS segments into a single TS file.
+
+    Uses ffmpeg's concat demuxer with stream copy so the result is a lossless
+    join of the individual segments. The input list order is preserved.
+
+    Returns ``True`` if the output file was created and non-empty.
+    """
+    if not segment_paths:
+        return False
+    segment_paths = [p for p in segment_paths if p.exists() and p.stat().st_size > 0]
+    if not segment_paths:
+        return False
+    if len(segment_paths) == 1:
+        try:
+            import shutil
+            shutil.copy2(segment_paths[0], output_path)
+            return output_path.exists() and output_path.stat().st_size > 0
+        except Exception:
+            return False
+
+    concat_list = output_path.with_suffix(".concat.txt")
+    try:
+        concat_list.write_text(
+            "\n".join(f"file '{p.as_posix()}'" for p in segment_paths),
+            encoding="utf-8",
+        )
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "warning",
+                "-fflags", "+igndts+genpts",
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_list),
+                "-c", "copy",
+                "-f", "mpegts",
+                str(output_path),
+            ],
+            capture_output=True,
+            check=True,
+            timeout=300,
+        )
+        return output_path.exists() and output_path.stat().st_size > 0
+    except Exception as exc:
+        logger.warning("Segment concat failed for %s: %s", output_path.name, exc)
+        return False
+    finally:
+        concat_list.unlink(missing_ok=True)
+
+
 # ----------------------------------------------------------------
 # Sprite / hover-scrub helpers
 # ----------------------------------------------------------------

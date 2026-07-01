@@ -797,7 +797,10 @@ export default function Watchlist() {
                           {rec.thumbnail_ready ? (
                             <>
                               <img
-                                src={api.recordings.getThumbnailUrl(rec.id)}
+                                src={api.recordings.getThumbnailUrl(
+                                  rec.id,
+                                  rec.file_size ?? rec.created_at,
+                                )}
                                 alt=""
                                 className="h-full w-full object-cover"
                                 loading="lazy"

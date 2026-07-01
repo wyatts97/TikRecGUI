@@ -613,11 +613,23 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
         recording.thumbnail_ready = True
         db.commit()
 
+    # Revalidatable cache: no `immutable` flag, so the browser will refetch when
+    # the URL changes (cache-buster) or when the ETag/Last-Modified differs. This
+    # prevents stale thumbnails from being shown for reused recording IDs or after
+    # a thumbnail is regenerated (e.g., repair).
+    stat = thumb_path.stat()
+    etag = f'"{stat.st_mtime_ns}-{stat.st_size}"'
+    last_modified = datetime.utcfromtimestamp(stat.st_mtime).strftime("%a, %d %b %Y %H:%M:%S GMT")
+
     return FileResponse(
         path=str(thumb_path),
         media_type="image/jpeg",
         content_disposition_type="inline",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+        headers={
+            "Cache-Control": "public, max-age=86400, must-revalidate",
+            "ETag": etag,
+            "Last-Modified": last_modified,
+        },
     )
 
 

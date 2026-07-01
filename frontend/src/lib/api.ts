@@ -383,7 +383,10 @@ export const api = {
 
     getDownloadUrl: (id: number) => `${API_BASE}/recordings/${id}/download`,
     getStreamUrl: (id: number) => `${API_BASE}/recordings/${id}/stream`,
-    getThumbnailUrl: (id: number) => `${API_BASE}/recordings/${id}/thumbnail`,
+    getThumbnailUrl: (id: number, version?: string | number | null) => {
+      const url = `${API_BASE}/recordings/${id}/thumbnail`
+      return version ? `${url}?v=${encodeURIComponent(String(version))}` : url
+    },
     getSpriteVttUrl: (id: number) => `${API_BASE}/recordings/${id}/thumbnails.vtt`,
 
     transcribe: (id: number) =>
@@ -493,7 +496,10 @@ export const api = {
 
     getDownloadUrl: (id: number) => `${API_BASE}/clips/${id}/download`,
     getStreamUrl: (id: number) => `${API_BASE}/clips/${id}/stream`,
-    getThumbnailUrl: (id: number) => `${API_BASE}/clips/${id}/thumbnail`,
+    getThumbnailUrl: (id: number, version?: string | number | null) => {
+      const url = `${API_BASE}/clips/${id}/thumbnail`
+      return version ? `${url}?v=${encodeURIComponent(String(version))}` : url
+    },
     getSpriteVttUrl: (id: number) => `${API_BASE}/clips/${id}/thumbnails.vtt`,
 
     batchDelete: (ids: number[]) =>
