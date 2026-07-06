@@ -4,3 +4,5 @@ node_modules
 .agents
 skills-lock.json
 .windsurf
+# Local SQLite database — contains per-deployment state
+data/tikrec.db
