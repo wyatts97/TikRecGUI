@@ -16,6 +16,7 @@ from app.core.media_utils import (
     repair_video,
     analyze_video_health,
     concat_ts_segments,
+    finalize_segments_to_mp4,
 )
 from app.core.recorder_loader import get_tiktok_api_class
 from app.core.transcription_service import transcription_service
@@ -32,6 +33,8 @@ def _update_recording_status(recording_id: int, status: str, error_message: str 
                 recording.error_message = error_message
             if status in ("failed", "completed", "stopped"):
                 recording.ended_at = datetime.utcnow()
+            if status == "failed":
+                recording.is_corrupt = True
             db.commit()
 
 
@@ -128,10 +131,16 @@ def _build_capture_cmd(
     """
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "warning",
+        # Reconnect on transient network drops, but NOT at EOF: a live EOF means
+        # the broadcast/session ended. Reconnecting at EOF makes ffmpeg pull the
+        # dead URL's slate/junk (the "black tail" bug) instead of exiting so the
+        # resume loop can re-resolve a fresh URL.
         "-reconnect", "1",
         "-reconnect_streamed", "1",
-        "-reconnect_at_eof", "1",
         "-reconnect_delay_max", "5",
+        # Exit promptly when the socket dies instead of hanging until the 90s
+        # stall detector fires (15s in microseconds).
+        "-rw_timeout", "15000000",
     ]
     if proxy:
         cmd += ["-http_proxy", proxy]
@@ -140,7 +149,9 @@ def _build_capture_cmd(
         if cookie_header:
             cmd += ["-headers", f"Cookie: {cookie_header}\r\n"]
     cmd += [
-        "-fflags", "+igndts+genpts",
+        # Record the stream verbatim — keep the original timestamps. Do NOT add
+        # +igndts+genpts here: regenerating timestamps during a live capture lets
+        # audio and video drift apart. Timestamp repair happens once, at remux.
         "-i", live_url,
         "-c", "copy",
         "-f", "mpegts",
@@ -473,149 +484,134 @@ class RecordingTask:
 
         ts_path = self._ts_path
         ended_at = datetime.utcnow()
-        duration_seconds = int(self._total_elapsed_seconds or (time.time() - start_time))
+        # Wall-clock elapsed — used only for notifications. The authoritative
+        # duration comes from probing the finalized MP4 (real content only,
+        # excluding offline gaps and resume backoff waits).
+        wall_clock_seconds = int(self._total_elapsed_seconds or (time.time() - start_time))
 
-        # Concatenate the resumable segments into the single .ts used for remux.
-        # If there are no segments (capture failed before writing), the old
-        # single-segment path is still supported because a lone .ts could exist.
-        if self._segments:
-            logger.info(
-                "Recording %d: concatenating %d segment(s) into %s",
-                self.recording_id, len(self._segments), ts_path.name,
-            )
-            concat_ok = concat_ts_segments(self._segments, ts_path)
-            if not concat_ok:
-                logger.error(
-                    "Recording %d: segment concatenation failed; keeping %d segment(s)",
-                    self.recording_id, len(self._segments),
-                )
-            # Clean up the individual part files regardless of concat success.
-            for part in self._segments:
-                try:
-                    part.unlink(missing_ok=True)
-                except Exception:
-                    pass
-            self._segments = []
+        # Gather the captured sources. Normally these are the resumable
+        # ``.partNNN.ts`` segments; a lone ``.ts`` may exist from a legacy or
+        # single-segment capture path.
+        segments = [p for p in self._segments if p.exists() and p.stat().st_size > 0]
+        if not segments and ts_path is not None and ts_path.exists() and ts_path.stat().st_size > 0:
+            segments = [ts_path]
 
-        # The capture writes an intermediate MPEG-TS file; the final .mp4 is
-        # produced by the remux below. Treat the .ts (or a previously-remuxed
-        # .mp4) as evidence that capture actually produced data.
-        captured = (ts_path is not None and ts_path.exists()) or output_path.exists()
-        final_status: str | None = None
+        captured = bool(segments)
 
+        # Move the row to "processing" while we remux/concat. Setting a terminal
+        # status here (as the old code did) made a healthy recording flash the
+        # "needs repair" UI during the remux window, and a repair click would
+        # 404 because the .mp4 didn't exist yet.
         with get_session() as db:
             recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
             if not recording:
                 return
-
-            # Only update if still active (don't overwrite already-finalized rows)
             if recording.status in ("recording", "pending"):
                 recording.ended_at = ended_at
-                recording.duration_seconds = duration_seconds
-
                 if captured:
-                    src = ts_path if (ts_path and ts_path.exists()) else output_path
-                    recording.file_size = src.stat().st_size
-                    recording.status = "completed" if not self._stop_event.is_set() else "stopped"
+                    recording.status = "processing"
+                    recording.duration_seconds = wall_clock_seconds
                 else:
                     recording.status = "failed"
-                    # Prefer a specific capture error (with the ffmpeg log tail)
-                    # over the generic message so failures are diagnosable.
+                    recording.is_corrupt = True
                     log_tail = _read_log_tail(self._log_path)
                     detail = self._capture_error or "Output file not created"
                     if log_tail:
                         detail = f"{detail} | ffmpeg: {log_tail}"
                     recording.error_message = recording.error_message or detail
-
                 db.commit()
-                final_status = recording.status
 
-        # Notify the UI that the recording finished (completed/stopped/failed)
-        if final_status:
-            try:
-                _notify_recording_finished(self.recording_id, self.username, final_status, duration_seconds)
-            except Exception:
-                logger.debug("Failed to publish recording-finished notification", exc_info=True)
-
-        # Stop live chat/gift capture
+        # Stop live chat/gift capture regardless of outcome.
         try:
             live_chat_service.stop_listening(self.recording_id)
         except Exception:
             pass
 
-        # Diagnostic log cleanup: if the final MP4 is in place, the capture was
-        # successful and the log is no longer needed. Otherwise keep it for
-        # debugging (failed capture, remux failure, etc.).
-        log_path = self._log_path
-        if log_path is not None and output_path is not None and output_path.exists():
-            log_path.unlink(missing_ok=True)
+        if not captured:
+            try:
+                _notify_recording_finished(self.recording_id, self.username, "failed", wall_clock_seconds)
+            except Exception:
+                logger.debug("Failed to publish recording-finished notification", exc_info=True)
+            return
 
-        # Post-processing — only when a fresh .ts capture is awaiting remux.
-        if ts_path is not None and ts_path.exists():
-            health = analyze_video_health(ts_path)
-            if health.get("is_corrupt"):
-                logger.warning(
-                    "Recording %d (%s) may be corrupt: %s",
-                    self.recording_id, ts_path.name, health.get("error"),
-                )
-            else:
-                logger.info(
-                    "Recording %d (%s) healthy — %.1fs, video=%s audio=%s",
-                    self.recording_id, ts_path.name,
-                    health.get("duration"), health.get("has_video"), health.get("has_audio"),
-                )
+        # --- Finalize: build one seamless MP4 from the captured segment(s) ---
+        logger.info(
+            "Recording %d: finalizing %d segment(s) into %s",
+            self.recording_id, len(segments), output_path.name,
+        )
+        remux_ok, actual_duration = finalize_segments_to_mp4(segments, output_path)
 
-            # Remux .ts → faststart .mp4 (stream-copy, re-encode fallback).
-            remux_ok, actual_duration = remux_to_mp4(
-                ts_path, expected_duration=duration_seconds, output_path=output_path
+        # Last-ditch fallback: concat the raw .ts parts and run a full repair.
+        if not remux_ok:
+            logger.info(
+                "Recording %d: segment finalize failed, attempting concat+repair fallback",
+                self.recording_id,
             )
-            if not remux_ok:
-                logger.info("Remux failed for recording %d, attempting full repair", self.recording_id)
+            if ts_path is not None and concat_ts_segments(segments, ts_path):
                 remux_ok, actual_duration = repair_video(ts_path, output_path=output_path)
 
-            if remux_ok and output_path.exists():
-                # Capture succeeded and the playable .mp4 is in place — drop the .ts.
+        stopped = self._stop_event.is_set()
+        final_status: str | None = None
+
+        if remux_ok and output_path.exists() and output_path.stat().st_size > 0:
+            # Playable MP4 is in place — clean up all intermediate .ts sources.
+            for part in self._segments:
+                part.unlink(missing_ok=True)
+            self._segments = []
+            if ts_path is not None:
                 ts_path.unlink(missing_ok=True)
-                with get_session() as db:
-                    recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
-                    if recording:
-                        recording.file_size = output_path.stat().st_size
-                        if recording.status == "failed":
-                            recording.status = "completed" if not self._stop_event.is_set() else "stopped"
-                        if actual_duration is not None:
-                            actual_int = int(round(actual_duration))
-                            if actual_int != recording.duration_seconds:
-                                logger.info(
-                                    "Updating recording %d duration %d -> %d (remux fix)",
-                                    self.recording_id,
-                                    recording.duration_seconds,
-                                    actual_int,
-                                )
-                                recording.duration_seconds = actual_int
-                        db.commit()
 
-                run_background(generate_thumbnail, output_path, None, self.recording_id)
-                run_background(generate_sprite, output_path)
-
-                with get_session() as db:
-                    recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
-                    if recording and recording.transcript_status is None:
+            duration_int = (
+                int(round(actual_duration)) if actual_duration else wall_clock_seconds
+            )
+            with get_session() as db:
+                recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+                if recording:
+                    recording.file_size = output_path.stat().st_size
+                    recording.duration_seconds = duration_int
+                    recording.is_corrupt = False
+                    recording.status = "stopped" if stopped else "completed"
+                    recording.error_message = None
+                    if recording.transcript_status is None:
                         recording.transcript_status = "pending"
-                        db.commit()
-                    transcription_service.enqueue(self.recording_id)
-            else:
-                # Remux + repair both failed — keep the .ts so the user can
-                # retry, and surface the failure.
-                logger.error(
-                    "Recording %d: remux and repair both failed; keeping %s",
-                    self.recording_id, ts_path.name,
+                    db.commit()
+                    final_status = recording.status
+
+            # Diagnostic log no longer needed on success.
+            if self._log_path is not None:
+                self._log_path.unlink(missing_ok=True)
+
+            run_background(generate_thumbnail, output_path, None, self.recording_id)
+            run_background(generate_sprite, output_path)
+            transcription_service.enqueue(self.recording_id)
+        else:
+            # Finalize + repair both failed — keep the .ts/parts so the user can
+            # retry via the repair button, and surface a diagnosable failure.
+            logger.error(
+                "Recording %d: finalize and repair both failed; keeping %d source segment(s)",
+                self.recording_id, len(segments),
+            )
+            log_tail = _read_log_tail(self._log_path)
+            detail = "Remux failed — captured stream could not be converted"
+            if log_tail:
+                detail = f"{detail} | ffmpeg: {log_tail}"
+            with get_session() as db:
+                recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
+                if recording:
+                    recording.status = "failed"
+                    recording.is_corrupt = True
+                    recording.error_message = detail
+                    db.commit()
+                    final_status = recording.status
+
+        if final_status:
+            try:
+                _notify_recording_finished(
+                    self.recording_id, self.username, final_status,
+                    int(actual_duration) if actual_duration else wall_clock_seconds,
                 )
-                with get_session() as db:
-                    recording = db.query(Recording).filter(Recording.id == self.recording_id).first()
-                    if recording:
-                        recording.status = "failed"
-                        recording.error_message = "Remux failed — captured stream could not be converted"
-                        db.commit()
+            except Exception:
+                logger.debug("Failed to publish recording-finished notification", exc_info=True)
 
     def _run_with_error_handling(self):
         try:

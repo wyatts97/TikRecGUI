@@ -77,9 +77,17 @@ export function RecordingVideoCard({
               <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-40" />
 
               {/* Duration badge — bottom-right */}
-              {recording.duration_seconds != null && (
+              {recording.duration_seconds != null && recording.status !== 'processing' && (
                 <div className="absolute bottom-2 right-2">
                   <Timestamp seconds={recording.duration_seconds} />
+                </div>
+              )}
+
+              {/* Processing badge — top-right */}
+              {recording.status === 'processing' && (
+                <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 rounded-full bg-primary/90 px-2.5 py-1 text-xs font-medium text-primary-foreground shadow-sm">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Processing
                 </div>
               )}
 
@@ -142,7 +150,7 @@ export function RecordingVideoCard({
                   )}
                 />
               </Button>
-              {(recording.status === 'failed' || recording.is_corrupt) && onRepair && (
+              {recording.status !== 'processing' && (recording.status === 'failed' || recording.is_corrupt) && onRepair && (
                 <Button
                   variant="plain"
                   size="icon"

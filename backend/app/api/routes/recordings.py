@@ -34,6 +34,7 @@ from app.core.media_utils import (
     thumbnail_path,
     analyze_video_health,
     repair_video,
+    finalize_segments_to_mp4,
 )
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
@@ -75,6 +76,27 @@ def _delete_recording_files(recording: Recording) -> list[str]:
                 logger.warning(msg)
 
     return errors
+
+
+def _find_capture_sources(video_path: Path) -> list[Path]:
+    """Return the raw capture sources for a recording whose ``.mp4`` is missing.
+
+    A finalize/remux failure keeps the intermediate MPEG-TS on disk: either the
+    resumable ``.partNNN.ts`` segments or a single legacy ``.ts``. This lets the
+    repair endpoint recover a recording even when the final ``.mp4`` was never
+    produced (the "needs repair" → "no recording found" bug).
+    """
+    stem_path = video_path.with_suffix("")  # strip .mp4
+    parts = sorted(
+        p for p in video_path.parent.glob(f"{stem_path.name}.part*.ts")
+        if p.exists() and p.stat().st_size > 0
+    )
+    if parts:
+        return parts
+    lone_ts = video_path.with_suffix(".ts")
+    if lone_ts.exists() and lone_ts.stat().st_size > 0:
+        return [lone_ts]
+    return []
 
 
 def _is_thumbnail_ready(recording: Recording, db: Session | None = None) -> bool:
@@ -129,12 +151,23 @@ def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
 
 
 def _build_response(rec: Recording, db: Session | None = None) -> RecordingResponse:
-    # Only check corruption status for finished files (avoid probing mid-write)
-    is_corrupt: bool | None = None
-    if rec.status in ("completed", "stopped", "failed"):
+    # Corruption state is cached on the row (set at finalize/repair time) so
+    # list endpoints never shell out to ffprobe. Legacy rows have a NULL flag;
+    # probe those once lazily and backfill so it's fast on subsequent loads.
+    is_corrupt: bool | None = rec.is_corrupt
+    if (
+        is_corrupt is None
+        and rec.status in ("completed", "stopped", "failed")
+    ):
         video_path = Path(settings.RECORDINGS_DIR) / rec.filename
-        health = analyze_video_health(video_path)
-        is_corrupt = health.get("is_corrupt", True)
+        if video_path.exists():
+            health = analyze_video_health(video_path)
+            is_corrupt = health.get("is_corrupt", True)
+        else:
+            is_corrupt = True
+        if db is not None:
+            rec.is_corrupt = is_corrupt
+            db.commit()
 
     return RecordingResponse(
         id=rec.id,
@@ -886,9 +919,23 @@ def get_recording_health(recording_id: int, db: Session = Depends(get_db)):
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
-    if not video_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording file not found")
-    return analyze_video_health(video_path)
+    if video_path.exists():
+        return analyze_video_health(video_path)
+
+    # No .mp4 yet — a finalize/remux failure left the raw capture on disk.
+    # Report it as recoverable so the UI still offers the repair action
+    # instead of a dead "no recording found" state.
+    sources = _find_capture_sources(video_path)
+    if sources:
+        return {
+            "is_corrupt": True,
+            "duration": None,
+            "has_video": False,
+            "has_audio": False,
+            "error": "Final MP4 missing — raw capture is present and can be repaired",
+            "recoverable": True,
+        }
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording file not found")
 
 
 @router.post("/{recording_id}/repair", response_model=RecordingResponse)
@@ -913,11 +960,45 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
         )
 
     video_path = Path(settings.RECORDINGS_DIR) / recording.filename
-    if not video_path.exists():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording file not found")
 
-    # Non-destructive repair: keep a backup copy while we attempt to fix the
-    # file. If repair fails, restore the original so the user can retry.
+    # Case A — the .mp4 was never produced (finalize/remux failure). Rebuild it
+    # from the raw capture sources still on disk instead of 404-ing. This is the
+    # exact scenario the repair button is shown for after a failed finalize.
+    if not video_path.exists():
+        sources = _find_capture_sources(video_path)
+        if not sources:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Recording file not found — no MP4 or raw capture on disk",
+            )
+        try:
+            rebuilt_ok, actual_duration = finalize_segments_to_mp4(sources, video_path)
+        except Exception:
+            logger.exception("Rebuild-from-sources raised for recording %d", recording_id)
+            rebuilt_ok = False
+
+        if rebuilt_ok and video_path.exists():
+            for src in sources:
+                src.unlink(missing_ok=True)
+            recording.file_size = video_path.stat().st_size
+            if actual_duration is not None:
+                recording.duration_seconds = int(round(actual_duration))
+            recording.status = "stopped" if recording.status == "stopped" else "completed"
+            recording.is_corrupt = False
+            recording.error_message = "Recording rebuilt from raw capture"
+            db.commit()
+            db.refresh(recording)
+            run_background(generate_thumbnail, video_path, thumbnail_path(video_path), recording.id)
+            run_background(generate_sprite, video_path)
+            return _build_response(recording, db)
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Repair failed — raw capture could not be converted to MP4",
+        )
+
+    # Case B — the .mp4 exists but is corrupt. Non-destructive in-place repair:
+    # keep a backup while we attempt to fix it; restore it if repair fails.
     backup_path = video_path.with_suffix(video_path.suffix + ".backup")
     try:
         shutil.copy2(video_path, backup_path)
@@ -939,6 +1020,7 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
             recording.duration_seconds = int(round(actual_duration))
         if recording.status == "failed":
             recording.status = "completed"
+        recording.is_corrupt = False
         recording.error_message = "Recording was repaired"
         db.commit()
         db.refresh(recording)

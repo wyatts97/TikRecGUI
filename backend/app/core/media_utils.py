@@ -544,6 +544,152 @@ def remux_to_mp4(
 
 
 # ----------------------------------------------------------------
+# Segment finalize — seamless jump-cut MP4 from resumable .ts parts
+# ----------------------------------------------------------------
+
+def _remux_part_to_mp4(ts_part: Path, out_mp4: Path) -> tuple[bool, float | None]:
+    """Remux one captured ``.ts`` segment into a clean, zero-based MP4.
+
+    Each resumable segment comes from a *separate* TikTok live session with its
+    own timestamp base. To keep audio/video aligned within the part — and to
+    make the later concat produce a seamless jump cut — we rebase timestamps to
+    zero (``-avoid_negative_ts make_zero``) and regenerate presentation
+    timestamps (``+genpts``). Stream-copy first (lossless, fast); full
+    re-encode fallback for mid-stream codec/parameter quirks.
+
+    Returns ``(success, duration)``.
+    """
+    if not ts_part.exists() or ts_part.stat().st_size == 0:
+        return False, None
+
+    # Strategy 1 — error-tolerant stream copy with rebased timestamps
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-fflags", "+genpts+igndts",
+                "-err_detect", "ignore_err",
+                "-i", str(ts_part),
+                "-c", "copy",
+                "-avoid_negative_ts", "make_zero",
+                "-movflags", "+faststart",
+                str(out_mp4),
+            ],
+            capture_output=True, check=True, timeout=300,
+        )
+        duration = _probe_duration(out_mp4)
+        if out_mp4.exists() and out_mp4.stat().st_size > 0 and duration:
+            return True, duration
+    except Exception:
+        logger.warning("Part stream-copy remux failed for %s, re-encoding", ts_part.name)
+    finally:
+        if out_mp4.exists() and out_mp4.stat().st_size == 0:
+            out_mp4.unlink(missing_ok=True)
+
+    # Strategy 2 — full re-encode (recovers corrupt frames, normalizes params)
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                "-fflags", "+genpts+igndts",
+                "-err_detect", "ignore_err",
+                "-i", str(ts_part),
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
+                "-avoid_negative_ts", "make_zero",
+                "-movflags", "+faststart",
+                str(out_mp4),
+            ],
+            capture_output=True, check=True, timeout=600,
+        )
+        duration = _probe_duration(out_mp4)
+        if out_mp4.exists() and out_mp4.stat().st_size > 0 and duration:
+            return True, duration
+    except Exception:
+        logger.error("Part re-encode remux also failed for %s", ts_part.name)
+    finally:
+        if out_mp4.exists() and out_mp4.stat().st_size == 0:
+            out_mp4.unlink(missing_ok=True)
+
+    return False, None
+
+
+def finalize_segments_to_mp4(
+    segments: list[Path],
+    output_path: Path,
+) -> tuple[bool, float | None]:
+    """Build one seamless MP4 from resumable ``.ts`` capture segments.
+
+    Strategy (avoids the cross-session A/V drift caused by raw-TS concat):
+
+    1. Remux **each** ``.partNNN.ts`` into its own clean, zero-based MP4 so
+       every part has a self-consistent timeline.
+    2. Concatenate the clean MP4 parts with ffmpeg's concat demuxer using
+       ``-c copy`` — the demuxer rebases timestamps per input file, producing a
+       hard jump cut at each gap with no accumulated offset.
+
+    The single-segment case takes the direct ``.ts → .mp4`` fast path.
+
+    Returns ``(success, total_duration)`` where ``total_duration`` is the sum
+    of the probed part durations (real content only — excludes offline gaps),
+    or ``(False, None)`` on failure.
+    """
+    parts = [p for p in segments if p.exists() and p.stat().st_size > 0]
+    if not parts:
+        return False, None
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Fast path — a single segment is just a normal remux.
+    if len(parts) == 1:
+        return remux_to_mp4(parts[0], output_path=output_path)
+
+    clean_parts: list[Path] = []
+    total_duration = 0.0
+    try:
+        for idx, part in enumerate(parts):
+            clean_mp4 = output_path.with_suffix(f".clean{idx:03d}.mp4")
+            ok, dur = _remux_part_to_mp4(part, clean_mp4)
+            if not ok:
+                logger.error(
+                    "finalize: part %d (%s) could not be remuxed; aborting concat",
+                    idx, part.name,
+                )
+                return False, None
+            clean_parts.append(clean_mp4)
+            total_duration += dur or 0.0
+
+        # Concat the clean MP4 parts — demuxer rebases timestamps per file.
+        concat_list = output_path.with_suffix(".concat.txt")
+        try:
+            concat_list.write_text(
+                "\n".join(f"file '{p.as_posix()}'" for p in clean_parts),
+                encoding="utf-8",
+            )
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-hide_banner", "-loglevel", "warning",
+                    "-f", "concat", "-safe", "0",
+                    "-i", str(concat_list),
+                    "-c", "copy",
+                    "-movflags", "+faststart",
+                    str(output_path),
+                ],
+                capture_output=True, check=True, timeout=600,
+            )
+        finally:
+            concat_list.unlink(missing_ok=True)
+
+        if output_path.exists() and output_path.stat().st_size > 0:
+            actual = _probe_duration(output_path)
+            return True, actual or (total_duration or None)
+        return False, None
+    finally:
+        for cp in clean_parts:
+            cp.unlink(missing_ok=True)
+
+
+# ----------------------------------------------------------------
 # Repair
 # ----------------------------------------------------------------
 

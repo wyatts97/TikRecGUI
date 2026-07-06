@@ -31,7 +31,7 @@ class Recording(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     filename = Column(String(512), nullable=False)
-    status = Column(String(50), default="pending")  # pending, recording, completed, failed, stopped
+    status = Column(String(50), default="pending")  # pending, recording, processing, completed, failed, stopped
     mode = Column(String(50), default="manual")  # manual, automatic
     started_at = Column(DateTime, nullable=True)
     ended_at = Column(DateTime, nullable=True)
@@ -43,6 +43,9 @@ class Recording(Base):
     thumbnail_ready = Column(Boolean, default=False)
     sprite_ready = Column(Boolean, default=False)
     is_favorite = Column(Boolean, default=False)
+    # Cached corruption state set at finalize/repair time so list endpoints
+    # don't shell out to ffprobe per row. NULL = not yet determined.
+    is_corrupt = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     user = relationship("User", back_populates="recordings")
