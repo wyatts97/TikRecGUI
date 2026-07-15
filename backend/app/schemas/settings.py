@@ -25,6 +25,7 @@ class SettingsResponse(BaseModel):
     output_dir: str
     default_bitrate: str | None = None
     automatic_interval: int = 5
+    max_recording_hours: int = 8
     auto_cleanup: AutoCleanupConfig = AutoCleanupConfig()
     timezone: str = "UTC"
 
@@ -35,5 +36,6 @@ class SettingsUpdate(BaseModel):
     proxy: str | None = None
     default_bitrate: str | None = None
     automatic_interval: int | None = None
+    max_recording_hours: int | None = None
     auto_cleanup: AutoCleanupConfig | None = None
     timezone: str | None = None

@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     DEFAULT_AUTOMATIC_INTERVAL: int = 5
     DEFAULT_BITRATE: str | None = None
     DEFAULT_PROXY: str | None = None
+
+    # Safety-net for automatic recordings: hard cap so a false "still live"
+    # signal from the recorder library can't record forever.
+    DEFAULT_MAX_RECORDING_HOURS: int = 8
+    # Circuit breaker: consecutive bad automatic recordings for the same user
+    # (within the lookback window) before we pause auto-recording for them.
+    DEFAULT_MAX_CONSECUTIVE_BAD_RECORDINGS: int = 3
+    DEFAULT_CIRCUIT_BREAKER_LOOKBACK_MINUTES: int = 120
     
     class Config:
         env_file = ".env"

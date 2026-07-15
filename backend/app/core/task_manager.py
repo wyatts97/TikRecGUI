@@ -51,6 +51,14 @@ _RESUME_BACKOFF_SECONDS = (3, 5, 10, 15, 30)
 _OFFLINE_CONFIRMATION_SECONDS = 90
 _SEGMENT_CHECK_INTERVAL = 0.5
 
+# Independent re-confirmation of liveness while a segment is actively
+# capturing. The stall detector only catches a *dead* stream (no bytes); it
+# can't catch a stream that keeps producing bytes (e.g. a stale/looping CDN
+# placeholder) after the room actually went offline. Re-checking room status
+# periodically closes that gap so a false "still live" signal can't keep a
+# recording running indefinitely.
+_LIVE_RECONFIRM_SECONDS = 300
+
 
 def _read_log_tail(log_path: Path | None, max_chars: int = 600) -> str | None:
     """Return the last *max_chars* of an ffmpeg log file, if it exists."""
@@ -342,9 +350,11 @@ class RecordingTask:
                 self.recording_id, segment_index, " (resumed)" if resumed else "",
             )
 
-            # Monitor this segment until it ends, stalls, or is manually stopped.
+            # Monitor this segment until it ends, stalls, is confirmed offline,
+            # or is manually stopped.
             last_size = -1
             last_growth = time.time()
+            last_live_reconfirm = time.time()
             segment_failed = False
             while not self._stop_event.is_set():
                 if proc.poll() is not None:
@@ -367,6 +377,25 @@ class RecordingTask:
                     )
                     segment_failed = True
                     break
+
+                # Independent liveness re-check: catches a stream that keeps
+                # producing bytes (e.g. stale/looping placeholder) even though
+                # the room has actually gone offline — the stall detector above
+                # can't see this since the file is still growing.
+                if now - last_live_reconfirm > _LIVE_RECONFIRM_SECONDS:
+                    last_live_reconfirm = now
+                    try:
+                        still_alive = api.is_room_alive(room_id)
+                    except Exception:
+                        still_alive = True  # network blip — don't kill a good recording
+                    if not still_alive:
+                        logger.warning(
+                            "Recording %d: room %s no longer alive on re-check; ending session",
+                            self.recording_id, room_id,
+                        )
+                        self._capture_error = "Room confirmed offline during periodic re-check"
+                        segment_failed = True
+                        break
                 time.sleep(_SEGMENT_CHECK_INTERVAL)
 
             # Ensure the segment ffmpeg exits cleanly.
@@ -705,6 +734,14 @@ class MonitorService:
     # Exponential-backoff limits
     _BACKOFF_BASE = 2          # first retry waits 2 s
     _BACKOFF_MAX = 60          # never wait more than 60 s per user
+    # Brief delay before re-confirming a "live" signal so a single flickering
+    # API response can't start a recording on its own.
+    _LIVE_CONFIRM_DELAY = 3
+    # Circuit breaker: if a user's last N automatic recordings all ended up
+    # failed/corrupt within the lookback window, auto-recording is paused for
+    # them instead of retrying forever every check interval.
+    _CIRCUIT_BREAKER_THRESHOLD = 3
+    _CIRCUIT_BREAKER_LOOKBACK_MINUTES = 120
 
     def __init__(self):
         self._stop_event = threading.Event()
@@ -714,6 +751,8 @@ class MonitorService:
         self._next_check_at: datetime | None = None
         # Per-user consecutive failure count for backoff
         self._check_failures: dict[int, int] = {}
+        # Users whose circuit breaker has tripped — only notify once per trip
+        self._circuit_notified: set[int] = set()
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -746,6 +785,29 @@ class MonitorService:
             "interval_minutes": self._interval_seconds() // 60,
             "check_interval": self._interval_seconds(),
         }
+
+    def _circuit_tripped(self, user_id: int) -> bool:
+        """Return True if auto-recording should be paused for *user_id*.
+
+        Trips when the user's last ``_CIRCUIT_BREAKER_THRESHOLD`` automatic
+        recordings are all terminal-bad (failed or corrupt) and fall within
+        the lookback window — i.e. a rapid-fire loop of bogus recordings
+        rather than occasional unlucky failures spread over time.
+        """
+        cutoff = datetime.utcnow() - timedelta(minutes=self._CIRCUIT_BREAKER_LOOKBACK_MINUTES)
+        with get_session() as db:
+            recent = (
+                db.query(Recording)
+                .filter(Recording.user_id == user_id, Recording.mode == "automatic")
+                .order_by(Recording.created_at.desc())
+                .limit(self._CIRCUIT_BREAKER_THRESHOLD)
+                .all()
+            )
+            if len(recent) < self._CIRCUIT_BREAKER_THRESHOLD:
+                return False
+            if any(rec.created_at < cutoff for rec in recent):
+                return False
+            return all(rec.status == "failed" or rec.is_corrupt for rec in recent)
 
     def _interval_seconds(self) -> int:
         from app.core.settings_store import settings_store
@@ -812,12 +874,42 @@ class MonitorService:
         cookies = recorder_service.load_cookies()
         proxy = settings_store.get("proxy", settings.DEFAULT_PROXY)
         bitrate = settings_store.get("default_bitrate", settings.DEFAULT_BITRATE)
+        max_recording_seconds = max(
+            60,
+            int(settings_store.get("max_recording_hours", settings.DEFAULT_MAX_RECORDING_HOURS)) * 3600,
+        )
 
         for user in monitored:
             if self._stop_event.is_set():
                 break
             if user.id in recording_user_ids:
                 continue
+
+            # --- Circuit breaker: stop hammering a user whose last several
+            # automatic recordings all came back bad in a short window ---
+            if self._circuit_tripped(user.id):
+                if user.id not in self._circuit_notified:
+                    self._circuit_notified.add(user.id)
+                    logger.warning(
+                        "Circuit breaker tripped for @%s — pausing auto-recording "
+                        "after %d consecutive bad automatic recordings",
+                        user.username, self._CIRCUIT_BREAKER_THRESHOLD,
+                    )
+                    try:
+                        notification_service.publish(
+                            type="circuit_breaker_tripped",
+                            title=f"Auto-recording paused for @{user.username}",
+                            message=(
+                                f"The last {self._CIRCUIT_BREAKER_THRESHOLD} automatic recordings "
+                                "failed or came out corrupt. Auto-recording is paused for this user "
+                                "until you investigate."
+                            ),
+                            data={"user_id": user.id, "username": user.username},
+                        )
+                    except Exception:
+                        logger.debug("Failed to publish circuit-breaker notification", exc_info=True)
+                continue
+            self._circuit_notified.discard(user.id)
 
             # --- Exponential backoff for users with recent failures ---
             failures = self._check_failures.get(user.id, 0)
@@ -850,6 +942,32 @@ class MonitorService:
                         u.last_checked = last_checked
                         db.commit()
                 # Rate-limiting delay between users
+                if self._stop_event.wait(timeout=self._INTER_USER_DELAY):
+                    return
+                continue
+
+            # --- Double-confirm before starting a recording: a brief pause and
+            # a second independent check filters out a single flickering/stale
+            # "live" response from the recorder API so it can't spawn a bogus
+            # recording on its own. ---
+            if self._stop_event.wait(timeout=self._LIVE_CONFIRM_DELAY):
+                return
+            try:
+                confirmed_live = recorder_service.get_api().is_room_alive(room_id)
+            except Exception:
+                confirmed_live = False
+            if not confirmed_live:
+                logger.info(
+                    "Live signal for @%s did not hold up on re-check; skipping this cycle",
+                    user.username,
+                )
+                with get_session() as db:
+                    u = db.query(User).filter(User.id == user.id).first()
+                    if u:
+                        u.is_live = False
+                        u.room_id = room_id
+                        u.last_checked = last_checked
+                        db.commit()
                 if self._stop_event.wait(timeout=self._INTER_USER_DELAY):
                     return
                 continue
@@ -889,6 +1007,7 @@ class MonitorService:
                 recording_id=recording_id,
                 username=user.username,
                 room_id=room_id,
+                duration=max_recording_seconds,
                 cookies=cookies,
                 proxy=proxy,
                 bitrate=bitrate,

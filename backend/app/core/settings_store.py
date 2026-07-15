@@ -20,6 +20,7 @@ class SettingsStore:
             "proxy": settings.DEFAULT_PROXY,
             "default_bitrate": settings.DEFAULT_BITRATE,
             "automatic_interval": settings.DEFAULT_AUTOMATIC_INTERVAL,
+            "max_recording_hours": settings.DEFAULT_MAX_RECORDING_HOURS,
         }
         self._load()
 

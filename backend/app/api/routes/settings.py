@@ -68,6 +68,7 @@ def get_settings():
         output_dir=str(settings.RECORDINGS_DIR),
         default_bitrate=settings_store.get("default_bitrate", settings.DEFAULT_BITRATE),
         automatic_interval=settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL),
+        max_recording_hours=settings_store.get("max_recording_hours", settings.DEFAULT_MAX_RECORDING_HOURS),
         auto_cleanup=AutoCleanupConfig(**auto_cleanup_data),
         timezone=settings_store.get("timezone", "UTC")
     )
@@ -103,6 +104,10 @@ def update_settings(update: SettingsUpdate):
     if update.automatic_interval is not None:
         interval = max(1, int(update.automatic_interval))
         settings_store.set("automatic_interval", interval)
+
+    if update.max_recording_hours is not None:
+        max_hours = max(1, int(update.max_recording_hours))
+        settings_store.set("max_recording_hours", max_hours)
 
     if update.auto_cleanup is not None:
         settings_store.set("auto_cleanup", {
