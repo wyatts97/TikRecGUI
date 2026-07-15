@@ -742,6 +742,13 @@ class MonitorService:
     # them instead of retrying forever every check interval.
     _CIRCUIT_BREAKER_THRESHOLD = 3
     _CIRCUIT_BREAKER_LOOKBACK_MINUTES = 120
+    # Mass-simultaneous-live anomaly guard: a real TikTok event where many
+    # watched creators go live in the same check cycle is possible but rare.
+    # If more users than this trip "live" in one cycle, treat it as a likely
+    # systemic API glitch and require a stricter, slower confirmation for the
+    # rest of the cycle instead of blindly trusting the signal.
+    _MASS_LIVE_ANOMALY_MIN_ABSOLUTE = 3
+    _MASS_LIVE_ANOMALY_FRACTION = 0.5
 
     def __init__(self):
         self._stop_event = threading.Event()
@@ -878,6 +885,12 @@ class MonitorService:
             60,
             int(settings_store.get("max_recording_hours", settings.DEFAULT_MAX_RECORDING_HOURS)) * 3600,
         )
+        mass_live_anomaly_threshold = max(
+            self._MASS_LIVE_ANOMALY_MIN_ABSOLUTE,
+            (len(monitored) + 1) // 2,
+        )
+        confirmed_live_count = 0
+        mass_live_anomaly_notified = False
 
         for user in monitored:
             if self._stop_event.is_set():
@@ -946,16 +959,61 @@ class MonitorService:
                     return
                 continue
 
+            # --- Mass-simultaneous-live anomaly guard: if an unusually large
+            # share of the watchlist has already come back "live" this cycle,
+            # a systemic API glitch is more likely than a real coincidence —
+            # slow down and demand stricter confirmation for the rest of the
+            # cycle instead of trusting the signal outright. ---
+            mass_live_anomaly = confirmed_live_count >= mass_live_anomaly_threshold
+            if mass_live_anomaly and not mass_live_anomaly_notified:
+                mass_live_anomaly_notified = True
+                logger.warning(
+                    "Mass-live anomaly: %d/%d monitored users reported live in one "
+                    "check cycle — treating remaining live signals with extra scrutiny",
+                    confirmed_live_count, len(monitored),
+                )
+                try:
+                    notification_service.publish(
+                        type="mass_live_anomaly",
+                        title="Unusual number of users reported live at once",
+                        message=(
+                            f"{confirmed_live_count} monitored users came back live in the same "
+                            "check cycle. This is more likely a false-positive from the TikTok "
+                            "API than a real coincidence — extra confirmation is being applied."
+                        ),
+                        data={"confirmed_live_count": confirmed_live_count, "total_monitored": len(monitored)},
+                    )
+                except Exception:
+                    logger.debug("Failed to publish mass-live-anomaly notification", exc_info=True)
+
             # --- Double-confirm before starting a recording: a brief pause and
             # a second independent check filters out a single flickering/stale
             # "live" response from the recorder API so it can't spawn a bogus
-            # recording on its own. ---
-            if self._stop_event.wait(timeout=self._LIVE_CONFIRM_DELAY):
+            # recording on its own. During a mass-live anomaly, wait longer to
+            # give a transient API glitch more time to clear. ---
+            confirm_delay = self._LIVE_CONFIRM_DELAY * (3 if mass_live_anomaly else 1)
+            if self._stop_event.wait(timeout=confirm_delay):
                 return
             try:
                 confirmed_live = recorder_service.get_api().is_room_alive(room_id)
             except Exception:
                 confirmed_live = False
+
+            # --- Independent verification: hit a *different* upstream code
+            # path (webcast/room/info stream extraction) than check_alive, so
+            # a bug in one check is unlikely to also be wrong in the other.
+            # This is required outright during a mass-live anomaly, and used
+            # as a normal second opinion otherwise. ---
+            if confirmed_live:
+                try:
+                    live_url = recorder_service.get_live_url(room_id)
+                    confirmed_live = bool(live_url)
+                except Exception as e:
+                    logger.info(
+                        "Independent stream-URL check failed for @%s: %s", user.username, e,
+                    )
+                    confirmed_live = False
+
             if not confirmed_live:
                 logger.info(
                     "Live signal for @%s did not hold up on re-check; skipping this cycle",
@@ -971,6 +1029,8 @@ class MonitorService:
                 if self._stop_event.wait(timeout=self._INTER_USER_DELAY):
                     return
                 continue
+
+            confirmed_live_count += 1
 
             # --- User is live: notify on transition, then record ---
             if not user.is_live:
