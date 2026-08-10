@@ -32,6 +32,8 @@ from app.core.media_utils import (
     generate_sprite,
     generate_thumbnail,
     thumbnail_path,
+    thumbnail_media_type,
+    all_thumbnail_paths,
     analyze_video_health,
     repair_video,
     finalize_segments_to_mp4,
@@ -60,7 +62,7 @@ def _delete_recording_files(recording: Recording) -> list[str]:
 
     assets = [
         ("video", video_path),
-        ("thumbnail", thumbnail_path(video_path)),
+        *[("thumbnail", p) for p in all_thumbnail_paths(video_path)],
         ("sprite", video_path.with_name(video_path.stem + "_sprite.jpg")),
         ("sprite VTT", video_path.with_name(video_path.stem + "_sprite.vtt")),
     ]
@@ -256,9 +258,13 @@ def list_recordings(
         "duration": Recording.duration_seconds,
         "username": User.username,
     }
-    sort_col = sort_col_map.get(sort_by, Recording.created_at)
-    order = sort_col.asc() if sort_order == "asc" else sort_col.desc()
-    recordings = query.order_by(order).offset((page - 1) * page_size).limit(page_size).all()
+    if sort_by == "favorites":
+        # Favorites float to the top without excluding non-favorites.
+        order = (Recording.is_favorite.desc(), Recording.created_at.desc())
+    else:
+        sort_col = sort_col_map.get(sort_by, Recording.created_at)
+        order = (sort_col.asc() if sort_order == "asc" else sort_col.desc(),)
+    recordings = query.order_by(*order).offset((page - 1) * page_size).limit(page_size).all()
 
     return RecordingListResponse(
         recordings=[_build_response(rec) for rec in recordings],
@@ -451,7 +457,7 @@ def get_recording_live_url(recording_id: int, db: Session = Depends(get_db)):
         )
 
     try:
-        live_url = recorder_service.get_live_url(room_id)
+        live_url = recorder_service.get_live_url(room_id, username=recording.user.username)
     except RuntimeError as e:
         logger.warning("Live URL resolution failed for recording %d: %s", recording_id, e)
         raise HTTPException(
@@ -636,11 +642,22 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
     thumb_path = thumbnail_path(video_path)
 
     if not thumb_path.exists():
-        if not generate_thumbnail(video_path, thumb_path, recording.id):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Could not generate thumbnail for this recording",
-            )
+        # Try a single fast attempt inline first — covers the common case
+        # (e.g. a stale thumbnail_ready flag pointing at a since-deleted
+        # file) without the caller waiting through a full multi-attempt
+        # retry. Concurrent thumbnail generation is capped by a semaphore
+        # inside generate_thumbnail(), so a burst of these across many
+        # recordings at once (e.g. right after import) can't thrash the
+        # CPU the way an unbounded number of full retries would.
+        if not generate_thumbnail(video_path, thumb_path, recording.id, quick=True):
+            # Fall back to the full multi-attempt retry so this endpoint
+            # still eventually succeeds for harder cases (e.g. an odd
+            # keyframe layout) rather than surfacing a permanent failure.
+            if not generate_thumbnail(video_path, thumb_path, recording.id):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Could not generate thumbnail for this recording",
+                )
 
     if not recording.thumbnail_ready:
         recording.thumbnail_ready = True
@@ -656,7 +673,7 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
 
     return FileResponse(
         path=str(thumb_path),
-        media_type="image/jpeg",
+        media_type=thumbnail_media_type(thumb_path),
         content_disposition_type="inline",
         headers={
             "Cache-Control": "public, max-age=86400, must-revalidate",

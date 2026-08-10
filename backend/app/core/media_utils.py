@@ -114,57 +114,135 @@ def generate_recording_filename(username: str) -> str:
 # ----------------------------------------------------------------
 _sprite_sem = threading.Semaphore(2)
 
+# Thumbnail generation — at most 2 concurrent invocations. Without this,
+# a Watch/Clips grid with many not-yet-ready thumbnails can fire a burst of
+# concurrent ffmpeg processes (one per on-demand HTTP request), thrashing
+# CPU and making every request in the burst slower than if they ran
+# serially a few at a time.
+_thumbnail_sem = threading.Semaphore(2)
+
+# Cached probe for whether this ffmpeg build supports WebP encoding
+# (libwebp). Debian's official `ffmpeg` apt package — used in the runtime
+# image — is built with --enable-libwebp, but we still probe defensively
+# and fall back to JPEG so this never hard-fails on a stripped-down build.
+_webp_supported: bool | None = None
+_webp_probe_lock = threading.Lock()
+
+
+def _ffmpeg_supports_webp() -> bool:
+    global _webp_supported
+    if _webp_supported is not None:
+        return _webp_supported
+    with _webp_probe_lock:
+        if _webp_supported is not None:
+            return _webp_supported
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-encoders"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            _webp_supported = "libwebp" in (result.stdout or "")
+        except Exception:
+            _webp_supported = False
+    return _webp_supported
+
 
 # ----------------------------------------------------------------
 # Thumbnail helpers
 # ----------------------------------------------------------------
 
 def thumbnail_path(video_path: Path) -> Path:
-    """Return the expected filesystem path for a video's thumbnail JPEG."""
-    return video_path.with_suffix("").with_name(video_path.stem + "_thumb.jpg")
+    """Return the expected filesystem path for a video's thumbnail image.
+
+    Prefers WebP (smaller, faster to decode over the wire) when the
+    ffmpeg build supports it, falling back to JPEG otherwise. Existing
+    ``_thumb.jpg`` files from before WebP support keep working (their
+    ``thumbnail_ready`` DB flag is trusted as-is); they simply get replaced
+    by a ``_thumb.webp`` the next time they need to be (re)generated.
+    """
+    ext = "webp" if _ffmpeg_supports_webp() else "jpg"
+    return video_path.with_suffix("").with_name(f"{video_path.stem}_thumb.{ext}")
 
 
-def generate_thumbnail(video_path: Path, thumb_path: Path | None = None, recording_id: int | None = None) -> bool:
-    """Extract a single JPEG thumbnail from *video_path*.
+def thumbnail_media_type(thumb_path: Path) -> str:
+    """Return the correct Content-Type for a thumbnail path's extension."""
+    return "image/webp" if thumb_path.suffix.lower() == ".webp" else "image/jpeg"
+
+
+def all_thumbnail_paths(video_path: Path) -> list[Path]:
+    """Return every extension a thumbnail for *video_path* could exist under.
+
+    Since :func:`thumbnail_path` picks WebP or JPEG based on the current
+    ffmpeg build, a recording's on-disk thumbnail may be a leftover
+    ``.jpg`` from before WebP support was added. Callers that need to find
+    or delete "the" thumbnail regardless of which format produced it
+    (e.g. cleanup on recording delete) should check all of these.
+    """
+    stem = video_path.stem
+    return [
+        video_path.with_name(f"{stem}_thumb.webp"),
+        video_path.with_name(f"{stem}_thumb.jpg"),
+    ]
+
+
+def generate_thumbnail(
+    video_path: Path,
+    thumb_path: Path | None = None,
+    recording_id: int | None = None,
+    quick: bool = False,
+) -> bool:
+    """Extract a single thumbnail frame from *video_path* (WebP or JPEG).
 
     If *thumb_path* is not provided it is derived from *video_path* via
     :func:`thumbnail_path`.
 
     Tries several seek positions (1s, 0.5s, 2s, 0s) to handle very short
-    or oddly-structured videos.
+    or oddly-structured videos. Pass ``quick=True`` to only attempt the
+    first seek position with a short timeout — intended for synchronous,
+    request-blocking call sites (e.g. an on-demand HTTP fallback) where a
+    slow multi-attempt retry would stall the response; callers should kick
+    off a normal (non-quick) background retry separately in that case.
 
-    Returns ``True`` when a non-empty JPEG was written, ``False`` otherwise.
+    Returns ``True`` when a non-empty image was written, ``False`` otherwise.
     """
     if not video_path.exists():
         return False
 
     thumb = thumb_path or thumbnail_path(video_path)
     thumb.parent.mkdir(parents=True, exist_ok=True)
+    is_webp = thumb.suffix.lower() == ".webp"
 
-    seek_positions = ["1", "0.5", "2", "0"]
+    seek_positions = ["1"] if quick else ["1", "0.5", "2", "0"]
+    timeout = 8 if quick else 30
     success = False
 
-    for seek_time in seek_positions:
-        try:
-            subprocess.run(
-                [
+    with _thumbnail_sem:
+        for seek_time in seek_positions:
+            try:
+                cmd = [
                     "ffmpeg", "-y",
                     "-ss", seek_time,
                     "-i", str(video_path),
                     "-vframes", "1",
                     "-vf", "scale=480:-2",
-                    str(thumb),
-                ],
-                capture_output=True,
-                timeout=30,
-            )
-            if thumb.exists() and thumb.stat().st_size > 0:
-                success = True
-                break
-        except Exception as exc:
-            logger.warning("Thumbnail seek=%s failed for %s: %s",
-                           seek_time, video_path, exc)
-            continue
+                ]
+                if is_webp:
+                    cmd += ["-c:v", "libwebp", "-lossless", "0", "-quality", "80"]
+                cmd.append(str(thumb))
+                subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    timeout=timeout,
+                )
+                if thumb.exists() and thumb.stat().st_size > 0:
+                    success = True
+                    break
+            except Exception as exc:
+                logger.warning("Thumbnail seek=%s failed for %s: %s",
+                               seek_time, video_path, exc)
+                continue
 
     if success and recording_id is not None:
         try:

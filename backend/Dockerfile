@@ -22,19 +22,19 @@ RUN uv pip install --system --no-cache --prerelease=allow -r requirements.txt
 # Vendor the TikTok recorder into the image so it is always present,
 # independent of the host filesystem / git state.
 #
-# Pinned to a specific commit SHA rather than a tag or "main": every tagged
-# release up to and including 8.0.0 ships a naive is_room_alive() that trusts
-# a single "check_alive" boolean with no cross-check, causing ended rooms to
-# be reported as still live (root cause of recordings starting/running for
-# users who are not actually live). The maintainer fixed this upstream in
-# commit 98dfde24 ("fix: reject ended TikTok rooms with stale streams") and a
-# same-day follow-up 898c2320 ("fix: try alternate live stream urls") — but
-# neither has been tagged in a release yet. Pinning to the exact commit SHA
-# (instead of floating "main") gets today's real fix while keeping the build
-# reproducible and immune to unrelated future drift. Re-evaluate and switch
-# back to tracking tags once this fix ships in an official release:
-# https://github.com/Michele0303/tiktok-live-recorder/releases
-ARG TIKTOK_RECORDER_REF=898c2320c07674f7cd8b1d5f198da80091fef2a1
+# Pinned to a specific commit SHA (rather than "main") for reproducible
+# builds. This SHA is the commit tagged as the official "7.7.1" release,
+# which contains the fix for a TikTok-side regression where the
+# `webcast/room/check_alive` endpoint started reporting every room as
+# `alive: true`, making is_room_alive() false-positive and start recordings
+# for users who were not actually live (upstream issue #454). The 7.7.0
+# release's first attempt at this fix was confirmed still broken by
+# multiple reporters; 7.7.1 (this pin) was confirmed fixed. It also carries
+# the "restricted LIVE" fallback (page-scraping when TikTok's webcast API
+# returns status 4003110) — see recorder_service.get_live_url()'s `username`
+# param, which is now threaded through so that fallback can actually engage.
+# https://github.com/Michele0303/tiktok-live-recorder/releases/tag/7.7.1
+ARG TIKTOK_RECORDER_REF=17ef2abfe7759944546a2545fe1a5cc1779ed388
 RUN git init /app/tiktok-live-recorder && \
     cd /app/tiktok-live-recorder && \
     git remote add origin https://github.com/Michele0303/tiktok-live-recorder.git && \

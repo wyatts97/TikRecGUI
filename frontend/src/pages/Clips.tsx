@@ -1,21 +1,47 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Scissors, Loader2, Search, Heart, Download, Trash2, X, Package } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { Play, Scissors, Loader2, Search, Heart, Download, Trash2, X, Package, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Card } from '@/components/selia/card'
 import { Button } from '@/components/selia/button'
 import { Checkbox } from '@/components/selia/checkbox'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
+import { Pagination, PaginationList, PaginationItem, PaginationButton } from '@/components/selia/pagination'
 import EmptyState from '@/components/EmptyState'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { api, type Clip } from '@/lib/api'
 import { cn, formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import toast from 'react-hot-toast'
 
 const ITEMS_PER_PAGE = 12
+
+// Frontend sort labels map onto the backend's (sort_by, sort_order) vocabulary.
+// "favorites" is handled specially server-side (floats favorites to the top
+// without excluding non-favorites), so it needs no sort_order.
+const SORT_MAP: Record<string, { sortBy: string; sortOrder?: string }> = {
+  newest: { sortBy: 'date', sortOrder: 'desc' },
+  oldest: { sortBy: 'date', sortOrder: 'asc' },
+  longest: { sortBy: 'duration', sortOrder: 'desc' },
+  shortest: { sortBy: 'duration', sortOrder: 'asc' },
+  largest: { sortBy: 'size', sortOrder: 'desc' },
+  favorites: { sortBy: 'favorites' },
+}
+
+function getPageNumbers(page: number, totalPages: number): (number | 'ellipsis')[] {
+  const pages: (number | 'ellipsis')[] = []
+  const add = (p: number) => pages.push(p)
+  const window = 1
+  add(1)
+  if (page - window > 2) pages.push('ellipsis')
+  for (let p = Math.max(2, page - window); p <= Math.min(totalPages - 1, page + window); p++) add(p)
+  if (page + window < totalPages - 1) pages.push('ellipsis')
+  if (totalPages > 1) add(totalPages)
+  return pages
+}
 
 export default function Clips() {
   const fmt = useDateFormat()
@@ -24,6 +50,8 @@ export default function Clips() {
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300)
 
   const queryClient = useQueryClient()
 
@@ -87,13 +115,15 @@ export default function Clips() {
     }
   }
 
+  const queryKey = ['clips', page, sortBy, debouncedSearch] as const
+
   const toggleFavoriteMutation = useMutation({
     mutationFn: (id: number) => api.clips.toggleFavorite(id),
     // Optimistic update: flip the flag instantly, roll back on error.
     onMutate: async (id: number) => {
-      await queryClient.cancelQueries({ queryKey: ['clips', page, sortBy] })
-      const previous = queryClient.getQueryData(['clips', page, sortBy])
-      queryClient.setQueryData(['clips', page, sortBy], (old: any) => {
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData(queryKey)
+      queryClient.setQueryData(queryKey, (old: any) => {
         if (!old) return old
         return {
           ...old,
@@ -106,35 +136,24 @@ export default function Clips() {
     },
     onError: (_err, _id, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['clips', page, sortBy], context.previous)
+        queryClient.setQueryData(queryKey, context.previous)
       }
       toast.error('Failed to update favorite')
     },
   })
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['clips', page, sortBy],
-    queryFn: () => api.clips.list(page, ITEMS_PER_PAGE, sortBy),
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey,
+    queryFn: () =>
+      api.clips.list(page, ITEMS_PER_PAGE, SORT_MAP[sortBy]?.sortBy, SORT_MAP[sortBy]?.sortOrder, undefined, {
+        search: debouncedSearch || undefined,
+      }),
+    placeholderData: keepPreviousData,
   })
 
-  const allClips = data?.clips || []
-
-  const filtered = useMemo(() => {
-    let items = [...allClips]
-
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      items = items.filter((c) =>
-        c.username.toLowerCase().includes(q) ||
-        (c.title && c.title.toLowerCase().includes(q))
-      )
-    }
-
-    return items
-  }, [allClips, searchQuery])
-
-  const totalPages = Math.ceil((data?.total || 0) / ITEMS_PER_PAGE)
-  const clips = searchQuery.trim() ? filtered : allClips
+  const clips = useMemo(() => data?.clips || [], [data])
+  const total = data?.total || 0
+  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
 
   const handleSearch = (val: string) => {
     setSearchQuery(val)
@@ -190,8 +209,7 @@ export default function Clips() {
           Download All
         </Button>
         <span className="text-xs text-muted-foreground">
-          {data?.total || 0} clip{(data?.total || 0) !== 1 ? 's' : ''}
-          {searchQuery.trim() && ` (${filtered.length} match${filtered.length !== 1 ? 'es' : ''})`}
+          {total} clip{total !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -234,7 +252,9 @@ export default function Clips() {
         />
       ) : (
         <>
-          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <StaggerContainer
+            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 transition-opacity ${isFetching ? 'opacity-60' : ''}`}
+          >
             {clips.map((clip) => (
               <StaggerItem key={clip.id}>
               <Card
@@ -345,27 +365,41 @@ export default function Clips() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                Next
-              </Button>
-            </div>
+            <Pagination className="pt-4">
+              <PaginationList>
+                <PaginationItem>
+                  <PaginationButton
+                    disabled={page === 1}
+                    onClick={() => page > 1 && setPage((p) => p - 1)}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </PaginationButton>
+                </PaginationItem>
+                {getPageNumbers(page, totalPages).map((p, i) =>
+                  p === 'ellipsis' ? (
+                    <PaginationItem key={`ellipsis-${i}`}>
+                      <span className="px-2 text-sm text-muted-foreground">…</span>
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={p}>
+                      <PaginationButton active={p === page} onClick={() => setPage(p)}>
+                        {p}
+                      </PaginationButton>
+                    </PaginationItem>
+                  )
+                )}
+                <PaginationItem>
+                  <PaginationButton
+                    disabled={page === totalPages}
+                    onClick={() => page < totalPages && setPage((p) => p + 1)}
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </PaginationButton>
+                </PaginationItem>
+              </PaginationList>
+            </Pagination>
           )}
         </>
       )}

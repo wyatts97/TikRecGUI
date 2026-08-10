@@ -71,16 +71,20 @@ class RecorderService:
         except Exception:
             return None
     
-    def get_live_url(self, room_id: str) -> str:
+    def get_live_url(self, room_id: str, username: str | None = None) -> str:
         """Resolve a fresh live-stream URL for *room_id*.
 
         Raises an exception with a useful message if the room is not live,
         restricted, or the API call fails. Callers can therefore surface the
         real reason instead of a generic "could not get URL" failure.
+
+        Passing *username* lets the recorder fall back to scraping the live
+        page directly when TikTok's webcast API returns a restricted-access
+        response (status 4003110), instead of failing outright.
         """
         api = self.get_api()
         try:
-            url = api.get_live_url(room_id)
+            url = api.get_live_url(room_id, user=username)
         except Exception as e:
             logger.warning("Failed to resolve live URL for room %s: %s", room_id, e)
             raise RuntimeError(f"Failed to resolve live URL: {e}") from e

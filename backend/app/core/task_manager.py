@@ -108,16 +108,18 @@ def _check_live_with_backoff(
     return False, None
 
 
-def _resolve_fresh_live_url(room_id: str, api: object) -> str | None:
+def _resolve_fresh_live_url(room_id: str, api: object, username: str | None = None) -> str | None:
     """Resolve a fresh live URL for an active room_id.
 
     TikTok live URLs expire quickly; this re-fetches a brand new URL that can be
-    used to start the next segment.
+    used to start the next segment. Passing *username* lets the recorder fall
+    back to scraping the live page directly when TikTok's webcast API returns
+    a restricted-access response (status 4003110).
     """
     try:
         if not api.is_room_alive(room_id):
             return None
-        url = api.get_live_url(room_id)
+        url = api.get_live_url(room_id, user=username)
         return url
     except Exception as exc:
         logger.debug("Failed to resolve fresh URL for room %s: %s", room_id, exc)
@@ -267,7 +269,7 @@ class RecordingTask:
             _update_recording_status(self.recording_id, "failed", "User is not live")
             return
 
-        live_url = api.get_live_url(self.room_id)
+        live_url = api.get_live_url(self.room_id, user=self.username)
         if not live_url:
             _update_recording_status(self.recording_id, "failed", "Could not get live stream URL")
             return
@@ -470,7 +472,7 @@ class RecordingTask:
                     break
 
                 # User is still live — refresh the URL and resume.
-                fresh_url = _resolve_fresh_live_url(fresh_room_id, api)
+                fresh_url = _resolve_fresh_live_url(fresh_room_id, api, self.username)
                 if not fresh_url:
                     logger.warning(
                         "Recording %d: user still live but could not resolve fresh URL; retrying",
@@ -1006,7 +1008,7 @@ class MonitorService:
             # as a normal second opinion otherwise. ---
             if confirmed_live:
                 try:
-                    live_url = recorder_service.get_live_url(room_id)
+                    live_url = recorder_service.get_live_url(room_id, username=user.username)
                     confirmed_live = bool(live_url)
                 except Exception as e:
                     logger.info(

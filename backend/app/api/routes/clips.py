@@ -10,12 +10,12 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse, Response
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db.database import get_db, run_background
-from app.db.models import Recording, Clip
+from app.db.models import Recording, Clip, User
 from app.schemas.recording import (
     ClipCreate,
     ClipResponse,
@@ -26,6 +26,8 @@ from app.core.media_utils import (
     create_clip,
     generate_thumbnail,
     thumbnail_path,
+    thumbnail_media_type,
+    all_thumbnail_paths,
     generate_sprite,
 )
 
@@ -70,7 +72,7 @@ def _delete_clip_files(clip: Clip) -> list[str]:
 
     assets = [
         ("video", video_path),
-        ("thumbnail", thumbnail_path(video_path)),
+        *[("thumbnail", p) for p in all_thumbnail_paths(video_path)],
         ("sprite", video_path.with_name(video_path.stem + "_sprite.jpg")),
         ("sprite VTT", video_path.with_name(video_path.stem + "_sprite.vtt")),
     ]
@@ -236,16 +238,36 @@ def list_clips(
     sort_by: str = "date",
     sort_order: str = "desc",
     recording_id: int | None = None,
+    search: str | None = None,
+    favorites_only: bool = False,
     db: Session = Depends(get_db)
 ):
     # Eagerly load the recording relationship so _build_clip_response
     # can access clip.recording.username without detached errors.
-    query = db.query(Clip).options(joinedload(Clip.recording).joinedload(Recording.user))
-    count_query = db.query(func.count()).select_from(Clip)
+    query = (
+        db.query(Clip)
+        .join(Recording, Clip.recording_id == Recording.id)
+        .join(User, Recording.user_id == User.id)
+        .options(joinedload(Clip.recording).joinedload(Recording.user))
+    )
+    count_query = (
+        db.query(func.count())
+        .select_from(Clip)
+        .join(Recording, Clip.recording_id == Recording.id)
+        .join(User, Recording.user_id == User.id)
+    )
 
     if recording_id is not None:
         query = query.filter(Clip.recording_id == recording_id)
         count_query = count_query.filter(Clip.recording_id == recording_id)
+    if search:
+        like_pat = f"%{search}%"
+        search_filter = or_(User.username.ilike(like_pat), Clip.title.ilike(like_pat))
+        query = query.filter(search_filter)
+        count_query = count_query.filter(search_filter)
+    if favorites_only:
+        query = query.filter(Clip.is_favorite == True)
+        count_query = count_query.filter(Clip.is_favorite == True)
 
     total = count_query.scalar() or 0
 
@@ -254,10 +276,14 @@ def list_clips(
         "duration": Clip.duration_seconds,
         "size": Clip.file_size,
     }
-    sort_col = sort_col_map.get(sort_by, Clip.created_at)
-    order = sort_col.asc() if sort_order == "asc" else sort_col.desc()
+    if sort_by == "favorites":
+        # Favorites float to the top without excluding non-favorites.
+        order = (Clip.is_favorite.desc(), Clip.created_at.desc())
+    else:
+        sort_col = sort_col_map.get(sort_by, Clip.created_at)
+        order = (sort_col.asc() if sort_order == "asc" else sort_col.desc(),)
 
-    clips = query.order_by(order).offset((page - 1) * page_size).limit(page_size).all()
+    clips = query.order_by(*order).offset((page - 1) * page_size).limit(page_size).all()
 
     # Refresh thumbnail/sprite flags in-memory (do NOT modify detached objects)
     for clip in clips:
@@ -399,11 +425,15 @@ def thumbnail_clip(clip_id: int, db: Session = Depends(get_db)):
     thumb_path = thumbnail_path(video_path)
 
     if not thumb_path.exists():
-        if not generate_thumbnail(video_path, thumb_path):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Could not generate thumbnail for this clip"
-            )
+        # Fast attempt first (throttled by a semaphore inside
+        # generate_thumbnail), fall back to the full multi-attempt retry —
+        # see recordings.py thumbnail endpoint for rationale.
+        if not generate_thumbnail(video_path, thumb_path, quick=True):
+            if not generate_thumbnail(video_path, thumb_path):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Could not generate thumbnail for this clip"
+                )
 
     # Revalidatable cache — see recordings.py thumbnail endpoint for rationale.
     stat = thumb_path.stat()
@@ -412,7 +442,7 @@ def thumbnail_clip(clip_id: int, db: Session = Depends(get_db)):
 
     return FileResponse(
         path=str(thumb_path),
-        media_type="image/jpeg",
+        media_type=thumbnail_media_type(thumb_path),
         content_disposition_type="inline",
         headers={
             "Cache-Control": "public, max-age=86400, must-revalidate",

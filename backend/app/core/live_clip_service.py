@@ -46,7 +46,7 @@ class LiveClipTask:
         self._thread.start()
 
     def _run(self) -> None:
-        live_url = recorder_service.get_live_url(self.room_id)
+        live_url = recorder_service.get_live_url(self.room_id, username=self.username)
         if not live_url:
             self.error = "Could not resolve live stream URL"
             self._ready.set()

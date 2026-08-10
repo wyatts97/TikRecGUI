@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.core.settings_store import settings_store
+from app.core.media_utils import all_thumbnail_paths
 from app.db.database import get_session
 from app.db.models import Recording
 
@@ -43,7 +44,7 @@ class CleanupService:
 
         assets = [
             file_path,
-            file_path.with_name(file_path.stem + "_thumb.jpg"),
+            *all_thumbnail_paths(file_path),
             file_path.with_name(file_path.stem + "_sprite.jpg"),
             file_path.with_name(file_path.stem + "_sprite.vtt"),
         ]

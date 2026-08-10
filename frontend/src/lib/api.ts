@@ -471,7 +471,17 @@ export const api = {
         body: JSON.stringify(data),
       }),
 
-    list: (page = 1, pageSize = 20, sortBy?: string, sortOrder?: string, recordingId?: number) => {
+    list: (
+      page = 1,
+      pageSize = 20,
+      sortBy?: string,
+      sortOrder?: string,
+      recordingId?: number,
+      filters?: {
+        search?: string
+        favoritesOnly?: boolean
+      }
+    ) => {
       const params = new URLSearchParams({
         page: page.toString(),
         page_size: pageSize.toString(),
@@ -479,6 +489,8 @@ export const api = {
       if (sortBy) params.set("sort_by", sortBy)
       if (sortOrder) params.set("sort_order", sortOrder)
       if (recordingId != null) params.set("recording_id", recordingId.toString())
+      if (filters?.search) params.set("search", filters.search)
+      if (filters?.favoritesOnly) params.set("favorites_only", "true")
       return fetchApi<ClipListResponse>(`/clips?${params}`)
     },
 

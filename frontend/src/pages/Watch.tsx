@@ -1,18 +1,44 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Tv, Search, Trash2, Download, X, Package } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
+import { Tv, Search, Trash2, Download, X, Package, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
+import { Pagination, PaginationList, PaginationItem, PaginationButton } from '@/components/selia/pagination'
 import EmptyState from '@/components/EmptyState'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { RecordingVideoCard } from '@/components/ui/recording-video-card'
 import { api, type Recording } from '@/lib/api'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import toast from 'react-hot-toast'
 
 const ITEMS_PER_PAGE = 12
+
+// Frontend sort labels map onto the backend's (sort_by, sort_order) vocabulary.
+// "favorites" is handled specially server-side (floats favorites to the top
+// without excluding non-favorites), so it needs no sort_order.
+const SORT_MAP: Record<string, { sortBy: string; sortOrder?: string }> = {
+  newest: { sortBy: 'date', sortOrder: 'desc' },
+  oldest: { sortBy: 'date', sortOrder: 'asc' },
+  longest: { sortBy: 'duration', sortOrder: 'desc' },
+  shortest: { sortBy: 'duration', sortOrder: 'asc' },
+  largest: { sortBy: 'size', sortOrder: 'desc' },
+  favorites: { sortBy: 'favorites' },
+}
+
+function getPageNumbers(page: number, totalPages: number): (number | 'ellipsis')[] {
+  const pages: (number | 'ellipsis')[] = []
+  const add = (p: number) => pages.push(p)
+  const window = 1
+  add(1)
+  if (page - window > 2) pages.push('ellipsis')
+  for (let p = Math.max(2, page - window); p <= Math.min(totalPages - 1, page + window); p++) add(p)
+  if (page + window < totalPages - 1) pages.push('ellipsis')
+  if (totalPages > 1) add(totalPages)
+  return pages
+}
 
 export default function Watch() {
   const navigate = useNavigate()
@@ -20,6 +46,8 @@ export default function Watch() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
+
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300)
 
   const [repairingId, setRepairingId] = useState<number | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -43,7 +71,7 @@ export default function Watch() {
     onSuccess: (res) => {
       toast.success(`${res.deleted} recording${res.deleted !== 1 ? 's' : ''} deleted`)
       clearSelection()
-      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+      queryClient.invalidateQueries({ queryKey: ['recordings', 'watch'] })
     },
     onError: (err: any) => {
       toast.error(err.message || 'Batch delete failed')
@@ -84,13 +112,15 @@ export default function Watch() {
     }
   }
 
+  const queryKey = ['recordings', 'watch', page, sortBy, debouncedSearch] as const
+
   const toggleFavoriteMutation = useMutation({
     mutationFn: (id: number) => api.recordings.toggleFavorite(id),
     // Optimistic update: flip the flag instantly, roll back on error.
     onMutate: async (id: number) => {
-      await queryClient.cancelQueries({ queryKey: ['recordings', 'watchable'] })
-      const previous = queryClient.getQueryData(['recordings', 'watchable'])
-      queryClient.setQueryData(['recordings', 'watchable'], (old: any) => {
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData(queryKey)
+      queryClient.setQueryData(queryKey, (old: any) => {
         if (!old) return old
         return {
           ...old,
@@ -103,7 +133,7 @@ export default function Watch() {
     },
     onError: (_err, _id, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(['recordings', 'watchable'], context.previous)
+        queryClient.setQueryData(queryKey, context.previous)
       }
       toast.error('Failed to update favorite')
     },
@@ -113,7 +143,7 @@ export default function Watch() {
     setRepairingId(id)
     try {
       const updated = await api.recordings.repair(id)
-      queryClient.setQueryData(['recordings', 'watchable'], (old: any) => {
+      queryClient.setQueryData(queryKey, (old: any) => {
         if (!old) return old
         return {
           ...old,
@@ -130,53 +160,23 @@ export default function Watch() {
     }
   }
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['recordings', 'watchable'],
-    queryFn: () => api.recordings.list(1, 200, 'completed,stopped,failed'),
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey,
+    queryFn: () =>
+      api.recordings.list(page, ITEMS_PER_PAGE, 'completed,stopped,failed', undefined, {
+        ...SORT_MAP[sortBy],
+        usernameFilter: debouncedSearch || undefined,
+      }),
+    placeholderData: keepPreviousData,
     refetchInterval: (query) => {
       const recs = query.state.data?.recordings ?? []
       return recs.some((r) => !r.thumbnail_ready) ? 5000 : false
     },
   })
 
-  const allRecordings = data?.recordings || []
-
-  const filtered = useMemo(() => {
-    let items = [...allRecordings]
-
-    // Filter by username
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      items = items.filter((r) => r.username.toLowerCase().includes(q))
-    }
-
-    // Sort
-    items.sort((a, b) => {
-      switch (sortBy) {
-        case 'favorites':
-          if (a.is_favorite && !b.is_favorite) return -1
-          if (!a.is_favorite && b.is_favorite) return 1
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        case 'newest':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        case 'oldest':
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case 'longest':
-          return (b.duration_seconds || 0) - (a.duration_seconds || 0)
-        case 'shortest':
-          return (a.duration_seconds || 0) - (b.duration_seconds || 0)
-        case 'largest':
-          return (b.file_size || 0) - (a.file_size || 0)
-        default:
-          return 0
-      }
-    })
-
-    return items
-  }, [allRecordings, searchQuery, sortBy])
-
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE)
-  const recordings = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
+  const recordings = useMemo(() => data?.recordings || [], [data])
+  const total = data?.total || 0
+  const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
 
   // Reset to page 1 when filters change
   const handleSearch = (val: string) => {
@@ -233,7 +233,7 @@ export default function Watch() {
           Download All
         </Button>
         <span className="text-xs text-muted-foreground">
-          {filtered.length} recording{filtered.length !== 1 ? 's' : ''}
+          {total} recording{total !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -276,7 +276,9 @@ export default function Watch() {
         />
       ) : (
         <>
-          <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <StaggerContainer
+            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 transition-opacity ${isFetching ? 'opacity-60' : ''}`}
+          >
             {recordings.map((recording) => (
               <StaggerItem key={recording.id}>
               <RecordingVideoCard
@@ -313,27 +315,41 @@ export default function Watch() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-              >
-                Next
-              </Button>
-            </div>
+            <Pagination className="pt-4">
+              <PaginationList>
+                <PaginationItem>
+                  <PaginationButton
+                    disabled={page === 1}
+                    onClick={() => page > 1 && setPage((p) => p - 1)}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </PaginationButton>
+                </PaginationItem>
+                {getPageNumbers(page, totalPages).map((p, i) =>
+                  p === 'ellipsis' ? (
+                    <PaginationItem key={`ellipsis-${i}`}>
+                      <span className="px-2 text-sm text-muted-foreground">…</span>
+                    </PaginationItem>
+                  ) : (
+                    <PaginationItem key={p}>
+                      <PaginationButton active={p === page} onClick={() => setPage(p)}>
+                        {p}
+                      </PaginationButton>
+                    </PaginationItem>
+                  )
+                )}
+                <PaginationItem>
+                  <PaginationButton
+                    disabled={page === totalPages}
+                    onClick={() => page < totalPages && setPage((p) => p + 1)}
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </PaginationButton>
+                </PaginationItem>
+              </PaginationList>
+            </Pagination>
           )}
         </>
       )}

@@ -15,4 +15,4 @@ alembic>=1.13
 aiosqlite>=0.20
 psutil>=6.0.0
 faster-whisper>=1.0.3
-TikTokLive>=6.6.0
+TikTokLive>=6.6.6
