@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageCircle, Search, Loader2 } from 'lucide-react'
 import { Input } from 'components/selia/input'
 import { api } from '@/lib/api'
@@ -44,15 +45,26 @@ export default function ChatPanel({
 
   const events = eventsData?.events ?? []
 
-  const filteredEvents = chatSearch
-    ? events.filter((ev: LiveEvent) => {
-        const q = chatSearch.toLowerCase()
-        if (ev.user_nickname.toLowerCase().includes(q)) return true
-        if (ev.content?.toLowerCase().includes(q)) return true
-        if (ev.gift_name?.toLowerCase().includes(q)) return true
-        return false
-      })
-    : events
+  // Memoised: this component polls every 3 seconds, and the filter previously
+  // re-ran over up to 500 events on every render.
+  const filteredEvents = useMemo(() => {
+    if (!chatSearch) return events
+    const q = chatSearch.toLowerCase()
+    return events.filter((ev: LiveEvent) =>
+      ev.user_nickname.toLowerCase().includes(q) ||
+      ev.content?.toLowerCase().includes(q) ||
+      ev.gift_name?.toLowerCase().includes(q)
+    )
+  }, [events, chatSearch])
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const virtualizer = useVirtualizer({
+    count: filteredEvents.length,
+    getScrollElement: () => scrollRef.current,
+    // Rows are one line most of the time; measureElement corrects the rest.
+    estimateSize: () => 22,
+    overscan: 12,
+  })
 
   const content = (
     <>
@@ -109,10 +121,26 @@ export default function ChatPanel({
         </div>
       )}
 
-      {/* Events list */}
+      {/* Events list -- virtualised: a busy stream returns 500 events and
+          rendering every one of them made the 3s poll janky. */}
       {filteredEvents.length > 0 && (
-        <div className="font-mono text-xs space-y-1">
-          {filteredEvents.map((ev: LiveEvent) => (
+        <div ref={scrollRef} className="font-mono text-xs overflow-y-auto max-h-[60vh]">
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const ev = filteredEvents[virtualRow.index]
+            return (
+            <div
+              key={ev.id}
+              ref={virtualizer.measureElement}
+              data-index={virtualRow.index}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
             <p key={ev.id} className={`leading-relaxed ${ev.event_type === 'gift' ? 'text-amber-600 dark:text-amber-400' : ''}`}>
               <button
                 onClick={() => onSeek?.(ev.offset_seconds)}
@@ -138,7 +166,10 @@ export default function ChatPanel({
                 </>
               )}
             </p>
-          ))}
+            </div>
+            )
+          })}
+          </div>
         </div>
       )}
     </>

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { tabListKeyDown, tabProps, tabPanelProps } from '@/lib/a11y'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, LoaderCircle, Radio, Square, Tv, Calendar, Clock, MessageCircle, Scissors } from 'lucide-react'
 import { Button } from '@/components/selia/button'
@@ -12,12 +13,15 @@ import FlvPlayer from '@/components/FlvPlayer'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import toast from 'react-hot-toast'
 
+const LIVE_TABS = ['player', 'chat'] as const
+
 export default function LivePlayer() {
   const fmt = useDateFormat()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const recordingId = Number(id)
+  const [chatSearch, setChatSearch] = useState('')
   const [showChat, setShowChat] = useState(false)
   const [liveUrl, setLiveUrl] = useState<string | null>(null)
   const [streamType, setStreamType] = useState<'hls' | 'flv' | 'rtmp'>('flv')
@@ -297,9 +301,19 @@ export default function LivePlayer() {
 
           {/* Mobile chat */}
           <div className="lg:hidden border border-border rounded-xl overflow-hidden">
-            <div className="flex border-b border-border bg-muted/40">
+            <div
+              className="flex border-b border-border bg-muted/40"
+              role="tablist"
+              aria-label="Player views"
+              onKeyDown={tabListKeyDown(
+                LIVE_TABS,
+                showChat ? 'chat' : 'player',
+                (next) => setShowChat(next === 'chat'),
+              )}
+            >
               <button
                 onClick={() => setShowChat(false)}
+                {...tabProps('player', !showChat)}
                 className={`px-4 py-2.5 text-sm font-medium transition-colors ${
                   !showChat
                     ? 'bg-background text-primary border-b-2 border-primary -mb-px'
@@ -310,6 +324,7 @@ export default function LivePlayer() {
               </button>
               <button
                 onClick={() => setShowChat(true)}
+                {...tabProps('chat', showChat)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
                   showChat
                     ? 'bg-background text-primary border-b-2 border-primary -mb-px'
@@ -321,28 +336,31 @@ export default function LivePlayer() {
               </button>
             </div>
             {showChat && (
+              <div {...tabPanelProps('chat')}>
               <ChatPanel
                 recording={recording}
-                chatSearch=""
-                onChatSearchChange={() => {}}
+                chatSearch={chatSearch}
+                onChatSearchChange={setChatSearch}
                 onSeek={handleSeek}
                 variant="inline"
               />
+              </div>
             )}
           </div>
         </div>
 
         {/* Desktop sidebar chat */}
+        {/* No wrapper: the "panel" variant already supplies its own border,
+            width and background -- wrapping it nested two borders and left the
+            two widths fighting. */}
         {showChat && (
-          <div className="hidden lg:flex lg:flex-col w-96 shrink-0 border border-border rounded-xl bg-card overflow-hidden">
-            <ChatPanel
-              recording={recording}
-              chatSearch=""
-              onChatSearchChange={() => {}}
-              onSeek={handleSeek}
-              variant="panel"
-            />
-          </div>
+          <ChatPanel
+            recording={recording}
+            chatSearch={chatSearch}
+            onChatSearchChange={setChatSearch}
+            onSeek={handleSeek}
+            variant="panel"
+          />
         )}
       </div>
     </div>

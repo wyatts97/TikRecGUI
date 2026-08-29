@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { clickable } from '@/lib/a11y'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Radio, Tv, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react'
+import { Radio, Tv, ArrowRight, RefreshCw, AlertCircle, Play } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { api, ActiveRecording } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
@@ -19,12 +19,16 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
   const [, setIsLoading] = useState(true)
   const [playerError, setPlayerError] = useState(false)
 
+  // Playback is opt-in per card. Every card used to mount an autoplaying
+  // decoder, so N concurrent recordings meant N simultaneous MSE/HLS streams
+  // decoding at once plus N 30-second polls for a stream URL nobody watched.
+  const [isPlaying, setIsPlaying] = useState(false)
+
   const fetchLiveUrl = useCallback(async () => {
     setIsLoading(true)
     setUrlError(false)
     try {
       const { live_url, type } = await api.recordings.getLiveUrl(recording.id)
-      console.debug('[Live] stream URL for', recording.username, ':', live_url, type)
       setLiveUrl(live_url)
       setStreamType(type)
       setPlayerError(false)
@@ -36,16 +40,18 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
   }, [recording.id])
 
   useEffect(() => {
+    if (!isPlaying) return
+    // TikTok's stream URLs expire, so refresh while actually playing.
     fetchLiveUrl()
     const interval = setInterval(fetchLiveUrl, 30000)
     return () => clearInterval(interval)
-  }, [fetchLiveUrl])
+  }, [isPlaying, fetchLiveUrl])
 
   const elapsed = recording.duration_seconds
     ? formatDuration(recording.duration_seconds)
     : '--:--'
 
-  const showPlayer = liveUrl && !urlError && !playerError
+  const showPlayer = isPlaying && liveUrl && !urlError && !playerError
   const showError = urlError || playerError
 
   return (
@@ -86,11 +92,26 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
                   Retry
                 </Button>
               </>
-            ) : (
+            ) : isPlaying ? (
               <>
-                <Tv className="h-8 w-8 text-gray-500 mb-2 animate-pulse" />
+                <Tv className="h-8 w-8 text-gray-500 mb-2 animate-pulse motion-reduce:animate-none" />
                 <p className="text-gray-500 text-xs">Loading stream…</p>
               </>
+            ) : (
+              <button
+                type="button"
+                className="flex flex-col items-center gap-2 text-gray-400 hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary rounded-lg p-3"
+                aria-label={`Play @${recording.username}'s live stream`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setIsPlaying(true)
+                }}
+              >
+                <span className="flex items-center justify-center h-12 w-12 rounded-full bg-white/10">
+                  <Play className="h-6 w-6 fill-current" aria-hidden="true" />
+                </span>
+                <span className="text-xs font-medium">Watch stream</span>
+              </button>
             )}
           </div>
         )}

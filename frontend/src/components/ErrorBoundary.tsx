@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, Fragment, type ErrorInfo, type ReactNode } from 'react'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from 'components/selia/button'
 
@@ -10,15 +10,17 @@ interface Props {
 interface State {
   hasError: boolean
   error: Error | null
+  /** Bumped on retry to force the children to remount. */
+  resetKey: number
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props)
-    this.state = { hasError: false, error: null }
+    this.state = { hasError: false, error: null, resetKey: 0 }
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error }
   }
 
@@ -27,7 +29,13 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = () => {
-    this.setState({ hasError: false, error: null })
+    // Bumping the key remounts the subtree. Clearing hasError alone just
+    // re-rendered the same children, which threw again immediately.
+    this.setState((prev) => ({
+      hasError: false,
+      error: null,
+      resetKey: prev.resetKey + 1,
+    }))
   }
 
   render() {
@@ -49,6 +57,7 @@ export default class ErrorBoundary extends Component<Props, State> {
       )
     }
 
-    return this.props.children
+    // The key makes "Try again" actually remount the subtree.
+    return <Fragment key={this.state.resetKey}>{this.props.children}</Fragment>
   }
 }

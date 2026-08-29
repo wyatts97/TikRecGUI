@@ -1,22 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  Users,
-  Video,
-  Settings,
-  Radio,
-  Tv,
-  Scissors,
-  Circle,
-  Menu,
-  X,
-  PanelLeft,
-  Timer,
-  Search,
-  BarChart3,
-  Database,
-} from 'lucide-react'
+// Nav icons now come from lib/nav.ts; these are the chrome-only ones.
+import { Radio, Circle, Menu, X, PanelLeft } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -24,27 +9,16 @@ import { api } from '@/lib/api'
 import { PageTransition } from '@/components/motion'
 import CommandPalette from '@/components/CommandPalette'
 import NotificationCenter from '@/components/NotificationCenter'
+import MonitorCountdown from '@/components/MonitorCountdown'
 import { useNotificationStream } from '@/hooks/useNotificationStream'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/selia/tooltip'
+import { NAV_ITEMS as navItems } from '@/lib/nav'
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/watchlist', icon: Users, label: 'Watchlist' },
-  { to: '/recordings', icon: Video, label: 'Recordings' },
-  { to: '/watch', icon: Tv, label: 'Watch' },
-  { to: '/live', icon: Radio, label: 'Live' },
-  { to: '/clips', icon: Scissors, label: 'Clips' },
-  { to: '/stats', icon: BarChart3, label: 'Stats' },
-  { to: '/search', icon: Search, label: 'Search' },
-  { to: '/storage', icon: Database, label: 'Storage' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
-]
 
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const [countdown, setCountdown] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [miniMode, setMiniMode] = useState(false)
 
@@ -79,23 +53,9 @@ export default function Layout() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['monitorStatus'] })
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      setCountdown(0)
     },
   })
 
-  useEffect(() => {
-    if (monitorStatus?.next_check_in_seconds !== undefined && monitorStatus.next_check_in_seconds !== null) {
-      setCountdown(monitorStatus.next_check_in_seconds)
-    }
-  }, [monitorStatus])
-
-  useEffect(() => {
-    if (countdown === null || countdown <= 0) return
-    const timer = setInterval(() => {
-      setCountdown((c: number | null) => (c !== null ? Math.max(0, c - 1) : null))
-    }, 1000)
-    return () => clearInterval(timer)
-  }, [countdown])
 
   // Close sidebar on route navigate (mobile)
   const handleNav = (to: string) => {
@@ -254,51 +214,14 @@ export default function Layout() {
                   aria-label={triggerCheckMutation.isPending ? 'Syncing' : 'Sync now'}
                   className="cursor-pointer rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-primary"
                 >
-                  {(() => {
-                    const interval = monitorStatus?.check_interval ?? (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
-                    const isReady = countdown === null || countdown <= 0
-                    const value = isReady ? interval : Math.max(0, interval - countdown)
-                    const radius = 20
-                    const size = 48
-                    const strokeWidth = 4
-                    const circumference = 2 * Math.PI * radius
-                    const pct = interval > 0 ? Math.min(1, Math.max(0, value / interval)) : 0
-                    const dashOffset = circumference * (1 - pct)
-                    return (
-                      <div className="relative flex items-center justify-center shrink-0" style={{ width: size, height: size }}>
-                        <svg className="transform -rotate-90" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-                          <circle
-                            cx={size / 2}
-                            cy={size / 2}
-                            r={radius}
-                            stroke="currentColor"
-                            strokeWidth={strokeWidth}
-                            fill="none"
-                            className="text-muted/30"
-                          />
-                          <circle
-                            cx={size / 2}
-                            cy={size / 2}
-                            r={radius}
-                            stroke="currentColor"
-                            strokeWidth={strokeWidth}
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={dashOffset}
-                            className={isReady ? 'text-success' : 'text-warning'}
-                          />
-                        </svg>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          {miniMode ? (
-                            <Timer className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <span className="text-[11px] font-semibold text-foreground">{isReady ? 'Ready' : `${countdown}s`}</span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })()}
+                  <MonitorCountdown
+                    nextCheckInSeconds={monitorStatus?.next_check_in_seconds}
+                    intervalSeconds={
+                      monitorStatus?.check_interval ??
+                      (monitorStatus?.interval_minutes ? monitorStatus.interval_minutes * 60 : 60)
+                    }
+                    miniMode={miniMode}
+                  />
                 </button>
               </TooltipTrigger>
               <TooltipContent>

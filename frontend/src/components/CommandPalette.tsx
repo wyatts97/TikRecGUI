@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Video, Settings, Tv, Search } from 'lucide-react'
+// Route icons come from lib/nav.ts; Search is the input's own affordance.
+import { Search } from 'lucide-react'
 import {
   Command,
   CommandContent,
@@ -8,14 +9,8 @@ import {
 } from 'components/selia/command'
 import { Input } from 'components/selia/input'
 import { cn } from '@/lib/utils'
+import { NAV_ITEMS as routes } from '@/lib/nav'
 
-const routes = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/watchlist', icon: Users, label: 'Watchlist' },
-  { to: '/recordings', icon: Video, label: 'Recordings' },
-  { to: '/watch', icon: Tv, label: 'Watch' },
-  { to: '/settings', icon: Settings, label: 'Settings' },
-]
 
 export default function CommandPalette() {
   const navigate = useNavigate()

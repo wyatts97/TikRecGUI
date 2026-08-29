@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { tabListKeyDown, tabProps, tabPanelProps } from '@/lib/a11y'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MediaPlayer, MediaProvider } from '@vidstack/react'
 import { defaultLayoutIcons, DefaultVideoLayout } from '@vidstack/react/player/layouts/default'
@@ -89,6 +90,8 @@ function formatTranscriptAsTxt(transcriptText: string): string {
     .map((line) => line.replace(/\[\d{2}:\d{2}(?::\d{2})?\]\s*/, ''))
     .join('\n')
 }
+
+const WATCH_TABS = ['player', 'transcript', 'chat'] as const
 
 export default function WatchPlayer() {
   const fmt = useDateFormat()
@@ -437,9 +440,14 @@ export default function WatchPlayer() {
 
           {/* Mobile transcript tab */}
           <div className="border border-border rounded-xl overflow-hidden lg:hidden">
-            <div className="flex border-b border-border bg-muted/40">
+            <div className="flex border-b border-border bg-muted/40"
+              role="tablist"
+              aria-label="Player views"
+              onKeyDown={tabListKeyDown(WATCH_TABS, activeTab, setActiveTab)}
+            >
               <button
                 onClick={() => setActiveTab('player')}
+                {...tabProps('player', activeTab === 'player')}
                 className={`px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'player'
                     ? 'bg-background text-primary border-b-2 border-primary -mb-px'
@@ -450,6 +458,7 @@ export default function WatchPlayer() {
               </button>
               <button
                 onClick={() => setActiveTab('transcript')}
+                {...tabProps('transcript', activeTab === 'transcript')}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'transcript'
                     ? 'bg-background text-primary border-b-2 border-primary -mb-px'
@@ -464,6 +473,7 @@ export default function WatchPlayer() {
               </button>
               <button
                 onClick={() => setActiveTab('chat')}
+                {...tabProps('chat', activeTab === 'chat')}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'chat'
                     ? 'bg-background text-primary border-b-2 border-primary -mb-px'
@@ -476,7 +486,7 @@ export default function WatchPlayer() {
             </div>
 
             {activeTab === 'transcript' && (
-              <div>
+              <div {...tabPanelProps('transcript')}>
                 <TranscriptPanel
                   recording={recording}
                   transcriptSearch={transcriptSearch}
@@ -490,7 +500,7 @@ export default function WatchPlayer() {
               </div>
             )}
             {activeTab === 'chat' && (
-              <div>
+              <div {...tabPanelProps('chat')}>
                 <ChatPanel
                   recording={recording}
                   chatSearch={chatSearch}
@@ -518,16 +528,17 @@ export default function WatchPlayer() {
             {transcriptActions}
           </div>
         )}
+        {/* The "panel" variant is already `hidden lg:flex` with its own width
+            and border, so it needs no wrapper here. (The transcript panel above
+            keeps one only because transcriptActions sits under it.) */}
         {showChat && (
-          <div className="hidden lg:flex lg:flex-col">
-            <ChatPanel
-              recording={recording}
-              chatSearch={chatSearch}
-              onChatSearchChange={setChatSearch}
-              onSeek={handleSeek}
-              variant="panel"
-            />
-          </div>
+          <ChatPanel
+            recording={recording}
+            chatSearch={chatSearch}
+            onChatSearchChange={setChatSearch}
+            onSeek={handleSeek}
+            variant="panel"
+          />
         )}
       </div>
 
