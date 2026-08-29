@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { clickable } from '@/lib/a11y'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Radio, Tv, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/selia/button'
@@ -49,8 +50,8 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
 
   return (
     <div
-      className="rounded-xl overflow-hidden bg-card border border-border shadow-sm cursor-pointer group hover:border-primary/50 hover:shadow-md transition-all"
-      onClick={() => navigate(`/live/${recording.id}`)}
+      className="rounded-xl overflow-hidden bg-card border border-border shadow-sm cursor-pointer group hover:border-primary/50 hover:shadow-md transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      {...clickable(() => navigate(`/live/${recording.id}`), `Open @${recording.username}'s live stream`)}
     >
       <div className="relative aspect-video bg-black">
         {showPlayer ? (

@@ -114,8 +114,13 @@ export default function LivePlayer() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <p className="text-muted-foreground">Loading…</p>
+      <div
+        className="flex items-center justify-center py-12"
+        role="status"
+        aria-label="Loading"
+      >
+        <LoaderCircle className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary" aria-hidden="true" />
+        <span className="sr-only">Loading…</span>
       </div>
     )
   }

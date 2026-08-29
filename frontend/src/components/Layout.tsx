@@ -52,6 +52,16 @@ export default function Layout() {
   // twice -- see the hook's comment.
   useNotificationStream()
 
+  // Escape closes the mobile drawer, matching what a dialog would do.
+  useEffect(() => {
+    if (!sidebarOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sidebarOpen])
+
   const { data: monitorStatus } = useQuery({
     queryKey: ['monitorStatus'],
     queryFn: () => api.settings.getMonitorStatus(),
@@ -118,7 +128,9 @@ export default function Layout() {
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="flex items-center justify-center h-9 w-9 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
-              aria-label="Toggle menu"
+              aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={sidebarOpen}
+              aria-controls="mobile-nav"
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -131,17 +143,25 @@ export default function Layout() {
         <div
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
           onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
         />
       )}
 
       {/* Mobile sidebar drawer */}
       <aside
+        id="mobile-nav"
+        // Translated off-screen when closed, which left its links in the tab
+        // order. inert takes the whole subtree out of the focus and a11y trees.
+        // Spread with a cast because React 18's types don't know `inert` yet
+        // (it is typed from React 19); the attribute itself is passed through.
+        {...({ inert: sidebarOpen ? undefined : '' } as { inert?: string })}
+        aria-hidden={!sidebarOpen}
         className={cn(
           'fixed top-14 left-0 bottom-0 z-30 w-64 bg-background border-r border-border transform transition-transform duration-200 md:hidden',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <nav className="flex flex-col p-3 gap-1">
+        <nav className="flex flex-col p-3 gap-1" aria-label="Main">
           {navItems.map((item) => (
             <button
               key={item.to}

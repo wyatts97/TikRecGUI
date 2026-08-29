@@ -69,6 +69,21 @@ function applyAccent(accent: string) {
     root.style.removeProperty('--primary')
     root.style.removeProperty('--primary-border')
   }
+
+  // Cache the resolved values so the pre-paint script in index.html can apply
+  // the accent without duplicating ACCENT_PRESETS.
+  try {
+    if (primary) {
+      localStorage.setItem(
+        'tikrec-accent-resolved',
+        JSON.stringify({ primary, border: border ?? primary })
+      )
+    } else {
+      localStorage.removeItem('tikrec-accent-resolved')
+    }
+  } catch {
+    /* Storage unavailable -- the accent just applies a frame later. */
+  }
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

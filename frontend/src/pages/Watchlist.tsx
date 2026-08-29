@@ -49,6 +49,8 @@ import { api, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
 import toast from 'react-hot-toast'
 import EmptyState from '@/components/EmptyState'
+import QueryError from '@/components/QueryError'
+import { ListSkeleton } from '@/components/Skeleton'
 
 const PER_PAGE = 20
 
@@ -67,7 +69,7 @@ export default function Watchlist() {
   const queryClient = useQueryClient()
   const retriedIdsRef = useRef<Set<number>>(new Set())
 
-  const { data: users = [], isLoading } = useQuery({
+  const { data: users = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.users.list(),
   })
@@ -458,8 +460,10 @@ export default function Watchlist() {
             </div>
           )}
 
-          {isLoading ? (
-            <div className="py-12 text-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin mx-auto" /></div>
+          {isError ? (
+            <QueryError error={error} what="your watchlist" onRetry={() => refetch()} />
+          ) : isLoading ? (
+            <div className="p-4"><ListSkeleton rows={8} /></div>
           ) : filteredUsers.length === 0 ? (
             <EmptyState
               icon={Users}
@@ -478,7 +482,20 @@ export default function Watchlist() {
                         <input
                           type="checkbox"
                           className="rounded border-gray-300 dark:border-neutral-600"
-                          checked={selectedIds.size === filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE).length && filteredUsers.length > 0}
+                          aria-label="Select all users on this page"
+                          {...(() => {
+                            const pageRows = filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+                            const selectedOnPage = pageRows.filter((u) => selectedIds.has(u.id)).length
+                            return {
+                              // Previously compared the *global* selection size
+                              // against this page's length, so selecting 20 rows
+                              // on page 1 showed page 2 as fully checked too.
+                              checked: pageRows.length > 0 && selectedOnPage === pageRows.length,
+                              ref: (el: HTMLInputElement | null) => {
+                                if (el) el.indeterminate = selectedOnPage > 0 && selectedOnPage < pageRows.length
+                              },
+                            }
+                          })()}
                           onChange={(e) => {
                             const pageRows = filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE)
                             setSelectedIds(e.target.checked ? new Set(pageRows.map((u) => u.id)) : new Set())
@@ -493,16 +510,30 @@ export default function Watchlist() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+                    {/* Rows stay real <tr>s so table semantics survive; the
+                        keyboard path is added rather than swapping the role for
+                        "button", which would hide the row structure from screen
+                        readers. */}
                     {filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE).map((row) => (
                       <tr
                         key={row.id}
-                        className="hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer transition-colors"
+                        className="hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+                        tabIndex={0}
+                        aria-label={`View details for @${row.username}`}
                         onClick={() => setDetailUserId(row.id)}
+                        onKeyDown={(e) => {
+                          if (e.target !== e.currentTarget) return
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setDetailUserId(row.id)
+                          }
+                        }}
                       >
                         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             className="rounded border-gray-300 dark:border-neutral-600"
+                            aria-label={`Select @${row.username}`}
                             checked={selectedIds.has(row.id)}
                             onChange={(e) => {
                               const next = new Set(selectedIds)
@@ -573,7 +604,7 @@ export default function Watchlist() {
                         <td className="px-4 py-3 text-end" onClick={(e) => e.stopPropagation()}>
                           <div className="inline-flex rounded-lg shadow-sm">
                             <button
-                              title="Refresh"
+                              title="Refresh" aria-label={`Refresh @${row.username}'s profile`}
                               className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800 transition-colors"
                               onClick={() => refreshUserMutation.mutate(row.id)}
                               disabled={refreshUserMutation.isPending}
@@ -582,7 +613,7 @@ export default function Watchlist() {
                             </button>
                             {row.is_live && (
                               <button
-                                title="Record now"
+                                title="Record now" aria-label={`Start recording @${row.username}`}
                                 className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-neutral-800 transition-colors"
                                 onClick={() => startRecordingMutation.mutate(row.username)}
                                 disabled={startRecordingMutation.isPending}
@@ -591,7 +622,7 @@ export default function Watchlist() {
                               </button>
                             )}
                             <button
-                              title="Remove"
+                              title="Remove" aria-label={`Remove @${row.username} from watchlist`}
                               className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
                               onClick={() => removeFromWatchlistMutation.mutate(row.id)}
                               disabled={removeFromWatchlistMutation.isPending}

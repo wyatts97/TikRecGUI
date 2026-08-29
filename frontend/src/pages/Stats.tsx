@@ -9,7 +9,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Cell,
+  Legend,
 } from 'recharts'
 import {
   BarChart3,
@@ -27,16 +27,7 @@ import EmptyState from '@/components/EmptyState'
 import { api } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
 
-const CHART_COLORS = [
-  'var(--color-primary)',
-  '#8b5cf6',
-  '#ec4899',
-  '#f59e0b',
-  '#10b981',
-  '#06b6d4',
-  '#ef4444',
-  '#6366f1',
-]
+
 
 function StatCard({
   icon: Icon,
@@ -186,11 +177,11 @@ export default function Stats() {
                     <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
                     <YAxis type="category" dataKey="username" width={90} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickFormatter={(u: string) => `@${u}`} />
                     <Tooltip contentStyle={ChartTooltipStyle()} cursor={{ fill: 'var(--accent)' }} />
-                    <Bar dataKey="count" name="Recordings" radius={[0, 4, 4, 0]}>
-                      {topStreamers.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Bar>
+                    {/* One series, so one colour. Colouring each bar from a
+                        cycled palette double-encoded bar length as hue while
+                        the username was already on the axis -- the colour
+                        carried no information. */}
+                    <Bar dataKey="count" name="Recordings" fill="var(--primary)" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -218,11 +209,8 @@ export default function Stats() {
                       cursor={{ fill: 'var(--accent)' }}
                       formatter={(_v: any, _n: any, p: any) => [formatBytes(p.payload.bytes), 'Storage']}
                     />
-                    <Bar dataKey="gb" name="Storage" radius={[4, 4, 0, 0]}>
-                      {storageData.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Bar>
+                    {/* One series, one colour -- see the top-streamers chart. */}
+                    <Bar dataKey="gb" name="Storage" fill="var(--primary)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -247,8 +235,22 @@ export default function Stats() {
                   <XAxis dataKey="username" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} interval={0} angle={-20} textAnchor="end" height={50} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
                   <Tooltip contentStyle={ChartTooltipStyle()} cursor={{ fill: 'var(--accent)' }} />
-                  <Bar dataKey="chat" name="Chat messages" stackId="a" fill="var(--primary)" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="gifts" name="Gifts" stackId="a" fill="#ec4899" radius={[4, 4, 0, 0]} />
+                  {/* Two series, so identity is never colour-alone: the legend
+                      is always present. These use the fixed --chart-* tokens
+                      rather than --primary because the pair must stay
+                      distinguishable under colour-vision deficiency whichever
+                      accent the user picks. */}
+                  <Legend
+                    verticalAlign="top"
+                    align="right"
+                    height={28}
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: '0.75rem', color: 'var(--muted-foreground)' }}
+                  />
+                  <Bar dataKey="chat" name="Chat messages" stackId="a" fill="var(--chart-1)" radius={[0, 0, 0, 0]} />
+                  {/* 2px surface gap so the two stacked segments read as separate marks. */}
+                  <Bar dataKey="gifts" name="Gifts" stackId="a" fill="var(--chart-2)" radius={[4, 4, 0, 0]} stroke="var(--card)" strokeWidth={2} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

@@ -9,6 +9,7 @@ import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import { Pagination, PaginationList, PaginationItem, PaginationButton } from '@/components/selia/pagination'
 import EmptyState from '@/components/EmptyState'
+import QueryError from '@/components/QueryError'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { api, type Clip } from '@/lib/api'
@@ -142,7 +143,7 @@ export default function Clips() {
     },
   })
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey,
     queryFn: () =>
       api.clips.list(page, ITEMS_PER_PAGE, SORT_MAP[sortBy]?.sortBy, SORT_MAP[sortBy]?.sortOrder, undefined, {
@@ -243,7 +244,9 @@ export default function Clips() {
         </div>
       )}
 
-      {isLoading ? (
+      {isError ? (
+        <QueryError error={error} what="clips" onRetry={() => refetch()} />
+      ) : isLoading ? (
         <VideoGridSkeleton count={8} />
       ) : clips.length === 0 ? (
         <EmptyState

@@ -7,6 +7,7 @@ import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import { Pagination, PaginationList, PaginationItem, PaginationButton } from '@/components/selia/pagination'
 import EmptyState from '@/components/EmptyState'
+import QueryError from '@/components/QueryError'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { RecordingVideoCard } from '@/components/ui/recording-video-card'
@@ -160,7 +161,7 @@ export default function Watch() {
     }
   }
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey,
     queryFn: () =>
       api.recordings.list(page, ITEMS_PER_PAGE, 'completed,stopped,failed', undefined, {
@@ -267,7 +268,9 @@ export default function Watch() {
         </div>
       )}
 
-      {isLoading ? (
+      {isError ? (
+        <QueryError error={error} what="recordings" onRetry={() => refetch()} />
+      ) : isLoading ? (
         <VideoGridSkeleton count={8} />
       ) : recordings.length === 0 ? (
         <EmptyState

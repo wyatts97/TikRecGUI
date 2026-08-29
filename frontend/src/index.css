@@ -20,6 +20,15 @@
      why secondary text rendered at full foreground weight and the active nav
      item had no background. The neo-futurism theme defines its own values for
      these and continues to override them. */
+  /* Chart series colours. Fixed (not derived from --primary) because
+     multi-series charts must keep their colour-vision separation regardless of
+     which accent the user picks. Slots 1-2 of the reference categorical
+     palette; validated against this app's own chart surfaces (#ffffff light,
+     #222425 dark): worst-pair CVD deltaE 24.7 light / 26.8 dark, target >= 8.
+     Single-series charts intentionally use --primary instead, so the accent
+     picker still shows through where there is no pair to separate. */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
   --muted-foreground: var(--muted);
   --destructive: var(--danger);
   --destructive-foreground: var(--danger-foreground);
@@ -122,6 +131,10 @@
   --dimmed: oklch(0.6971 0.009 247.96);
 
   /* See the :root block for why these aliases exist. */
+  /* Dark steps of the same two hues -- re-stepped for the dark surface, not
+     an automatic flip. See the :root block. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
   --muted-foreground: var(--muted);
   --destructive: var(--danger);
   --destructive-foreground: var(--danger-foreground);
@@ -282,6 +295,8 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-primary-subtle: var(--primary-subtle);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
   --color-separator: var(--separator);
   --color-accent: var(--accent);
   --color-border: var(--border);

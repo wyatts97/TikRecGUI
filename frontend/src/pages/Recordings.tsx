@@ -26,6 +26,8 @@ import {
   DialogBody,
 } from '@/components/selia/dialog'
 import EmptyState from '@/components/EmptyState'
+import QueryError from '@/components/QueryError'
+import { ListSkeleton } from '@/components/Skeleton'
 import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
@@ -78,7 +80,7 @@ export default function Recordings() {
     setSearchParams(params, { replace: true })
   }, [page, perPage, statusFilter, sortBy, sortOrder, usernameFilter, setSearchParams])
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['recordings', page, perPage, statusFilter, sortBy, sortOrder, usernameFilter],
     queryFn: () => api.recordings.list(page, perPage, statusFilter, undefined, {
       sortBy,
@@ -332,8 +334,10 @@ export default function Recordings() {
             </div>
           )}
 
-          {isLoading ? (
-            <div className="py-12 text-center"><Loader2 className="h-5 w-5 animate-spin mx-auto text-gray-400" /></div>
+          {isError ? (
+            <QueryError error={error} what="recordings" onRetry={() => refetch()} />
+          ) : isLoading ? (
+            <div className="p-4"><ListSkeleton rows={8} /></div>
           ) : recordings.length === 0 ? (
             <EmptyState
               icon={Video}
@@ -352,6 +356,7 @@ export default function Recordings() {
                         <input
                           type="checkbox"
                           className="rounded border-gray-300 dark:border-neutral-600"
+                          aria-label="Select all recordings on this page"
                           checked={selectedIds.size === recordings.length && recordings.length > 0}
                           onChange={(e) => setSelectedIds(e.target.checked ? new Set(recordings.map((r) => r.id)) : new Set())}
                         />
@@ -372,6 +377,7 @@ export default function Recordings() {
                           <input
                             type="checkbox"
                             className="rounded border-gray-300 dark:border-neutral-600"
+                            aria-label={`Select recording ${row.filename}`}
                             checked={selectedIds.has(row.id)}
                             onChange={(e) => {
                               const next = new Set(selectedIds)
@@ -412,7 +418,7 @@ export default function Recordings() {
                           <div className="inline-flex rounded-lg shadow-sm">
                             {row.status === 'recording' && (
                               <button
-                                title="Stop recording"
+                                title="Stop recording" aria-label="Stop recording recording"
                                 className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
                                 onClick={() => stopRecordingMutation.mutate(row.id)}
                                 disabled={stopRecordingMutation.isPending}
@@ -422,7 +428,7 @@ export default function Recordings() {
                             )}
                             {(row.status === 'completed' || row.status === 'stopped') && (
                               <button
-                                title="Download"
+                                title="Download" aria-label="Download recording"
                                 className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-neutral-800 transition-colors"
                                 onClick={() => handleDownload(row)}
                               >
@@ -430,7 +436,7 @@ export default function Recordings() {
                               </button>
                             )}
                             <button
-                              title="Delete"
+                              title="Delete" aria-label="Delete recording"
                               className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
                               onClick={() => deleteRecordingMutation.mutate(row.id)}
                               disabled={deleteRecordingMutation.isPending}

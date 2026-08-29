@@ -13,6 +13,7 @@ import { api, type ActiveRecording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { Link, useNavigate } from 'react-router-dom'
+import { clickable } from '@/lib/a11y'
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -104,7 +105,7 @@ export default function Dashboard() {
 
       {/* Stat cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer" onClick={() => navigate('/watchlist')}>
+        <Card className="hover:shadow-subtle transition-shadow cursor-pointer" {...clickable(() => navigate('/watchlist'))}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Users</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -121,7 +122,7 @@ export default function Dashboard() {
           </CardBody>
         </Card>
 
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-red-500" onClick={() => navigate('/watchlist')}>
+        <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-red-500" {...clickable(() => navigate('/watchlist'))}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Live Now</CardTitle>
             <Radio className="h-4 w-4 text-red-500" />
@@ -138,7 +139,7 @@ export default function Dashboard() {
           </CardBody>
         </Card>
 
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer" onClick={() => navigate('/recordings')}>
+        <Card className="hover:shadow-subtle transition-shadow cursor-pointer" {...clickable(() => navigate('/recordings'))}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Recordings</CardTitle>
             <Video className="h-4 w-4 text-primary" />
@@ -155,7 +156,7 @@ export default function Dashboard() {
           </CardBody>
         </Card>
 
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-success" onClick={() => navigate('/settings')}>
+        <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-success" {...clickable(() => navigate('/settings'))}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Status</CardTitle>
             <div className={`h-2 w-2 rounded-full ${health?.status === 'healthy' ? 'bg-success' : 'bg-yellow-500'}`} />
@@ -462,8 +463,8 @@ export default function Dashboard() {
                         <Icon className="h-3 w-3 text-white" />
                       </span>
                       <div
-                        className="cursor-pointer hover:bg-accent rounded-lg p-2 -m-2 transition-colors"
-                        onClick={item.onClick}
+                        className="cursor-pointer hover:bg-accent rounded-lg p-2 -m-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        {...clickable(item.onClick, item.label)}
                       >
                         <p className="text-sm font-medium text-foreground truncate">{item.label}</p>
                         <p className="text-xs text-muted-foreground">{fmt(item.timestamp)}</p>
