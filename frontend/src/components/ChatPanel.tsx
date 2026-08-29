@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { MessageCircle, Gift, Search, Loader2 } from 'lucide-react'
+import { MessageCircle, Search, Loader2 } from 'lucide-react'
 import { Input } from 'components/selia/input'
 import { api } from '@/lib/api'
 import type { Recording, LiveEvent } from '@/lib/api'

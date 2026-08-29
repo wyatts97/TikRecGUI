@@ -159,7 +159,8 @@ export default function Clips() {
     setSearchQuery(val)
     setPage(1)
   }
-  const handleSort = (val: string) => {
+  const handleSort = (value: unknown) => {
+    const val = String(value)
     setSortBy(val)
     setPage(1)
   }

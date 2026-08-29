@@ -238,14 +238,14 @@ export default function WatchPlayer() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/watch')}>
+        <Button variant="plain" size="icon" onClick={() => navigate('/watch')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold text-foreground tracking-tight truncate flex-1">
           @{recording.username}
         </h1>
         <Button
-          variant={showTranscript ? "default" : "outline"}
+          variant={showTranscript ? "primary" : "outline"}
           size="sm"
           className="hidden lg:inline-flex"
           onClick={() => setShowTranscript((s) => !s)}
@@ -254,7 +254,7 @@ export default function WatchPlayer() {
           Transcript
         </Button>
         <Button
-          variant={showChat ? "default" : "outline"}
+          variant={showChat ? "primary" : "outline"}
           size="sm"
           className="hidden lg:inline-flex"
           onClick={() => setShowChat((s) => !s)}

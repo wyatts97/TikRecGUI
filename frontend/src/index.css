@@ -11,6 +11,20 @@
   --accent: oklch(0.9616 0.0011 247.83);
   --muted: oklch(0.5076 0.0103 248.03);
   --dimmed: oklch(0.6971 0.009 247.96);
+
+  /* Aliases for the shadcn-style names used throughout the components.
+     `--muted` in this design system is already the secondary *text* colour,
+     so muted-foreground maps onto it directly. Without these definitions the
+     ~160 `text-muted-foreground` / `bg-primary-subtle` / `shadow-subtle` /
+     `text-destructive` utilities in src/ compiled to nothing at all, which is
+     why secondary text rendered at full foreground weight and the active nav
+     item had no background. The neo-futurism theme defines its own values for
+     these and continues to override them. */
+  --muted-foreground: var(--muted);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
+  --primary-subtle: color-mix(in oklab, var(--primary) 12%, transparent);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow: 0 3px 4px -1px rgba(0, 0, 0, 0.05);
   --border: oklch(0.915 0.0024 247.85);
   --separator: oklch(0.915 0.0024 247.85);
@@ -106,6 +120,13 @@
   --accent: oklch(0.3095 0.0055 248.01);
   --muted: oklch(0.7958 0.006 247.9);
   --dimmed: oklch(0.6971 0.009 247.96);
+
+  /* See the :root block for why these aliases exist. */
+  --muted-foreground: var(--muted);
+  --destructive: var(--danger);
+  --destructive-foreground: var(--danger-foreground);
+  --primary-subtle: color-mix(in oklab, var(--primary) 22%, transparent);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.25);
   --border: oklch(0.359 0.0067 248.02);
   --shadow: 0 3px 4px rgba(0, 0, 0, 0.15);
   --separator: oklch(0.308 0.0046 247.98);
@@ -257,6 +278,10 @@
   --color-chip-border: var(--chip-border);
   --color-muted: var(--muted);
   --color-dimmed: var(--dimmed);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-primary-subtle: var(--primary-subtle);
   --color-separator: var(--separator);
   --color-accent: var(--accent);
   --color-border: var(--border);
@@ -273,6 +298,7 @@
   --shadow-card: var(--card-shadow);
   --shadow-input: var(--input-shadow);
   --shadow-popover: var(--popover-shadow);
+  --shadow-subtle: var(--shadow-subtle);
 
   --text-xs: 0.625rem;
   --text-sm: 0.75rem;

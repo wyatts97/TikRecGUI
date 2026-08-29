@@ -5,6 +5,8 @@ import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 import { Toaster } from 'react-hot-toast'
 import { TimezoneProvider } from './lib/timezone-context'
+import { AuthProvider, useAuth } from './hooks/useAuth'
+import NotFound from './pages/NotFound'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Watchlist = lazy(() => import('./pages/Watchlist'))
@@ -19,6 +21,29 @@ const Settings = lazy(() => import('./pages/Settings'))
 const Stats = lazy(() => import('./pages/Stats'))
 const Search = lazy(() => import('./pages/Search'))
 const Storage = lazy(() => import('./pages/Storage'))
+const Login = lazy(() => import('./pages/Login'))
+
+function FullscreenSpinner() {
+  return (
+  <div className="flex h-screen items-center justify-center" role="status" aria-label="Loading">
+    <svg className="h-7 w-7 animate-spin motion-reduce:animate-none text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+    <span className="sr-only">Loading…</span>
+  </div>
+  )
+}
+
+/** Renders the app only once a session is confirmed; otherwise the login screen. */
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth()
+
+  // null = the status probe has not resolved yet. Rendering the app here would
+  // fire a burst of requests that all 401 and flood the user with error toasts.
+  if (isAuthenticated === null) return <FullscreenSpinner />
+  if (!isAuthenticated) return <Login />
+  return <>{children}</>
+}
 
 function ToasterWrapper() {
   return (
@@ -60,16 +85,11 @@ function App() {
 
   return (
     <ErrorBoundary>
+    <AuthProvider>
     <ThemeProvider>
       <TimezoneProvider>
-      <Suspense fallback={
-        <div className="flex h-screen items-center justify-center" role="status" aria-label="Loading">
-          <svg className="h-7 w-7 animate-spin motion-reduce:animate-none text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-          </svg>
-          <span className="sr-only">Loading…</span>
-        </div>
-      }>
+      <Suspense fallback={<FullscreenSpinner />}>
+        <AuthGate>
         <Routes>
           <Route path="/" element={<Layout />}>
             <Route index element={<Dashboard />} />
@@ -85,12 +105,15 @@ function App() {
             <Route path="search" element={<Search />} />
             <Route path="storage" element={<Storage />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>
+        </AuthGate>
       </Suspense>
       </TimezoneProvider>
       <ToasterWrapper />
     </ThemeProvider>
+    </AuthProvider>
     </ErrorBoundary>
   )
 }

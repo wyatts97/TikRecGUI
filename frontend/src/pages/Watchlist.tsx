@@ -36,19 +36,16 @@ import {
   DialogDescription,
   DialogBody,
   DialogFooter,
-  DialogClose,
 } from 'components/selia/dialog'
 import {
   Drawer,
-  DrawerTrigger,
   DrawerPopup,
   DrawerHeader,
   DrawerTitle,
   DrawerDescription,
   DrawerBody,
-  DrawerClose,
 } from 'components/selia/drawer'
-import { api, type User, type Recording } from '@/lib/api'
+import { api, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
 import toast from 'react-hot-toast'
 import EmptyState from '@/components/EmptyState'
@@ -201,7 +198,7 @@ export default function Watchlist() {
   }
 
   const filteredUsers = useMemo(() => {
-    let sorted = [...users].sort((a, b) => {
+    const sorted = [...users].sort((a, b) => {
       if (a.is_live === b.is_live) return 0
       return a.is_live ? -1 : 1
     })
@@ -509,7 +506,8 @@ export default function Watchlist() {
                             checked={selectedIds.has(row.id)}
                             onChange={(e) => {
                               const next = new Set(selectedIds)
-                              e.target.checked ? next.add(row.id) : next.delete(row.id)
+                              if (e.target.checked) next.add(row.id)
+                              else next.delete(row.id)
                               setSelectedIds(next)
                             }}
                           />

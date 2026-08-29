@@ -15,7 +15,7 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
   const [liveUrl, setLiveUrl] = useState<string | null>(null)
   const [streamType, setStreamType] = useState<'hls' | 'flv' | 'rtmp'>('flv')
   const [urlError, setUrlError] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [, setIsLoading] = useState(true)
   const [playerError, setPlayerError] = useState(false)
 
   const fetchLiveUrl = useCallback(async () => {

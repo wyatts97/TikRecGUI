@@ -31,8 +31,6 @@ import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import toast from 'react-hot-toast'
 
-const PER_PAGE = 20
-
 const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'secondary-outline'> = {
   pending: 'secondary',
   recording: 'info',
@@ -66,7 +64,6 @@ export default function Recordings() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
-  const [tablePage, setTablePage] = useState(1)
   const queryClient = useQueryClient()
 
   // Sync state to URL search params
@@ -278,7 +275,7 @@ export default function Recordings() {
             <div className="flex items-center gap-2">
               <select
                 value={statusFilter || 'all'}
-                onChange={(e) => { const val = e.target.value; setStatusFilter(val === 'all' ? undefined : val); setPage(1); setTablePage(1) }}
+                onChange={(e) => { const val = e.target.value; setStatusFilter(val === 'all' ? undefined : val); setPage(1) }}
                 className="h-8 px-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-800 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All Status</option>
@@ -290,7 +287,7 @@ export default function Recordings() {
               <input
                 placeholder="Filter by user…"
                 value={usernameFilter}
-                onChange={(e) => { setUsernameFilter(e.target.value); setPage(1); setTablePage(1) }}
+                onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
                 className="h-8 px-3 text-sm rounded-lg border border-gray-200 bg-white text-gray-800 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
               />
               {hasActiveFilters && (
@@ -369,7 +366,7 @@ export default function Recordings() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
-                    {recordings.slice((tablePage - 1) * PER_PAGE, tablePage * PER_PAGE).map((row) => (
+                    {recordings.map((row) => (
                       <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors">
                         <td className="px-4 py-3">
                           <input
@@ -378,7 +375,8 @@ export default function Recordings() {
                             checked={selectedIds.has(row.id)}
                             onChange={(e) => {
                               const next = new Set(selectedIds)
-                              e.target.checked ? next.add(row.id) : next.delete(row.id)
+                              if (e.target.checked) next.add(row.id)
+                              else next.delete(row.id)
                               setSelectedIds(next)
                             }}
                           />
@@ -448,23 +446,25 @@ export default function Recordings() {
               </div>
 
               {/* Pagination */}
-              {recordings.length > PER_PAGE && (
+              {total > perPage && (
                 <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-neutral-700">
                   <span className="text-sm text-gray-500 dark:text-neutral-400">
-                    {(tablePage - 1) * PER_PAGE + 1}–{Math.min(tablePage * PER_PAGE, recordings.length)} of {total}
+                    {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}
                   </span>
                   <div className="inline-flex rounded-lg shadow-sm">
                     <button
                       className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
-                      onClick={() => { const prev = tablePage - 1; setTablePage(prev); setPage(prev) }}
-                      disabled={tablePage === 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                      aria-label="Previous page"
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </button>
                     <button
                       className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
-                      onClick={() => { const next = tablePage + 1; setTablePage(next); setPage(next) }}
-                      disabled={tablePage * PER_PAGE >= total}
+                      onClick={() => setPage((p) => p + 1)}
+                      disabled={page * perPage >= total}
+                      aria-label="Next page"
                     >
                       <ChevronRight className="h-4 w-4" />
                     </button>

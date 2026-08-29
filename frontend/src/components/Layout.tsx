@@ -24,7 +24,7 @@ import { api } from '@/lib/api'
 import { PageTransition } from '@/components/motion'
 import CommandPalette from '@/components/CommandPalette'
 import NotificationCenter from '@/components/NotificationCenter'
-import { Badge } from '@/components/selia/badge'
+import { useNotificationStream } from '@/hooks/useNotificationStream'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/selia/tooltip'
 
 const navItems = [
@@ -47,6 +47,10 @@ export default function Layout() {
   const [countdown, setCountdown] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [miniMode, setMiniMode] = useState(false)
+
+  // Mounted here (once) rather than inside NotificationCenter, which renders
+  // twice -- see the hook's comment.
+  useNotificationStream()
 
   const { data: monitorStatus } = useQuery({
     queryKey: ['monitorStatus'],

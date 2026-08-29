@@ -1,16 +1,39 @@
 export const API_BASE = "/api"
 
+/** Thrown on a 401 so callers (and the query cache) can tell auth failures apart. */
+export class UnauthorizedError extends Error {
+  constructor(message = "Authentication required") {
+    super(message)
+    this.name = "UnauthorizedError"
+  }
+}
+
+type UnauthorizedHandler = () => void
+let onUnauthorized: UnauthorizedHandler | null = null
+
+/** Registered once by AuthProvider so a 401 anywhere can bounce us to /login. */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  onUnauthorized = handler
+}
+
 async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
+    // The session lives in an HttpOnly cookie; it must ride along on every call.
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
     },
     ...options,
   })
+
+  if (response.status === 401) {
+    onUnauthorized?.()
+    throw new UnauthorizedError()
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Request failed" }))
@@ -22,6 +45,11 @@ async function fetchApi<T>(
   }
 
   return response.json()
+}
+
+export interface AuthStatus {
+  authenticated: boolean
+  auth_enabled: boolean
 }
 
 export interface User {
@@ -127,13 +155,18 @@ export interface AutoCleanupConfig {
 
 export interface Settings {
   cookies: {
+    /** Masked preview only (e.g. "••••••••1a2b"). Submitting it back unchanged
+     *  keeps the stored value; the full token is never sent to the client. */
     sessionid_ss: string
     tt_target_idc: string
+    sessionid_ss_set?: boolean
   }
   telegram: {
     api_id: string
+    /** Masked preview only -- see cookies.sessionid_ss. */
     api_hash: string
     chat_id: string
+    api_hash_set?: boolean
   }
   proxy: string | null
   output_dir: string
@@ -602,5 +635,15 @@ export const api = {
       fetchApi<GlobalSearchResult>(
         `/search?q=${encodeURIComponent(q)}&limit=${limit}`
       ),
+  },
+
+  auth: {
+    status: () => fetchApi<AuthStatus>("/auth/status"),
+    login: (password: string) =>
+      fetchApi<AuthStatus>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ password }),
+      }),
+    logout: () => fetchApi<AuthStatus>("/auth/logout", { method: "POST" }),
   },
 }

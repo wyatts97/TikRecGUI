@@ -61,49 +61,6 @@ export default function NotificationCenter({
   const notifications = data?.notifications ?? []
   const unread = data?.unread ?? 0
 
-  // -- Live SSE subscription -------------------------------------------------
-  useEffect(() => {
-    const es = new EventSource(api.notifications.streamUrl())
-
-    es.onmessage = (e) => {
-      let notif: AppNotification | null = null
-      try {
-        notif = JSON.parse(e.data)
-      } catch {
-        return
-      }
-      if (!notif || !notif.id) return
-
-      // Merge into the cached list + bump unread.
-      queryClient.setQueryData(
-        ['notifications'],
-        (old: { notifications: AppNotification[]; unread: number } | undefined) => {
-          const list = old?.notifications ?? []
-          if (list.some((n) => n.id === notif!.id)) return old
-          return {
-            notifications: [notif!, ...list].slice(0, 50),
-            unread: (old?.unread ?? 0) + 1,
-          }
-        }
-      )
-
-      // Desktop notification when permitted.
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        try {
-          new Notification(notif.title, { body: notif.message, tag: `tikrec-${notif.id}` })
-        } catch {
-          /* ignore */
-        }
-      }
-    }
-
-    es.onerror = () => {
-      // EventSource auto-reconnects; nothing to do.
-    }
-
-    return () => es.close()
-  }, [queryClient])
-
   // -- Close on outside click ------------------------------------------------
   useEffect(() => {
     if (!open) return

@@ -57,7 +57,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] })
       queryClient.invalidateQueries({ queryKey: ['health'] })
-      toast('Settings saved', { description: 'Your settings have been updated' })
+      toast.success('Settings saved')
     },
     onError: (error: Error) => {
       toast.error(error.message)
@@ -445,7 +445,7 @@ export default function SettingsPage() {
                       auto_cleanup: {
                         ...formData.auto_cleanup,
                         enabled: formData.auto_cleanup?.enabled || false,
-                        days: parseInt(v),
+                        days: parseInt(String(v)),
                         action: formData.auto_cleanup?.action || 'delete',
                       },
                     })
@@ -872,7 +872,7 @@ export default function SettingsPage() {
                       <>
                         <div className="grid gap-2">
                           <Label>Retention Period</Label>
-                          <Select value={String(formData.auto_cleanup?.days || 7)} onValueChange={(v) => setFormData({ ...formData, auto_cleanup: { ...formData.auto_cleanup, enabled: formData.auto_cleanup?.enabled || false, days: parseInt(v), action: formData.auto_cleanup?.action || 'delete' } })}>
+                          <Select value={String(formData.auto_cleanup?.days || 7)} onValueChange={(v) => setFormData({ ...formData, auto_cleanup: { ...formData.auto_cleanup, enabled: formData.auto_cleanup?.enabled || false, days: parseInt(String(v)), action: formData.auto_cleanup?.action || 'delete' } })}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectPopup>
                               <SelectList>

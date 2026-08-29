@@ -205,7 +205,11 @@ export function AutocompleteRow({
   ...props
 }: React.ComponentProps<typeof BaseAutocomplete.Row>) {
   return (
-    <div data-slot="autocomplete-row" {...props} className={cn(className)} />
+    <BaseAutocomplete.Row
+      data-slot="autocomplete-row"
+      {...props}
+      className={cn(className)}
+    />
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MediaPlayer, MediaProvider } from '@vidstack/react'
@@ -80,7 +80,7 @@ export default function ClipPlayer() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/clips')}>
+        <Button variant="plain" size="icon" onClick={() => navigate('/clips')}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-2xl font-bold text-foreground tracking-tight truncate flex-1">
