@@ -350,18 +350,42 @@ def start_recording(request: RecordingStart, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user)
     
-    filename = generate_recording_filename(username)
-    
-    recording = Recording(
-        user_id=user.id,
-        filename=filename,
-        status="pending",
-        mode=request.mode
-    )
-    db.add(recording)
-    db.commit()
-    db.refresh(recording)
-    
+    # Hold a claim across the duplicate check and the insert so this cannot
+    # race the monitor loop, which may be mid-cycle deciding to auto-record
+    # the same user.  See TaskManager.claim_user.
+    with task_manager.claim_user(user.id) as claimed:
+        if not claimed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A recording for @{username} is already being started",
+            )
+
+        existing = (
+            db.query(Recording)
+            .filter(
+                Recording.user_id == user.id,
+                Recording.status.in_(["pending", "recording"]),
+            )
+            .first()
+        )
+        if existing is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"@{username} is already being recorded",
+            )
+
+        filename = generate_recording_filename(username)
+
+        recording = Recording(
+            user_id=user.id,
+            filename=filename,
+            status="pending",
+            mode=request.mode
+        )
+        db.add(recording)
+        db.commit()
+        db.refresh(recording)
+
     cookies = recorder_service.load_cookies()
     
     success = task_manager.start_recording(

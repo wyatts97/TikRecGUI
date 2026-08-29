@@ -2,6 +2,7 @@ import subprocess
 import time
 import logging
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -659,6 +660,35 @@ class TaskManager:
     def __init__(self):
         self._tasks: dict[int, RecordingTask] = {}
         self._lock = threading.Lock()
+        # Users for whom a recording is being set up right now.
+        #
+        # The monitor snapshots "who is already recording" once per cycle, then
+        # sleeps and makes several network calls per user before inserting the
+        # Recording row.  A manual POST /recordings/start landing in that window
+        # produced two simultaneous recordings of the same room.  A claim is
+        # held across the whole decide-and-insert sequence to close that gap.
+        self._starting_users: set[int] = set()
+
+    @contextmanager
+    def claim_user(self, user_id: int):
+        """Reserve a user for recording setup.
+
+        Yields True if the claim was acquired, False if another caller is
+        already starting a recording for this user.  Always releases.
+        """
+        with self._lock:
+            if user_id in self._starting_users:
+                acquired = False
+            else:
+                self._starting_users.add(user_id)
+                acquired = True
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                with self._lock:
+                    self._starting_users.discard(user_id)
+
     
     def start_recording(
         self,
@@ -772,6 +802,8 @@ class MonitorService:
         self._check_failures: dict[int, int] = {}
         # Users whose circuit breaker has tripped — only notify once per trip
         self._circuit_notified: set[int] = set()
+        # Last time retention cleanup ran, so it fires about once a day.
+        self._last_cleanup_at: datetime | None = None
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -836,6 +868,34 @@ class MonitorService:
         except (TypeError, ValueError):
             return settings.DEFAULT_AUTOMATIC_INTERVAL * 60
 
+    def _maybe_run_auto_cleanup(self):
+        """Run retention cleanup at most once a day, if it is enabled.
+
+        The auto-cleanup toggle has always been surfaced in the UI and honoured
+        by CleanupService, but nothing ever called it outside the manual
+        "Run now" button -- so enabling it silently did nothing.
+        """
+        from app.core.cleanup_service import cleanup_service
+
+        if not cleanup_service.get_config().get("enabled"):
+            return
+
+        now = datetime.utcnow()
+        if self._last_cleanup_at is not None and (now - self._last_cleanup_at) < timedelta(days=1):
+            return
+
+        # Stamp before running: a failure should not retry every cycle.
+        self._last_cleanup_at = now
+        try:
+            result = cleanup_service.run_cleanup()
+            if result.get("deleted") or result.get("compressed"):
+                logger.info(
+                    "Auto-cleanup: deleted %d, compressed %d",
+                    result.get("deleted", 0), result.get("compressed", 0),
+                )
+        except Exception:
+            logger.exception("Auto-cleanup failed")
+
     def _run(self):
         # Initial short delay so the app finishes starting up.
         if self._stop_event.wait(15):
@@ -846,6 +906,10 @@ class MonitorService:
                 self._check_once()
             except Exception as exc:  # pragma: no cover - defensive
                 logger.error(f"Monitor loop error: {exc}", exc_info=True)
+            try:
+                self._maybe_run_auto_cleanup()
+            except Exception:
+                logger.exception("Auto-cleanup scheduling failed")
             interval = self._interval_seconds()
             self._next_check_at = datetime.utcnow() + timedelta(seconds=interval)
             self._force_check.clear()
@@ -1057,23 +1121,51 @@ class MonitorService:
                     logger.debug("Failed to publish user-live notification", exc_info=True)
 
             # --- update user and create recording (short session) ---
-            filename = generate_recording_filename(user.username)
-            with get_session() as db:
-                u = db.query(User).filter(User.id == user.id).first()
-                if u:
-                    u.is_live = True
-                    u.room_id = room_id
-                    u.last_checked = last_checked
-                recording = Recording(
-                    user_id=user.id,
-                    filename=filename,
-                    status="pending",
-                    mode="automatic",
-                )
-                db.add(recording)
-                db.commit()
-                db.refresh(recording)
-                recording_id = recording.id
+            # The claim closes the window between the once-per-cycle
+            # "already recording" snapshot above and this insert.
+            with task_manager.claim_user(user.id) as claimed:
+                if not claimed:
+                    logger.info(
+                        "Skipping auto-record for @%s: another start is already in flight",
+                        user.username,
+                    )
+                    continue
+
+                # Re-check under the claim -- the snapshot is now stale by
+                # several seconds of network calls and sleeps.
+                with get_session() as db:
+                    already = (
+                        db.query(Recording)
+                        .filter(
+                            Recording.user_id == user.id,
+                            Recording.status.in_(["pending", "recording"]),
+                        )
+                        .first()
+                    )
+                if already is not None:
+                    logger.info(
+                        "Skipping auto-record for @%s: recording %d already active",
+                        user.username, already.id,
+                    )
+                    continue
+
+                filename = generate_recording_filename(user.username)
+                with get_session() as db:
+                    u = db.query(User).filter(User.id == user.id).first()
+                    if u:
+                        u.is_live = True
+                        u.room_id = room_id
+                        u.last_checked = last_checked
+                    recording = Recording(
+                        user_id=user.id,
+                        filename=filename,
+                        status="pending",
+                        mode="automatic",
+                    )
+                    db.add(recording)
+                    db.commit()
+                    db.refresh(recording)
+                    recording_id = recording.id
 
             started = task_manager.start_recording(
                 recording_id=recording_id,

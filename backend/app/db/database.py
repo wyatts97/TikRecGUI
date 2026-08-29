@@ -75,15 +75,34 @@ AsyncSessionLocal = async_sessionmaker(
 Base = declarative_base()
 
 # -- Shared thread pool for fire-and-forget background tasks ----------
+#
+# Short work only: thumbnails, sprite sheets, avatar fetches.  Anything that
+# runs for minutes belongs on its own pool -- see recovery_executor.
 background_executor = ThreadPoolExecutor(
     max_workers=2,
     thread_name_prefix="bg",
 )
 
+# -- Dedicated pool for long-running recovery work --------------------
+#
+# Orphan recovery runs a full ffmpeg finalize, which can take minutes.  It used
+# to share the 2-worker pool above, so two orphans at startup blocked every
+# thumbnail and avatar fetch until they finished.  One worker, because these
+# are ffmpeg-bound and running several at once only thrashes the disk.
+recovery_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="recovery",
+)
+
 
 def run_background(fn, *args, **kwargs):
-    """Submit a fire-and-forget callable to the shared background pool."""
+    """Submit a short fire-and-forget callable to the shared background pool."""
     return background_executor.submit(fn, *args, **kwargs)
+
+
+def run_recovery(fn, *args, **kwargs):
+    """Submit long-running recovery work to its own pool."""
+    return recovery_executor.submit(fn, *args, **kwargs)
 
 
 # -- DB session management --------------------------------------------

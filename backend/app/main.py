@@ -7,7 +7,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.db.database import init_db, get_session, run_background
+from app.db.database import init_db, get_session, run_background, run_recovery
 from app.db.models import Recording
 from app.core.media_utils import (
     analyze_video_health,
@@ -130,7 +130,7 @@ async def lifespan(app: FastAPI):
                 continue
             sources = _find_orphan_sources(recording_path(rec.filename))
             if sources:
-                run_background(_recover_orphaned_recording, rec.id, rec.filename)
+                run_recovery(_recover_orphaned_recording, rec.id, rec.filename)
             else:
                 rec.status = "failed"
                 rec.is_corrupt = True

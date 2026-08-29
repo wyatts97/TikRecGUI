@@ -1,4 +1,5 @@
 import os
+from dataclasses import dataclass
 import zipfile
 import shutil
 from datetime import datetime, timedelta
@@ -10,6 +11,13 @@ from app.core.settings_store import settings_store
 from app.core.media_utils import all_thumbnail_paths, recording_path
 from app.db.database import get_session
 from app.db.models import Recording
+
+
+@dataclass(frozen=True)
+class OldRecording:
+    """A recording selected for cleanup, safe to pass between sessions."""
+    id: int
+    filename: str
 
 
 class CleanupService:
@@ -28,18 +36,28 @@ class CleanupService:
             "action": "delete"
         })
     
-    def get_old_recordings(self, days: int) -> list[Recording]:
-        """Get recordings older than specified days."""
+    def get_old_recordings(self, days: int) -> list["OldRecording"]:
+        """Recordings older than `days`, as plain records.
+
+        Deliberately NOT live ORM instances: the session closes when this
+        returns, so callers used to hand detached objects to a *different*
+        session's db.delete(), which triggers surprise refresh queries and can
+        raise DetachedInstanceError.  Callers re-query by id instead.
+        """
         cutoff = datetime.utcnow() - timedelta(days=days)
         with get_session() as db:
-            recordings = db.query(Recording).filter(
+            rows = db.query(Recording.id, Recording.filename).filter(
                 Recording.status.in_(["completed", "stopped", "failed"]),
                 Recording.created_at < cutoff
             ).all()
-            return recordings
-    
-    def delete_recording(self, recording: Recording) -> bool:
-        """Delete all on-disk assets for a recording (video, thumbnail, sprite sheet, sprite VTT)."""
+        return [OldRecording(id=r.id, filename=r.filename) for r in rows]
+
+    def delete_recording(self, recording) -> bool:
+        """Delete all on-disk assets for a recording (video, thumbnail, sprite sheet, sprite VTT).
+
+        Accepts anything with a `filename` -- an ORM Recording or an
+        OldRecording record.
+        """
         file_path = recording_path(recording.filename)
 
         assets = [
@@ -100,26 +118,27 @@ class CleanupService:
         
         result = {"status": "completed", "deleted": 0, "compressed": 0}
         
+        if action == "compress":
+            zip_path = self.compress_recordings(recordings)
+            if not zip_path:
+                return result
+            result["compressed"] = len(recordings)
+            result["backup_file"] = zip_path
+
+        for record in recordings:
+            if self.delete_recording(record):
+                result["deleted"] += 1
+
+        # Re-query inside the session that performs the delete, rather than
+        # deleting instances loaded by an already-closed session.
+        ids = [r.id for r in recordings]
         with get_session() as db:
-            if action == "compress":
-                zip_path = self.compress_recordings(recordings)
-                if zip_path:
-                    result["compressed"] = len(recordings)
-                    result["backup_file"] = zip_path
-                    
-                    # Delete original files after compression
-                    for recording in recordings:
-                        if self.delete_recording(recording):
-                            result["deleted"] += 1
-                        db.delete(recording)
-                    db.commit()
-            else:  # delete
-                for recording in recordings:
-                    if self.delete_recording(recording):
-                        result["deleted"] += 1
-                    db.delete(recording)
-                db.commit()
-        
+            for chunk_start in range(0, len(ids), 500):
+                chunk = ids[chunk_start:chunk_start + 500]
+                for rec in db.query(Recording).filter(Recording.id.in_(chunk)).all():
+                    db.delete(rec)
+            db.commit()
+
         return result
     
     def get_cleanup_stats(self) -> dict:
