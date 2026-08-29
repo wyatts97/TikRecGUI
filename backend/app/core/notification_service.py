@@ -62,6 +62,16 @@ class NotificationService:
             for q in dead:
                 self._subscribers.discard(q)
         logger.info("Notification: [%s] %s", type, title)
+
+        # Fan out to any configured external sinks (ntfy / Discord / Telegram).
+        # Imported lazily and guarded: an outbound delivery problem must never
+        # affect the in-app notification, which is the primary path.
+        try:
+            from app.core.notification_sinks import notification_sinks
+            notification_sinks.enqueue(notif)
+        except Exception:
+            logger.exception("Failed to enqueue notification for external delivery")
+
         return notif
 
     # -- Subscription (SSE) -------------------------------------------

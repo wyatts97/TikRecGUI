@@ -47,6 +47,19 @@ async function fetchApi<T>(
   return response.json()
 }
 
+export interface ExportJob {
+  id: string
+  status: 'pending' | 'running' | 'ready' | 'failed' | 'cancelled'
+  files_done: number
+  total_files: number
+  bytes_done: number
+  total_bytes: number
+  percent: number
+  error: string | null
+  filename: string
+  created_at: string
+}
+
 export interface AuthStatus {
   authenticated: boolean
   auth_enabled: boolean
@@ -635,6 +648,19 @@ export const api = {
       fetchApi<GlobalSearchResult>(
         `/search?q=${encodeURIComponent(q)}&limit=${limit}`
       ),
+  },
+
+  exports: {
+    /** Queue a ZIP export. Omit `ids` to export everything of that kind. */
+    create: (kind: 'recordings' | 'clips', ids?: number[]) =>
+      fetchApi<ExportJob>("/exports", {
+        method: "POST",
+        body: JSON.stringify({ kind, ids: ids ?? null }),
+      }),
+    get: (id: string) => fetchApi<ExportJob>(`/exports/${id}`),
+    cancel: (id: string) =>
+      fetchApi<{ cancelled: boolean }>(`/exports/${id}`, { method: "DELETE" }),
+    downloadUrl: (id: string) => `${API_BASE}/exports/${id}/download`,
   },
 
   auth: {

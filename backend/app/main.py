@@ -18,6 +18,7 @@ from app.core.media_utils import (
     recording_path,
 )
 from app.core.transcription_service import transcription_service
+from app.core.export_service import export_service
 from app.core.auth import require_auth
 from app.api.routes import (
     auth as auth_routes,
@@ -28,6 +29,7 @@ from app.api.routes import (
     stats as stats_routes,
     notifications as notifications_routes,
     search as search_routes,
+    exports as export_routes,
 )
 from app.core.task_manager import task_manager, monitor_service
 
@@ -145,6 +147,8 @@ async def lifespan(app: FastAPI):
     yield
     monitor_service.stop()
     task_manager.shutdown()
+    # Delete any archives still sitting in temp.
+    export_service.shutdown()
 
 
 app = FastAPI(
@@ -188,6 +192,7 @@ for _router in (
     stats_routes.router,
     notifications_routes.router,
     search_routes.router,
+    export_routes.router,
 ):
     app.include_router(_router, prefix="/api", dependencies=[_protected])
 

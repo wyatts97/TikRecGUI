@@ -8,6 +8,10 @@ from fastapi import APIRouter, HTTPException, status
 from app.config import settings
 from app.schemas.settings import (
     CookiesConfig,
+    NotificationSinksConfig,
+    NtfyConfig,
+    DiscordConfig,
+    TelegramBotConfig,
     TelegramConfig,
     AutoCleanupConfig,
     SettingsResponse,
@@ -17,6 +21,8 @@ from app.core.recorder_service import recorder_service
 from app.core.settings_store import settings_store
 from app.core.cleanup_service import cleanup_service
 from app.core.task_manager import monitor_service
+from app.core import notification_sinks as sinks_module
+from app.core.notification_sinks import notification_sinks
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -80,6 +86,34 @@ def _validate_proxy(value: str | None) -> str | None:
     return value
 
 
+def _sink_response() -> NotificationSinksConfig:
+    """Sink config for the client, with the two secret fields masked."""
+    cfg = sinks_module.get_config()
+    ntfy, discord, telegram = cfg["ntfy"], cfg["discord"], cfg["telegram"]
+    return NotificationSinksConfig(
+        enabled=cfg.get("enabled", False),
+        events=cfg.get("events", []),
+        ntfy=NtfyConfig(
+            enabled=ntfy.get("enabled", False),
+            server=ntfy.get("server", "https://ntfy.sh"),
+            # Not a credential on its own, but an ntfy topic is a shared secret
+            # in practice -- anyone who knows it can read your alerts.
+            topic=_mask_secret(ntfy.get("topic", "")),
+        ),
+        discord=DiscordConfig(
+            enabled=discord.get("enabled", False),
+            webhook_url=_mask_secret(discord.get("webhook_url", "")),
+            webhook_url_set=bool(discord.get("webhook_url")),
+        ),
+        telegram=TelegramBotConfig(
+            enabled=telegram.get("enabled", False),
+            bot_token=_mask_secret(telegram.get("bot_token", "")),
+            chat_id=telegram.get("chat_id", ""),
+            bot_token_set=bool(telegram.get("bot_token")),
+        ),
+    )
+
+
 @router.get("", response_model=SettingsResponse)
 def get_settings():
     cookies_data = _read_json_file(
@@ -116,6 +150,8 @@ def get_settings():
         automatic_interval=settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL),
         max_recording_hours=settings_store.get("max_recording_hours", settings.DEFAULT_MAX_RECORDING_HOURS),
         auto_cleanup=AutoCleanupConfig(**auto_cleanup_data),
+        notification_sinks=_sink_response(),
+        available_notification_events=sinks_module.ALL_EVENTS,
         timezone=settings_store.get("timezone", "UTC")
     )
 
@@ -168,10 +204,50 @@ def update_settings(update: SettingsUpdate):
             "action": update.auto_cleanup.action
         })
 
+    if update.notification_sinks is not None:
+        current = sinks_module.get_config()
+        incoming = update.notification_sinks
+        settings_store.set("notification_sinks", {
+            "enabled": incoming.enabled,
+            "events": [e for e in incoming.events if e in sinks_module.ALL_EVENTS],
+            "ntfy": {
+                "enabled": incoming.ntfy.enabled,
+                "server": incoming.ntfy.server.strip() or "https://ntfy.sh",
+                "topic": _resolve_secret(incoming.ntfy.topic, current["ntfy"].get("topic", "")),
+            },
+            "discord": {
+                "enabled": incoming.discord.enabled,
+                "webhook_url": _resolve_secret(
+                    incoming.discord.webhook_url, current["discord"].get("webhook_url", "")
+                ),
+            },
+            "telegram": {
+                "enabled": incoming.telegram.enabled,
+                "bot_token": _resolve_secret(
+                    incoming.telegram.bot_token, current["telegram"].get("bot_token", "")
+                ),
+                "chat_id": incoming.telegram.chat_id.strip(),
+            },
+        })
+
     if update.timezone is not None:
         settings_store.set("timezone", update.timezone.strip() or "UTC")
 
     return get_settings()
+
+
+@router.post("/notifications/test/{sink}")
+def test_notification_sink(sink: str):
+    """Send a test notification through one sink and report the real error.
+
+    Synchronous on purpose: the settings UI needs the outcome, and making the
+    user go read the container logs to find out why a webhook failed is the
+    thing this endpoint exists to avoid.
+    """
+    ok, message = notification_sinks.send_test(sink)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+    return {"status": "ok", "message": message}
 
 
 @router.get("/health")

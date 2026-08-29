@@ -10,6 +10,8 @@ import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem
 import { Pagination, PaginationList, PaginationItem, PaginationButton } from '@/components/selia/pagination'
 import EmptyState from '@/components/EmptyState'
 import QueryError from '@/components/QueryError'
+import ExportProgress from '@/components/ExportProgress'
+import { useExportJob } from '@/hooks/useExportJob'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { api, type Clip } from '@/lib/api'
@@ -99,22 +101,12 @@ export default function Clips() {
     }
   }
 
-  const handleDownloadAll = async () => {
-    try {
-      const blob = await api.clips.downloadAll()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `all_clips_${new Date().toISOString().slice(0, 10)}.zip`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      toast.success('Download started')
-    } catch (err: any) {
-      toast.error(err.message || 'Download failed')
-    }
-  }
+  const { job: exportJob, start: startExport, cancel: cancelExport, isExporting } =
+    useExportJob()
+
+  // Exports run as a background job with progress; the old blocking
+  // blob download gave no feedback for minutes on a large library.
+  const handleDownloadAll = () => startExport('clips')
 
   const queryKey = ['clips', page, sortBy, debouncedSearch] as const
 
@@ -206,6 +198,7 @@ export default function Clips() {
           size="sm"
           onClick={handleDownloadAll}
           title="Download all clips as ZIP"
+          disabled={isExporting}
         >
           <Package className="h-3.5 w-3.5 mr-1.5" />
           Download All
@@ -214,6 +207,8 @@ export default function Clips() {
           {total} clip{total !== 1 ? 's' : ''}
         </span>
       </div>
+
+      {exportJob && <ExportProgress job={exportJob} onCancel={cancelExport} />}
 
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/60 border border-border/50">
