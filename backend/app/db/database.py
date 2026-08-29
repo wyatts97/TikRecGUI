@@ -1,6 +1,6 @@
 from contextlib import contextmanager, asynccontextmanager
 from concurrent.futures import ThreadPoolExecutor
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import NullPool
@@ -16,6 +16,39 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=NullPool,
 )
+
+# ---------------------------------------------------------------------------
+# SQLite tuning
+#
+# This app runs many concurrent writers against one SQLite file: a thread per
+# active recording, the monitor loop, the transcription dispatcher, live-chat
+# listeners and the shared background pool.  Without these PRAGMAs the default
+# rollback journal serialises readers against writers and any contention
+# surfaces immediately as "database is locked".
+#
+#   journal_mode=WAL  -- readers no longer block the writer (and vice versa)
+#   busy_timeout      -- wait for a held lock instead of failing instantly
+#   synchronous=NORMAL-- safe under WAL, far fewer fsyncs
+#   foreign_keys=ON   -- SQLite leaves FK enforcement off by default
+# ---------------------------------------------------------------------------
+
+def _is_sqlite(dbapi_connection) -> bool:
+    return type(dbapi_connection).__module__.startswith("sqlite3")
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragmas(dbapi_connection, _connection_record):
+    if not _is_sqlite(dbapi_connection):
+        return
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=10000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+    finally:
+        cursor.close()
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

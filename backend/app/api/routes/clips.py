@@ -29,6 +29,7 @@ from app.core.media_utils import (
     thumbnail_media_type,
     all_thumbnail_paths,
     generate_sprite,
+    recording_path,
 )
 
 logger = logging.getLogger("tikrec.clips")
@@ -159,7 +160,7 @@ def create_clip_endpoint(request: ClipCreate, db: Session = Depends(get_db)):
             detail="Can only clip completed or stopped recordings"
         )
 
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
     if not video_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

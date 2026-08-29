@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
@@ -15,9 +15,12 @@ from app.core.media_utils import (
     generate_thumbnail,
     generate_sprite,
     thumbnail_path,
+    recording_path,
 )
 from app.core.transcription_service import transcription_service
+from app.core.auth import require_auth
 from app.api.routes import (
+    auth as auth_routes,
     users,
     recordings,
     clips,
@@ -52,7 +55,7 @@ def _find_orphan_sources(video_path: Path) -> list[Path]:
 
 def _recover_orphaned_recording(recording_id: int, filename: str) -> None:
     """Background finalize for a recording left in 'recording'/'processing' after a crash."""
-    video_path = Path(settings.RECORDINGS_DIR) / filename
+    video_path = recording_path(filename)
     sources = _find_orphan_sources(video_path)
     if not sources:
         with get_session() as db:
@@ -125,7 +128,7 @@ async def lifespan(app: FastAPI):
         for rec in orphaned:
             if task_manager.is_recording(rec.id):
                 continue
-            sources = _find_orphan_sources(Path(settings.RECORDINGS_DIR) / rec.filename)
+            sources = _find_orphan_sources(recording_path(rec.filename))
             if sources:
                 run_background(_recover_orphaned_recording, rec.id, rec.filename)
             else:
@@ -148,24 +151,45 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="WebUI for TikTok Live Recorder",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # The docs enumerate every endpoint; keep them off on an internet-facing
+    # deployment unless explicitly enabled.
+    docs_url="/docs" if settings.ENABLE_DOCS else None,
+    redoc_url="/redoc" if settings.ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if settings.ENABLE_DOCS else None,
 )
+
+# An explicit origin list is required: "*" together with allow_credentials
+# makes Starlette echo back any Origin, which would let any site the user
+# visits drive this API with their session cookie.
+_allowed_origins = [o for o in settings.ALLOWED_ORIGINS if o != "*"]
+if len(_allowed_origins) != len(settings.ALLOWED_ORIGINS):
+    logger.error('ALLOWED_ORIGINS contained "*"; ignoring it (unsafe with credentials)')
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(users.router, prefix="/api")
-app.include_router(recordings.router, prefix="/api")
-app.include_router(clips.router, prefix="/api")
-app.include_router(settings_routes.router, prefix="/api")
-app.include_router(stats_routes.router, prefix="/api")
-app.include_router(notifications_routes.router, prefix="/api")
-app.include_router(search_routes.router, prefix="/api")
+# Login/logout must stay reachable without a session.
+app.include_router(auth_routes.router, prefix="/api")
+
+# Auth is applied at include time rather than per-endpoint so a newly added
+# route cannot accidentally ship unprotected.
+_protected = Depends(require_auth)
+for _router in (
+    users.router,
+    recordings.router,
+    clips.router,
+    settings_routes.router,
+    stats_routes.router,
+    notifications_routes.router,
+    search_routes.router,
+):
+    app.include_router(_router, prefix="/api", dependencies=[_protected])
 
 
 @app.get("/api/health")

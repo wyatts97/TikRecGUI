@@ -1,5 +1,6 @@
 import json
 import shutil
+from urllib.parse import urlparse
 
 import psutil
 from fastapi import APIRouter, HTTPException, status
@@ -36,6 +37,49 @@ def _write_json_file(path, data: dict):
         json.dump(data, f, indent=2)
 
 
+# Secrets are shown to the client only as a short masked preview.  Any value
+# the client sends back that still looks masked (or is blank) means "keep what
+# is already stored" -- see _resolve_secret().
+_MASK_CHAR = "•"
+
+
+def _mask_secret(value: str) -> str:
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return _MASK_CHAR * 8
+    return _MASK_CHAR * 8 + value[-4:]
+
+
+def _resolve_secret(submitted: str, current: str) -> str:
+    """Return the value to persist for a secret field."""
+    submitted = (submitted or "").strip()
+    if not submitted or _MASK_CHAR in submitted:
+        # Blank or still-masked -> the user did not edit this field.
+        return current
+    return submitted
+
+
+def _validate_proxy(value: str | None) -> str | None:
+    """Reject anything that is not a plain http(s) proxy URL.
+
+    The proxy is handed to ffmpeg and httpx, so an unvalidated value lets a
+    caller redirect all recorder traffic to a host of their choosing.
+    """
+    if not value:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme not in ("http", "https", "socks5", "socks5h") or not parsed.hostname:
+        raise HTTPException(
+            status_code=422,
+            detail="Proxy must be an http://, https://, socks5:// or socks5h:// URL",
+        )
+    return value
+
+
 @router.get("", response_model=SettingsResponse)
 def get_settings():
     cookies_data = _read_json_file(
@@ -56,13 +100,15 @@ def get_settings():
     
     return SettingsResponse(
         cookies=CookiesConfig(
-            sessionid_ss=cookies_data.get("sessionid_ss", ""),
-            tt_target_idc=cookies_data.get("tt-target-idc", "useast2a")
+            sessionid_ss=_mask_secret(cookies_data.get("sessionid_ss", "")),
+            tt_target_idc=cookies_data.get("tt-target-idc", "useast2a"),
+            sessionid_ss_set=bool(cookies_data.get("sessionid_ss")),
         ),
         telegram=TelegramConfig(
             api_id=telegram_data.get("api_id", ""),
-            api_hash=telegram_data.get("api_hash", ""),
-            chat_id=telegram_data.get("chat_id", "me")
+            api_hash=_mask_secret(telegram_data.get("api_hash", "")),
+            chat_id=telegram_data.get("chat_id", "me"),
+            api_hash_set=bool(telegram_data.get("api_hash")),
         ),
         proxy=settings_store.get("proxy", settings.DEFAULT_PROXY),
         output_dir=str(settings.RECORDINGS_DIR),
@@ -77,23 +123,29 @@ def get_settings():
 @router.put("", response_model=SettingsResponse)
 def update_settings(update: SettingsUpdate):
     if update.cookies:
+        existing = _read_json_file(settings.COOKIES_FILE, {})
         cookies_data = {
-            "sessionid_ss": update.cookies.sessionid_ss,
-            "tt-target-idc": update.cookies.tt_target_idc
+            "sessionid_ss": _resolve_secret(
+                update.cookies.sessionid_ss, existing.get("sessionid_ss", "")
+            ),
+            "tt-target-idc": update.cookies.tt_target_idc,
         }
         _write_json_file(settings.COOKIES_FILE, cookies_data)
         recorder_service.reload_cookies()
-    
+
     if update.telegram:
+        existing = _read_json_file(settings.TELEGRAM_CONFIG_FILE, {})
         telegram_data = {
             "api_id": update.telegram.api_id,
-            "api_hash": update.telegram.api_hash,
-            "chat_id": update.telegram.chat_id
+            "api_hash": _resolve_secret(
+                update.telegram.api_hash, existing.get("api_hash", "")
+            ),
+            "chat_id": update.telegram.chat_id,
         }
         _write_json_file(settings.TELEGRAM_CONFIG_FILE, telegram_data)
-    
+
     if update.proxy is not None:
-        proxy = update.proxy.strip() or None
+        proxy = _validate_proxy(update.proxy)
         settings_store.set("proxy", proxy)
         recorder_service.set_proxy(proxy)
 

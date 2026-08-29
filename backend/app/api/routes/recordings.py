@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import threading
 import logging
 import shutil
 import zipfile
@@ -37,6 +38,7 @@ from app.core.media_utils import (
     analyze_video_health,
     repair_video,
     finalize_segments_to_mp4,
+    recording_path,
 )
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
@@ -47,8 +49,31 @@ logger = logging.getLogger("tikrec.recordings")
 router = APIRouter(prefix="/recordings", tags=["recordings"])
 
 
-_thumb_retry_in_progress: set[int] = set()
-_sprite_retry_in_progress: set[int] = set()
+# Debounce registry for background thumbnail/sprite regeneration.
+#
+# These are touched from request threads, so they need a lock.  They are also
+# time-bounded: an earlier implementation used plain sets that were only ever
+# added to, which permanently blocked a recording from ever retrying after one
+# failed attempt and leaked an entry per recording for the process lifetime.
+_RETRY_COOLDOWN_SECONDS = 300
+
+_retry_lock = threading.Lock()
+_thumb_retry_at: dict[int, float] = {}
+_sprite_retry_at: dict[int, float] = {}
+
+
+def _claim_retry(registry: dict[int, float], recording_id: int) -> bool:
+    """Reserve a background retry slot, or return False if one is still cooling down."""
+    now = time.monotonic()
+    with _retry_lock:
+        # Opportunistically drop expired entries so the dict cannot grow without bound.
+        for rec_id, started in list(registry.items()):
+            if now - started > _RETRY_COOLDOWN_SECONDS:
+                del registry[rec_id]
+        if recording_id in registry:
+            return False
+        registry[recording_id] = now
+        return True
 
 
 def _delete_recording_files(recording: Recording) -> list[str]:
@@ -58,7 +83,7 @@ def _delete_recording_files(recording: Recording) -> list[str]:
     Returns a list of error messages (empty iff all deletions succeeded).
     """
     errors: list[str] = []
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
 
     assets = [
         ("video", video_path),
@@ -106,7 +131,7 @@ def _is_thumbnail_ready(recording: Recording, db: Session | None = None) -> bool
     if recording.thumbnail_ready:
         return True
 
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
     thumb_path = thumbnail_path(video_path)
     if thumb_path.exists() and thumb_path.stat().st_size > 0:
         # Files exist but DB is out of sync — fix it.
@@ -119,9 +144,8 @@ def _is_thumbnail_ready(recording: Recording, db: Session | None = None) -> bool
     if (
         recording.status in ("completed", "stopped", "failed")
         and video_path.exists()
-        and recording.id not in _thumb_retry_in_progress
+        and _claim_retry(_thumb_retry_at, recording.id)
     ):
-        _thumb_retry_in_progress.add(recording.id)
         run_background(generate_thumbnail, video_path, thumb_path, recording.id)
     return False
 
@@ -131,7 +155,7 @@ def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
     if recording.sprite_ready:
         return True
 
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
     vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
     if sprite_path.exists() and sprite_path.stat().st_size > 0 and vtt_path.exists() and vtt_path.stat().st_size > 0:
@@ -145,9 +169,8 @@ def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
     if (
         recording.status in ("completed", "stopped", "failed")
         and video_path.exists()
-        and recording.id not in _sprite_retry_in_progress
+        and _claim_retry(_sprite_retry_at, recording.id)
     ):
-        _sprite_retry_in_progress.add(recording.id)
         run_background(generate_sprite, video_path)
     return False
 
@@ -161,7 +184,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
         is_corrupt is None
         and rec.status in ("completed", "stopped", "failed")
     ):
-        video_path = Path(settings.RECORDINGS_DIR) / rec.filename
+        video_path = recording_path(rec.filename)
         if video_path.exists():
             health = analyze_video_health(video_path)
             is_corrupt = health.get("is_corrupt", True)
@@ -502,6 +525,17 @@ def live_clip_stop(recording_id: int):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+# NOTE: literal paths must be declared before the /{recording_id} catch-all.
+# FastAPI matches in declaration order, so a literal registered after it is
+# never reached (the segment binds to recording_id and fails int parsing).
+@router.get("/transcripts/search")
+def search_transcripts(q: str, db: Session = Depends(get_db)):
+    """Search recordings by transcript text."""
+    if not q or len(q.strip()) < 2:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query too short")
+    return transcription_service.search(q.strip(), db)
+
+
 @router.get("/{recording_id}", response_model=RecordingResponse)
 def get_recording(recording_id: int, db: Session = Depends(get_db)):
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
@@ -592,7 +626,7 @@ def download_recording(recording_id: int, db: Session = Depends(get_db)):
             detail="Recording not found"
         )
 
-    file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    file_path = recording_path(recording.filename)
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -615,7 +649,7 @@ def stream_recording(recording_id: int, db: Session = Depends(get_db)):
             detail="Recording not found"
         )
 
-    file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    file_path = recording_path(recording.filename)
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -638,7 +672,7 @@ def thumbnail_recording(recording_id: int, db: Session = Depends(get_db)):
             detail="Recording not found"
         )
 
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
     thumb_path = thumbnail_path(video_path)
 
     if not thumb_path.exists():
@@ -811,7 +845,7 @@ def batch_download_recordings(
     try:
         with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for recording in recordings:
-                file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+                file_path = recording_path(recording.filename)
                 if file_path.exists():
                     zf.write(file_path, recording.filename)
         
@@ -839,7 +873,7 @@ def get_sprite(recording_id: int, db: Session = Depends(get_db)):
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
     sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
     if not sprite_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprite not yet generated")
@@ -860,7 +894,7 @@ def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
     vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
     if not vtt_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VTT not yet generated")
@@ -898,14 +932,6 @@ def start_transcription(recording_id: int, db: Session = Depends(get_db)):
     return _build_response(recording, db)
 
 
-@router.get("/transcripts/search")
-def search_transcripts(q: str, db: Session = Depends(get_db)):
-    """Search recordings by transcript text."""
-    if not q or len(q.strip()) < 2:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Query too short")
-    return transcription_service.search(q.strip(), db)
-
-
 @router.post("/sprites/regenerate")
 def regenerate_missing_sprites(db: Session = Depends(get_db)):
     """Trigger sprite generation for all completed/stopped recordings missing sprites."""
@@ -917,9 +943,8 @@ def regenerate_missing_sprites(db: Session = Depends(get_db)):
     )
     triggered = 0
     for rec in recordings:
-        video_path = Path(settings.RECORDINGS_DIR) / rec.filename
-        if video_path.exists() and rec.id not in _sprite_retry_in_progress:
-            _sprite_retry_in_progress.add(rec.id)
+        video_path = recording_path(rec.filename)
+        if video_path.exists() and _claim_retry(_sprite_retry_at, rec.id):
             run_background(generate_sprite, video_path)
             triggered += 1
     return {"total_missing": len(recordings), "triggered": triggered}
@@ -935,7 +960,7 @@ def get_recording_health(recording_id: int, db: Session = Depends(get_db)):
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
     if video_path.exists():
         return analyze_video_health(video_path)
 
@@ -976,7 +1001,7 @@ def repair_recording(recording_id: int, db: Session = Depends(get_db)):
             detail="Only finished recordings can be repaired",
         )
 
-    video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+    video_path = recording_path(recording.filename)
 
     # Case A — the .mp4 was never produced (finalize/remux failure). Rebuild it
     # from the raw capture sources still on disk instead of 404-ing. This is the
@@ -1122,7 +1147,7 @@ def download_all_recordings(db: Session = Depends(get_db)):
     try:
         with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for recording in recordings:
-                file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+                file_path = recording_path(recording.filename)
                 if file_path.exists():
                     zf.write(file_path, recording.filename)
 

@@ -2,14 +2,21 @@ from pydantic import BaseModel
 
 
 class CookiesConfig(BaseModel):
+    """Cookie config as sent to the client.
+
+    ``sessionid_ss`` is a live TikTok session token, so it is never returned in
+    full -- only a masked preview plus a flag saying whether one is stored.
+    """
     sessionid_ss: str = ""
     tt_target_idc: str = "useast2a"
+    sessionid_ss_set: bool = False
 
 
 class TelegramConfig(BaseModel):
     api_id: str = ""
     api_hash: str = ""
     chat_id: str = "me"
+    api_hash_set: bool = False
 
 
 class AutoCleanupConfig(BaseModel):

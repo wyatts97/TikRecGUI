@@ -1,9 +1,11 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
 
+from app.schemas.user import USERNAME_PATTERN
+
 
 class RecordingStart(BaseModel):
-    username: str | None = None
+    username: str | None = Field(default=None, max_length=24, pattern=USERNAME_PATTERN)
     url: str | None = None
     room_id: str | None = None
     mode: str = Field(default="manual", pattern="^(manual|automatic)$")

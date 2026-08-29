@@ -2,8 +2,14 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
+# TikTok's own username charset.  Constrained here because the value ends up
+# in on-disk filenames (see media_utils.generate_recording_filename), so path
+# separators and traversal sequences must never reach it.
+USERNAME_PATTERN = r"^[A-Za-z0-9._]{1,24}$"
+
+
 class UserBase(BaseModel):
-    username: str = Field(..., min_length=1, max_length=255)
+    username: str = Field(..., min_length=1, max_length=24, pattern=USERNAME_PATTERN)
 
 
 class UserCreate(UserBase):
@@ -16,7 +22,11 @@ class UserUpdate(BaseModel):
     room_id: str | None = None
 
 
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
+    # Deliberately NOT inheriting UserBase: the pattern there guards *input*.
+    # Rows already in the database predate that constraint, and a response
+    # model must never fail validation on data we already stored.
+    username: str
     id: int
     display_name: str | None = None
     bio: str | None = None

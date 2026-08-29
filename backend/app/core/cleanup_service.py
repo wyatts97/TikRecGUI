@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.config import settings
 from app.core.settings_store import settings_store
-from app.core.media_utils import all_thumbnail_paths
+from app.core.media_utils import all_thumbnail_paths, recording_path
 from app.db.database import get_session
 from app.db.models import Recording
 
@@ -40,7 +40,7 @@ class CleanupService:
     
     def delete_recording(self, recording: Recording) -> bool:
         """Delete all on-disk assets for a recording (video, thumbnail, sprite sheet, sprite VTT)."""
-        file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+        file_path = recording_path(recording.filename)
 
         assets = [
             file_path,
@@ -73,7 +73,7 @@ class CleanupService:
         try:
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for recording in recordings:
-                    file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+                    file_path = recording_path(recording.filename)
                     if file_path.exists():
                         zf.write(file_path, recording.filename)
             
@@ -131,7 +131,7 @@ class CleanupService:
         total_size = 0
         
         for recording in recordings:
-            file_path = Path(settings.RECORDINGS_DIR) / recording.filename
+            file_path = recording_path(recording.filename)
             if file_path.exists():
                 total_size += file_path.stat().st_size
         

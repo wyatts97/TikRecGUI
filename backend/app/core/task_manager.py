@@ -17,6 +17,7 @@ from app.core.media_utils import (
     analyze_video_health,
     concat_ts_segments,
     finalize_segments_to_mp4,
+    recording_path,
 )
 from app.core.recorder_loader import get_tiktok_api_class
 from app.core.transcription_service import transcription_service
@@ -295,7 +296,7 @@ class RecordingTask:
         # recording when ffmpeg exits, we re-resolve a fresh URL and start a new
         # segment, then concatenate all segments into one continuous file at
         # finalize time. This keeps one live session as one recording.
-        output_path = Path(settings.RECORDINGS_DIR) / filename
+        output_path = recording_path(filename)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         self._output_path = output_path
         self._ts_path = output_path.with_suffix(".ts")
@@ -687,13 +688,16 @@ class TaskManager:
             return True
     
     def stop_recording(self, recording_id: int) -> bool:
+        # task.stop() blocks for up to ~25s (ffmpeg drain + thread join), so it
+        # must run OUTSIDE the lock.  Holding it here stalled every other
+        # caller -- notably get_active_recordings(), which the UI polls every
+        # 5 seconds -- for the whole duration of a stop.
         with self._lock:
-            task = self._tasks.get(recording_id)
-            if task:
-                task.stop()
-                del self._tasks[recording_id]
-                return True
+            task = self._tasks.pop(recording_id, None)
+        if task is None:
             return False
+        task.stop()
+        return True
     
     def is_recording(self, recording_id: int) -> bool:
         with self._lock:
@@ -711,10 +715,16 @@ class TaskManager:
                 del self._tasks[rid]
     
     def shutdown(self):
+        # Same reasoning as stop_recording: drain the registry under the lock,
+        # then do the blocking stops without holding it.
         with self._lock:
-            for task in self._tasks.values():
-                task.stop()
+            tasks = list(self._tasks.values())
             self._tasks.clear()
+        for task in tasks:
+            try:
+                task.stop()
+            except Exception:
+                logger.exception("Error stopping task during shutdown")
 
 
 task_manager = TaskManager()

@@ -101,6 +101,30 @@ def create_clip(video_path: Path, start: int, end: int, output_path: Path) -> bo
     return False
 
 
+class UnsafePathError(ValueError):
+    """Raised when a stored filename would resolve outside its base directory."""
+
+
+def resolve_within(base: Path, filename: str) -> Path:
+    """Join ``filename`` onto ``base`` and prove the result stays inside it.
+
+    Filenames are generated from TikTok usernames and user-supplied clip
+    titles.  Both are validated on the way in, but this is the last line of
+    defence for rows written before those constraints existed -- a filename
+    containing ``..`` or an absolute path must never escape the media root.
+    """
+    base_resolved = Path(base).resolve()
+    candidate = (base_resolved / filename).resolve()
+    if candidate != base_resolved and base_resolved not in candidate.parents:
+        raise UnsafePathError(f"Refusing to access {filename!r} outside {base_resolved}")
+    return candidate
+
+
+def recording_path(filename: str) -> Path:
+    """Absolute path to a recording, guaranteed to sit inside RECORDINGS_DIR."""
+    return resolve_within(settings.RECORDINGS_DIR, filename)
+
+
 def generate_recording_filename(username: str) -> str:
     """Build a standardised filename for a recorded TikTok live stream.
 

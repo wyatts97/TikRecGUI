@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 from app.config import settings
+from app.core.media_utils import recording_path
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ class TranscriptionService:
                     return
                 if recording.status not in ("completed", "stopped"):
                     return
-                video_path = Path(settings.RECORDINGS_DIR) / recording.filename
+                video_path = recording_path(recording.filename)
                 if not video_path.exists():
                     recording.transcript_status = "failed"
                     db.commit()
@@ -229,7 +230,12 @@ class TranscriptionService:
         out = []
         for rec in results:
             snippet = _extract_snippet(rec.transcript_text or "", query)
-            out.append({"recording_id": rec.id, "username": rec.username, "snippet": snippet})
+            out.append({
+                "recording_id": rec.id,
+                # Recording has no username column; it lives on the related User.
+                "username": rec.user.username if rec.user else None,
+                "snippet": snippet,
+            })
         return out
 
 

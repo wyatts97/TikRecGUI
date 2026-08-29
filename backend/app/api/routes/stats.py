@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.database import get_db
 from app.db.models import Recording, Clip, LiveEvent, User
 
