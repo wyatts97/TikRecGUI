@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Scissors } from 'lucide-react'
 import { Button } from '@/components/selia/button'
 import { Input } from '@/components/selia/input'
@@ -20,6 +20,11 @@ interface ClipDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onClipCreated?: () => void
+  /**
+   * Playhead position, in seconds, captured when the dialog was opened.
+   * Prefills Start Time so clipping "from here" takes no manual typing.
+   */
+  defaultStartSeconds?: number | null
 }
 
 function formatTimeInput(seconds: number): string {
@@ -60,11 +65,22 @@ export default function ClipDialog({
   open,
   onOpenChange,
   onClipCreated,
+  defaultStartSeconds,
 }: ClipDialogProps) {
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
   const [title, setTitle] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Seed Start Time from the playhead each time the dialog opens. Keyed on
+  // `open` rather than done once, so reopening at a different position
+  // refreshes it -- but only while the dialog is opening, so it never
+  // overwrites what the user has typed.
+  useEffect(() => {
+    if (!open) return
+    if (defaultStartSeconds === null || defaultStartSeconds === undefined) return
+    setStartTime(formatTimeInput(Math.max(0, Math.floor(defaultStartSeconds))))
+  }, [open, defaultStartSeconds])
 
   const maxDuration = recording.duration_seconds || 0
 

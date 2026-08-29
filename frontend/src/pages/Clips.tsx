@@ -1,22 +1,19 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { Play, Scissors, Loader2, Search, Heart, Download, Trash2, X, Package, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Card } from '@/components/selia/card'
+import { Scissors, Search, Download, Trash2, X, Package, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/selia/button'
-import { Checkbox } from '@/components/selia/checkbox'
 import { Input } from '@/components/selia/input'
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectList, SelectItem } from '@/components/selia/select'
 import { Pagination, PaginationList, PaginationItem, PaginationButton } from '@/components/selia/pagination'
 import EmptyState from '@/components/EmptyState'
 import QueryError from '@/components/QueryError'
+import { ClipCard } from '@/components/ui/clip-card'
 import ExportProgress from '@/components/ExportProgress'
 import { useExportJob } from '@/hooks/useExportJob'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { api, type Clip } from '@/lib/api'
-import { cn, formatBytes, formatDuration } from '@/lib/utils'
-import { useDateFormat } from '@/lib/timezone-context'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import toast from 'react-hot-toast'
 
@@ -47,7 +44,6 @@ function getPageNumbers(page: number, totalPages: number): (number | 'ellipsis')
 }
 
 export default function Clips() {
-  const fmt = useDateFormat()
   const navigate = useNavigate()
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
@@ -256,108 +252,25 @@ export default function Clips() {
           >
             {clips.map((clip) => (
               <StaggerItem key={clip.id}>
-              <Card
-                className="group overflow-hidden cursor-pointer border border-border bg-card hover:shadow-md transition-shadow"
+              <ClipCard
+                clip={clip}
+                selected={selectedIds.has(clip.id)}
+                onSelect={toggleSelection}
                 onClick={() => navigate(`/clips/${clip.id}`)}
-              >
-                <div className="relative aspect-video bg-muted overflow-hidden">
-                  <div
-                    className="absolute top-2 left-2 z-10"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Checkbox
-                      checked={selectedIds.has(clip.id)}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        toggleSelection(clip.id)
-                      }}
-                      aria-label={`Select clip ${clip.id}`}
-                    />
-                  </div>
-                  {clip.thumbnail_ready ? (
-                    <img
-                      src={api.clips.getThumbnailUrl(
-                        clip.id,
-                        clip.file_size ?? clip.created_at,
-                      )}
-                      alt={`${clip.username} clip thumbnail`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                      decoding="async"
-                      onError={(e) => {
-                        const img = e.target as HTMLImageElement
-                        img.style.display = 'none'
-                        const placeholder = img.nextElementSibling as HTMLElement
-                        if (placeholder) placeholder.style.display = 'flex'
-                      }}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/60">
-                      <Loader2 className="h-8 w-8 text-muted-foreground animate-spin mb-2" />
-                      <span className="text-xs text-muted-foreground font-medium">Processing…</span>
-                    </div>
-                  )}
-                  <div className="absolute inset-0 items-center justify-center bg-muted hidden">
-                    <Scissors className="h-12 w-12 text-gray-400" />
-                  </div>
-                  {clip.thumbnail_ready && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="h-12 w-12 rounded-full bg-background/90 flex items-center justify-center">
-                        <Play className="h-5 w-5 text-primary ml-0.5" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-medium text-foreground truncate">
-                        {clip.title || `Clip from @${clip.username}`}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        @{clip.username} · {fmt(clip.created_at)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="plain"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleFavoriteMutation.mutate(clip.id)
-                        }}
-                        title={clip.is_favorite ? 'Unfavorite' : 'Favorite'}
-                      >
-                        <Heart className={cn('h-4 w-4', clip.is_favorite && 'fill-red-500 text-red-500')} />
-                      </Button>
-                      <Button
-                        variant="plain"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          const a = document.createElement('a')
-                          a.href = api.clips.getDownloadUrl(clip.id)
-                          a.download = ''
-                          document.body.appendChild(a)
-                          a.click()
-                          document.body.removeChild(a)
-                        }}
-                        title="Download"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                    <span>{formatDuration(clip.duration_seconds)}</span>
-                    <span>·</span>
-                    <span>{formatBytes(clip.file_size)}</span>
-                  </div>
-                </div>
-              </Card>
+                onFavorite={(e) => {
+                  e.stopPropagation()
+                  toggleFavoriteMutation.mutate(clip.id)
+                }}
+                onDownload={(e) => {
+                  e.stopPropagation()
+                  const a = document.createElement('a')
+                  a.href = api.clips.getDownloadUrl(clip.id)
+                  a.download = ''
+                  document.body.appendChild(a)
+                  a.click()
+                  document.body.removeChild(a)
+                }}
+              />
               </StaggerItem>
             ))}
           </StaggerContainer>

@@ -24,17 +24,8 @@ import { useDateFormat } from '@/lib/timezone-context'
 import TranscriptPanel from '@/components/TranscriptPanel'
 import ChatPanel from '@/components/ChatPanel'
 import ClipDialog from '@/components/ClipDialog'
+import { ClipCard } from '@/components/ui/clip-card'
 import toast from 'react-hot-toast'
-
-function formatTimeInput(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  if (h > 0) {
-    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-  }
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
 
 function downloadAsFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime })
@@ -107,6 +98,7 @@ export default function WatchPlayer() {
   const [chatSearch, setChatSearch] = useState('')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [clipDialogOpen, setClipDialogOpen] = useState(false)
+  const [clipStartSeconds, setClipStartSeconds] = useState<number | null>(null)
   const playerRef = useRef<HTMLDivElement>(null)
 
   const { data: recording, isLoading } = useQuery({
@@ -150,6 +142,14 @@ export default function WatchPlayer() {
   const handleSeek = useCallback((seconds: number) => {
     const video = playerRef.current?.querySelector('video') as HTMLVideoElement | null
     if (video) video.currentTime = seconds
+  }, [])
+
+  // Capture where the user is in the recording, so the clip dialog can open
+  // with Start Time already filled in.
+  const openClipDialog = useCallback(() => {
+    const video = playerRef.current?.querySelector('video') as HTMLVideoElement | null
+    setClipStartSeconds(video && Number.isFinite(video.currentTime) ? video.currentTime : null)
+    setClipDialogOpen(true)
   }, [])
 
   // Jump to timestamp from ?t= query parameter (e.g. from search results)
@@ -361,7 +361,7 @@ export default function WatchPlayer() {
             </Button>
             <Button
               variant="outline"
-              onClick={() => setClipDialogOpen(true)}
+              onClick={openClipDialog}
             >
               <Scissors className="h-4 w-4" />
               Clip
@@ -378,62 +378,42 @@ export default function WatchPlayer() {
           </div>
 
           {/* Saved Clips */}
-          <div className="rounded-xl border border-border bg-card">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-              <Film className="h-4 w-4 text-muted-foreground" />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Film className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <h3 className="text-sm font-medium">Saved Clips</h3>
               <span className="text-xs text-muted-foreground ml-auto">
                 {recordingClips.length} clip{recordingClips.length !== 1 ? 's' : ''}
               </span>
             </div>
             {recordingClips.length === 0 ? (
-              <div className="px-4 py-6 text-center">
+              <div className="rounded-xl border border-border bg-card px-4 py-6 text-center">
                 <p className="text-sm text-muted-foreground">No clips yet</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   Use the Clip button to extract segments from this recording.
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-border">
-                {recordingClips.map((clip) => {
-                  const startFmt = formatTimeInput(clip.start_time)
-                  const endFmt = formatTimeInput(clip.end_time)
-                  const label = clip.title
-                    ? clip.title
-                    : `Clip ${startFmt}–${endFmt}`
-                  return (
-                    <button
-                      key={clip.id}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/40 transition-colors"
-                      onClick={() => navigate(`/clips/${clip.id}`)}
-                    >
-                      <div className="shrink-0 w-16 h-10 rounded-md bg-muted overflow-hidden">
-                        {clip.thumbnail_ready ? (
-                          <img
-                            src={api.clips.getThumbnailUrl(
-                              clip.id,
-                              clip.file_size ?? clip.created_at,
-                            )}
-                            alt=""
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <Loader2 className="h-3 w-3 text-muted-foreground animate-spin" />
-                          </div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {startFmt} – {endFmt} · {formatDuration(clip.duration_seconds)}
-                        </p>
-                      </div>
-                    </button>
-                  )
-                })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {recordingClips.map((clip) => (
+                  <ClipCard
+                    key={clip.id}
+                    clip={clip}
+                    // Every clip here belongs to the recording being watched,
+                    // so repeating the username on each card is just noise.
+                    showUser={false}
+                    onClick={() => navigate(`/clips/${clip.id}`)}
+                    onDownload={(e) => {
+                      e.stopPropagation()
+                      const a = document.createElement('a')
+                      a.href = api.clips.getDownloadUrl(clip.id)
+                      a.download = ''
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                    }}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -547,6 +527,7 @@ export default function WatchPlayer() {
           recording={recording}
           open={clipDialogOpen}
           onOpenChange={setClipDialogOpen}
+          defaultStartSeconds={clipStartSeconds}
           onClipCreated={() => {
             queryClient.invalidateQueries({ queryKey: ['clips', 'recording', recordingId] })
           }}
