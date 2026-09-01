@@ -40,8 +40,13 @@ router = APIRouter(prefix="/clips", tags=["clips"])
 # ----------------------------------------------------------------
 
 def _build_clip_response(clip: Clip, username: str | None = None) -> ClipResponse:
+    # Prefer the username stored on the clip: it is the only source that still
+    # works once the source recording has been deleted. The relationship is the
+    # fallback for rows created before that column existed.
     if username:
         resolved_username = username
+    elif clip.username:
+        resolved_username = clip.username
     elif clip.recording is not None and clip.recording.user is not None:
         resolved_username = clip.recording.user.username
     else:
@@ -205,6 +210,8 @@ def create_clip_endpoint(request: ClipCreate, db: Session = Depends(get_db)):
 
     clip = Clip(
         recording_id=recording.id,
+        # Stored on the clip so it survives deletion of the recording.
+        username=recording.user.username if recording.user else None,
         title=request.title,
         filename=filename,
         start_time=request.start_time,
@@ -241,19 +248,21 @@ def list_clips(
     favorites_only: bool = False,
     db: Session = Depends(get_db)
 ):
-    # Eagerly load the recording relationship so _build_clip_response
-    # can access clip.recording.username without detached errors.
+    # OUTER joins: a clip outlives its recording, so an inner join would make
+    # every clip whose source was deleted silently vanish from the list.
+    # The recording is still eagerly loaded where it exists, for callers that
+    # want to jump back to the source.
     query = (
         db.query(Clip)
-        .join(Recording, Clip.recording_id == Recording.id)
-        .join(User, Recording.user_id == User.id)
+        .outerjoin(Recording, Clip.recording_id == Recording.id)
+        .outerjoin(User, Recording.user_id == User.id)
         .options(joinedload(Clip.recording).joinedload(Recording.user))
     )
     count_query = (
         db.query(func.count())
         .select_from(Clip)
-        .join(Recording, Clip.recording_id == Recording.id)
-        .join(User, Recording.user_id == User.id)
+        .outerjoin(Recording, Clip.recording_id == Recording.id)
+        .outerjoin(User, Recording.user_id == User.id)
     )
 
     if recording_id is not None:
@@ -261,7 +270,12 @@ def list_clips(
         count_query = count_query.filter(Clip.recording_id == recording_id)
     if search:
         like_pat = f"%{search}%"
-        search_filter = or_(User.username.ilike(like_pat), Clip.title.ilike(like_pat))
+        # Clip.username covers clips whose recording is gone.
+        search_filter = or_(
+            User.username.ilike(like_pat),
+            Clip.username.ilike(like_pat),
+            Clip.title.ilike(like_pat),
+        )
         query = query.filter(search_filter)
         count_query = count_query.filter(search_filter)
     if favorites_only:

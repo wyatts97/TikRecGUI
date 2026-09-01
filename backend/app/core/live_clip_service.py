@@ -226,6 +226,8 @@ class LiveClipService:
         with get_session() as db:
             clip = Clip(
                 recording_id=recording_id,
+                # Stored on the clip so it survives deletion of the recording.
+                username=task.username,
                 title=f"Live clip — @{task.username}",
                 filename=mp4_path.name,
                 start_time=task.start_offset,

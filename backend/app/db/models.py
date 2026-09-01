@@ -54,12 +54,13 @@ class Recording(Base):
     
     user = relationship("User", back_populates="recordings")
     live_events = relationship("LiveEvent", back_populates="recording", cascade="all, delete-orphan")
-    # A clip cannot exist without its source recording (recording_id is NOT
-    # NULL), so deleting the recording must take its clips with it. Without
-    # this relationship the delete failed outright once foreign keys were
-    # enforced; before that it silently left orphaned clip rows behind.
+    # Clips deliberately OUTLIVE their recording: deleting a recording frees
+    # the (large) source file while keeping the (small) clips the user cut
+    # from it. The database nulls Clip.recording_id via ON DELETE SET NULL,
+    # so passive_deletes hands that to the DB instead of having SQLAlchemy
+    # load and update every child first.
     clips = relationship(
-        "Clip", back_populates="recording", cascade="all, delete-orphan"
+        "Clip", back_populates="recording", passive_deletes=True
     )
 
 
@@ -67,7 +68,15 @@ class Clip(Base):
     __tablename__ = "clips"
 
     id = Column(Integer, primary_key=True, index=True)
-    recording_id = Column(Integer, ForeignKey("recordings.id"), nullable=False)
+    # Nullable, and nulled rather than cascaded when the recording goes: a clip
+    # is an independent artefact once it has been cut.
+    recording_id = Column(
+        Integer, ForeignKey("recordings.id", ondelete="SET NULL"), nullable=True
+    )
+    # Denormalised so a clip still knows who it is of after its recording is
+    # deleted. Without this the username could only be reached through the
+    # recording, and orphaned clips would render as "unknown".
+    username = Column(String(255), nullable=True, index=True)
     title = Column(String(255), nullable=True)
     filename = Column(String(512), nullable=False)
     start_time = Column(Integer, nullable=False)

@@ -53,7 +53,8 @@ class ClipCreate(BaseModel):
 
 class ClipResponse(BaseModel):
     id: int
-    recording_id: int
+    # None once the source recording has been deleted -- clips outlive it.
+    recording_id: int | None = None
     username: str
     title: str | None = None
     filename: str

@@ -37,7 +37,6 @@ from app.core.media_utils import (
     repair_video,
     finalize_segments_to_mp4,
     recording_path,
-    clip_directory,
 )
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
@@ -100,28 +99,6 @@ def _delete_recording_files(recording: Recording) -> list[str]:
                 msg = f"Failed to delete {label} for recording {recording.id} ({path.name}): {e}"
                 errors.append(msg)
                 logger.warning(msg)
-
-    # Deleting a recording cascades to its clips at the ORM level, so their
-    # files have to go too or they are orphaned on disk with no row pointing
-    # at them.
-    clip_dir = clip_directory()
-    for clip in recording.clips:
-        clip_video = clip_dir / clip.filename
-        clip_assets = [
-            ("clip video", clip_video),
-            *[("clip thumbnail", p) for p in all_thumbnail_paths(clip_video)],
-            ("clip sprite", clip_video.with_name(clip_video.stem + "_sprite.jpg")),
-            ("clip sprite VTT", clip_video.with_name(clip_video.stem + "_sprite.vtt")),
-        ]
-        for label, path in clip_assets:
-            if path.exists():
-                try:
-                    os.remove(path)
-                    logger.info("Deleted %s file: %s", label, path)
-                except OSError as e:
-                    msg = f"Failed to delete {label} for clip {clip.id}: {e}"
-                    errors.append(msg)
-                    logger.warning(msg)
 
     return errors
 
