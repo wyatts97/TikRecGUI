@@ -110,7 +110,8 @@ export interface RecordingListResponse {
 
 export interface Clip {
   id: number
-  recording_id: number
+  /** null once the source recording has been deleted -- clips outlive it. */
+  recording_id: number | null
   username: string
   title: string | null
   filename: string
