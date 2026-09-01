@@ -4,8 +4,6 @@ import time
 import threading
 import logging
 import shutil
-import zipfile
-import tempfile
 
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -39,6 +37,7 @@ from app.core.media_utils import (
     repair_video,
     finalize_segments_to_mp4,
     recording_path,
+    clip_directory,
 )
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
@@ -101,6 +100,28 @@ def _delete_recording_files(recording: Recording) -> list[str]:
                 msg = f"Failed to delete {label} for recording {recording.id} ({path.name}): {e}"
                 errors.append(msg)
                 logger.warning(msg)
+
+    # Deleting a recording cascades to its clips at the ORM level, so their
+    # files have to go too or they are orphaned on disk with no row pointing
+    # at them.
+    clip_dir = clip_directory()
+    for clip in recording.clips:
+        clip_video = clip_dir / clip.filename
+        clip_assets = [
+            ("clip video", clip_video),
+            *[("clip thumbnail", p) for p in all_thumbnail_paths(clip_video)],
+            ("clip sprite", clip_video.with_name(clip_video.stem + "_sprite.jpg")),
+            ("clip sprite VTT", clip_video.with_name(clip_video.stem + "_sprite.vtt")),
+        ]
+        for label, path in clip_assets:
+            if path.exists():
+                try:
+                    os.remove(path)
+                    logger.info("Deleted %s file: %s", label, path)
+                except OSError as e:
+                    msg = f"Failed to delete {label} for clip {clip.id}: {e}"
+                    errors.append(msg)
+                    logger.warning(msg)
 
     return errors
 
@@ -841,56 +862,6 @@ def batch_compress_recordings(
     return {"compressed": deleted, "deleted": deleted, "backup_file": backup_file}
 
 
-@router.post("/batch/download")
-def batch_download_recordings(
-    recording_ids: List[int] = Body(..., embed=True),
-    db: Session = Depends(get_db)
-):
-    """Download multiple recordings as a ZIP file."""
-    if not recording_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No recording IDs provided"
-        )
-    
-    recordings = db.query(Recording).filter(Recording.id.in_(recording_ids)).all()
-    
-    if not recordings:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No recordings found"
-        )
-    
-    # Create a temporary ZIP file
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    temp_path = temp_file.name
-    temp_file.close()
-    
-    try:
-        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for recording in recordings:
-                file_path = recording_path(recording.filename)
-                if file_path.exists():
-                    zf.write(file_path, recording.filename)
-        
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        zip_filename = f"recordings_{timestamp}.zip"
-        
-        return FileResponse(
-            path=temp_path,
-            filename=zip_filename,
-            media_type="application/zip",
-            background=None  # File will be cleaned up by OS temp cleanup
-        )
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create ZIP file: {str(e)}"
-        )
-
-
 @router.get("/{recording_id}/sprite")
 def get_sprite(recording_id: int, db: Session = Depends(get_db)):
     """Return the sprite sheet JPEG for hover-scrub preview."""
@@ -1153,41 +1124,3 @@ def list_live_events(
     )
 
 
-@router.post("/download-all")
-def download_all_recordings(db: Session = Depends(get_db)):
-    """Download all recordings as a ZIP file."""
-    recordings = db.query(Recording).all()
-
-    if not recordings:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No recordings found"
-        )
-
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    temp_path = temp_file.name
-    temp_file.close()
-
-    try:
-        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for recording in recordings:
-                file_path = recording_path(recording.filename)
-                if file_path.exists():
-                    zf.write(file_path, recording.filename)
-
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        zip_filename = f"all_recordings_{timestamp}.zip"
-
-        return FileResponse(
-            path=temp_path,
-            filename=zip_filename,
-            media_type="application/zip",
-            background=None
-        )
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create ZIP file: {str(e)}"
-        )

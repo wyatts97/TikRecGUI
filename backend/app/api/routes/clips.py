@@ -2,8 +2,6 @@ import os
 import re
 import time
 import logging
-import zipfile
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import List
@@ -522,90 +520,3 @@ def batch_delete_clips(
     }
 
 
-@router.post("/batch/download")
-def batch_download_clips(
-    clip_ids: List[int] = Body(..., embed=True),
-    db: Session = Depends(get_db)
-):
-    """Download multiple clips as a ZIP file."""
-    if not clip_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No clip IDs provided"
-        )
-
-    clips = db.query(Clip).filter(Clip.id.in_(clip_ids)).all()
-
-    if not clips:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clips found"
-        )
-
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    temp_path = temp_file.name
-    temp_file.close()
-
-    try:
-        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for clip in clips:
-                file_path = clip_directory() / clip.filename
-                if file_path.exists():
-                    zf.write(file_path, clip.filename)
-
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        zip_filename = f"clips_{timestamp}.zip"
-
-        return FileResponse(
-            path=temp_path,
-            filename=zip_filename,
-            media_type="application/zip",
-            background=None
-        )
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create ZIP file: {str(e)}"
-        )
-
-
-@router.post("/download-all")
-def download_all_clips(db: Session = Depends(get_db)):
-    """Download all clips as a ZIP file."""
-    clips = db.query(Clip).all()
-
-    if not clips:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No clips found"
-        )
-
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-    temp_path = temp_file.name
-    temp_file.close()
-
-    try:
-        with zipfile.ZipFile(temp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for clip in clips:
-                file_path = clip_directory() / clip.filename
-                if file_path.exists():
-                    zf.write(file_path, clip.filename)
-
-        timestamp = time.strftime('%Y%m%d_%H%M%S')
-        zip_filename = f"all_clips_{timestamp}.zip"
-
-        return FileResponse(
-            path=temp_path,
-            filename=zip_filename,
-            media_type="application/zip",
-            background=None
-        )
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create ZIP file: {str(e)}"
-        )

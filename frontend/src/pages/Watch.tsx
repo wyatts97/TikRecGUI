@@ -81,22 +81,10 @@ export default function Watch() {
     },
   })
 
-  const handleBatchDownload = async (ids: number[]) => {
-    try {
-      const blob = await api.recordings.batchDownload(ids)
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `recordings_${new Date().toISOString().slice(0, 10)}.zip`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
-      toast.success('Download started')
-    } catch (err: any) {
-      toast.error(err.message || 'Download failed')
-    }
-  }
+  // Selected-items download goes through the same background export job
+  // as Download All, so it gets the same progress bar. It previously used
+  // a blocking blob fetch with no feedback at all.
+  const handleBatchDownload = (ids: number[]) => startExport('recordings', ids)
 
   const { job: exportJob, start: startExport, cancel: cancelExport, isExporting } =
     useExportJob()
@@ -244,6 +232,7 @@ export default function Watch() {
             variant="outline"
             size="sm"
             onClick={() => handleBatchDownload(Array.from(selectedIds))}
+            disabled={isExporting}
           >
             <Download className="h-3.5 w-3.5 mr-1.5" />
             Download Selected

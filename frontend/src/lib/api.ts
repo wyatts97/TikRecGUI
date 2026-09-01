@@ -480,29 +480,7 @@ export const api = {
     repair: (id: number) =>
       fetchApi<Recording>(`/recordings/${id}/repair`, { method: "POST" }),
 
-    batchDownload: async (ids: number[]) => {
-      const response = await fetch(`${API_BASE}/recordings/batch/download`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recording_ids: ids }),
-      })
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: "Download failed" }))
-        throw new Error(error.detail || "Download failed")
-      }
-      return response.blob()
-    },
 
-    downloadAll: async () => {
-      const response = await fetch(`${API_BASE}/recordings/download-all`, {
-        method: "POST",
-      })
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: "Download failed" }))
-        throw new Error(error.detail || "Download failed")
-      }
-      return response.blob()
-    },
   },
 
   clips: {
@@ -566,29 +544,7 @@ export const api = {
         body: JSON.stringify({ clip_ids: ids }),
       }),
 
-    batchDownload: async (ids: number[]) => {
-      const response = await fetch(`${API_BASE}/clips/batch/download`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clip_ids: ids }),
-      })
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: "Download failed" }))
-        throw new Error(error.detail || "Download failed")
-      }
-      return response.blob()
-    },
 
-    downloadAll: async () => {
-      const response = await fetch(`${API_BASE}/clips/download-all`, {
-        method: "POST",
-      })
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: "Download failed" }))
-        throw new Error(error.detail || "Download failed")
-      }
-      return response.blob()
-    },
   },
 
   settings: {

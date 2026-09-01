@@ -27,6 +27,8 @@ import {
 } from '@/components/selia/dialog'
 import EmptyState from '@/components/EmptyState'
 import QueryError from '@/components/QueryError'
+import ExportProgress from '@/components/ExportProgress'
+import { useExportJob } from '@/hooks/useExportJob'
 import { ListSkeleton } from '@/components/Skeleton'
 import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
@@ -65,8 +67,9 @@ export default function Recordings() {
   const [newUsername, setNewUsername] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
-  const [isDownloading, setIsDownloading] = useState(false)
   const queryClient = useQueryClient()
+  const { job: exportJob, start: startExport, cancel: cancelExport, isExporting } =
+    useExportJob()
 
   // Sync state to URL search params
   useEffect(() => {
@@ -180,25 +183,11 @@ export default function Recordings() {
     document.body.removeChild(a)
   }
 
-  const handleBatchDownload = async () => {
+  // Same background export job as the Watch and Clips pages, so this gets
+  // a progress bar instead of a silent multi-minute blob fetch.
+  const handleBatchDownload = () => {
     if (selectedIds.size === 0) return
-    setIsDownloading(true)
-    try {
-      const blob = await api.recordings.batchDownload(Array.from(selectedIds))
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `recordings_${new Date().toISOString().slice(0, 10)}.zip`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-      toast.success('Download started')
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setIsDownloading(false)
-    }
+    startExport('recordings', Array.from(selectedIds))
   }
 
   const handleBatchDelete = () => {
@@ -304,6 +293,11 @@ export default function Recordings() {
           </div>
         </CardHeader>
         <CardBody>
+          {exportJob && (
+            <div className="mb-4">
+              <ExportProgress job={exportJob} onCancel={cancelExport} />
+            </div>
+          )}
           {selectedIds.size > 0 && recordings.length > 0 && (
             <div className="flex items-center gap-2 mb-4 p-3 bg-primary-subtle rounded-lg">
               <span className="text-sm font-medium">
@@ -314,9 +308,9 @@ export default function Recordings() {
                 size="sm"
                 variant="outline"
                 onClick={handleBatchDownload}
-                disabled={isDownloading}
+                disabled={isExporting}
               >
-                {isDownloading ? (
+                {isExporting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Download className="h-4 w-4" />

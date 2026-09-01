@@ -22,7 +22,11 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    recordings = relationship("Recording", back_populates="user")
+    # Cascade so deleting a user removes their recordings rather than
+    # violating the recordings.user_id foreign key.
+    recordings = relationship(
+        "Recording", back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Recording(Base):
@@ -50,6 +54,13 @@ class Recording(Base):
     
     user = relationship("User", back_populates="recordings")
     live_events = relationship("LiveEvent", back_populates="recording", cascade="all, delete-orphan")
+    # A clip cannot exist without its source recording (recording_id is NOT
+    # NULL), so deleting the recording must take its clips with it. Without
+    # this relationship the delete failed outright once foreign keys were
+    # enforced; before that it silently left orphaned clip rows behind.
+    clips = relationship(
+        "Clip", back_populates="recording", cascade="all, delete-orphan"
+    )
 
 
 class Clip(Base):
@@ -68,7 +79,7 @@ class Clip(Base):
     is_favorite = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    recording = relationship("Recording")
+    recording = relationship("Recording", back_populates="clips")
 
 
 class LiveEvent(Base):
