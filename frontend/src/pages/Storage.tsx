@@ -18,14 +18,19 @@ import { IconBox } from '@/components/selia/icon-box'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { api, type StorageStats } from '@/lib/api'
 import { formatBytes, formatDuration, cn } from '@/lib/utils'
+import { useDateFormat } from '@/lib/timezone-context'
+import { useConfirm } from '@/components/ConfirmDialog'
+import QueryError from '@/components/QueryError'
 import toast from 'react-hot-toast'
 
 export default function Storage() {
+  const fmt = useDateFormat()
+  const { confirm, confirmDialog } = useConfirm()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
-  const { data: overview, isLoading: overviewLoading } = useQuery({
+  const { data: overview, isLoading: overviewLoading, isError: overviewError, error: overviewErr, refetch: refetchOverview } = useQuery({
     queryKey: ['statsOverview'],
     queryFn: () => api.stats.overview(),
   })
@@ -70,9 +75,64 @@ export default function Storage() {
     onSuccess: (res) => {
       toast.success(`Cleanup complete: ${res.deleted} deleted, ${res.compressed} compressed`)
       invalidateAll()
+      // The rows behind these ids may be gone now; keeping them selected would
+      // aim the next bulk action at recordings the user can no longer see.
+      setSelected(new Set())
     },
     onError: (e: Error) => toast.error(e.message || 'Cleanup failed'),
   })
+
+  const selectedSize = (largest ?? [])
+    .filter((r) => selected.has(r.id))
+    .reduce((sum, r) => sum + (r.file_size ?? 0), 0)
+
+  const handleRunCleanup = async () => {
+    // Pull the preview first so the prompt can name what is about to go.
+    const stats = await api.settings.getCleanupStats().catch(() => null)
+    const ok = await confirm({
+      title: 'Run storage cleanup?',
+      description: stats
+        ? `This applies your retention policy to recordings older than ${stats.days} days and cannot be undone.`
+        : 'This applies your retention policy to old recordings and cannot be undone.',
+      body: stats ? (
+        <p className="text-sm text-muted-foreground">
+          <span className="font-semibold text-foreground">{stats.count} recording(s)</span> totalling{' '}
+          <span className="font-semibold text-foreground">{formatBytes(stats.total_size)}</span> match the
+          policy and will be deleted or compressed.
+        </p>
+      ) : undefined,
+      confirmLabel: 'Run Cleanup',
+    })
+    if (ok) cleanupMutation.mutate()
+  }
+
+  const handleCompressSelected = async () => {
+    const ok = await confirm({
+      title: `Compress ${selected.size} recording(s)?`,
+      description: 'The original files are rewritten in place. This cannot be undone.',
+      body: (
+        <p className="text-sm text-muted-foreground">
+          Currently using <span className="font-semibold text-foreground">{formatBytes(selectedSize)}</span>.
+        </p>
+      ),
+      confirmLabel: 'Compress',
+    })
+    if (ok) compressMutation.mutate(Array.from(selected))
+  }
+
+  const handleDeleteSelected = async () => {
+    const ok = await confirm({
+      title: `Delete ${selected.size} recording(s)?`,
+      description: 'The recordings and their files will be permanently deleted. This cannot be undone.',
+      body: (
+        <p className="text-sm text-muted-foreground">
+          This will free <span className="font-semibold text-foreground">{formatBytes(selectedSize)}</span>.
+        </p>
+      ),
+      confirmLabel: 'Delete',
+    })
+    if (ok) deleteMutation.mutate(Array.from(selected))
+  }
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['statsOverview'] })
@@ -120,7 +180,7 @@ export default function Storage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => cleanupMutation.mutate()}
+            onClick={handleRunCleanup}
             disabled={cleanupMutation.isPending}
           >
             {cleanupMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : <Archive className="h-4 w-4 mr-1.5" />}
@@ -129,6 +189,10 @@ export default function Storage() {
         </div>
       </div>
 
+      {overviewError ? (
+        <QueryError error={overviewErr} what="storage stats" onRetry={() => refetchOverview()} />
+      ) : (
+      <>
       {/* Headline stats */}
         <StaggerContainer className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StaggerItem>
@@ -245,7 +309,7 @@ export default function Storage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => compressMutation.mutate(Array.from(selected))}
+                    onClick={handleCompressSelected}
                     disabled={compressMutation.isPending || deleteMutation.isPending}
                   >
                     <Archive className="h-4 w-4 mr-1.5" />
@@ -254,7 +318,7 @@ export default function Storage() {
                   <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => deleteMutation.mutate(Array.from(selected))}
+                    onClick={handleDeleteSelected}
                     disabled={compressMutation.isPending || deleteMutation.isPending}
                   >
                     <Trash2 className="h-4 w-4 mr-1.5" />
@@ -308,7 +372,7 @@ export default function Storage() {
                         >
                           {r.filename}
                         </button>
-                        <p className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground">{fmt(r.created_at)}</p>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{r.username}</td>
                       <td className="px-4 py-3 text-right tabular-nums font-medium">{formatBytes(r.file_size)}</td>
@@ -341,6 +405,10 @@ export default function Storage() {
             Compress moves original recordings to a backup archive and replaces them with smaller remuxed versions. Deleted recordings are removed permanently.
           </p>
         </div>
+      </>
+      )}
+
+      {confirmDialog}
     </div>
   )
 }

@@ -13,6 +13,7 @@ import ExportProgress from '@/components/ExportProgress'
 import { useExportJob } from '@/hooks/useExportJob'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { api, type Clip } from '@/lib/api'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import toast from 'react-hot-toast'
@@ -48,6 +49,7 @@ export default function Clips() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState('newest')
   const [page, setPage] = useState(1)
+  const { confirm, confirmDialog } = useConfirm()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300)
@@ -142,6 +144,15 @@ export default function Clips() {
     setPage(1)
   }
 
+  const handleDeleteSelected = async () => {
+    const ok = await confirm({
+      title: `Delete ${selectedIds.size} clip(s)?`,
+      description: 'The clips and their files will be permanently deleted. This cannot be undone.',
+      confirmLabel: 'Delete',
+    })
+    if (ok) batchDeleteMutation.mutate(Array.from(selectedIds))
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -212,7 +223,7 @@ export default function Clips() {
           <Button
             variant="danger"
             size="sm"
-            onClick={() => batchDeleteMutation.mutate(Array.from(selectedIds))}
+            onClick={handleDeleteSelected}
             disabled={batchDeleteMutation.isPending}
           >
             <Trash2 className="h-3.5 w-3.5 mr-1.5" />
@@ -304,6 +315,7 @@ export default function Clips() {
           )}
         </>
       )}
+      {confirmDialog}
     </div>
   )
 }

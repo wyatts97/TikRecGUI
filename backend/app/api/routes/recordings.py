@@ -11,7 +11,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.db.database import get_db, get_session, run_background
@@ -230,7 +230,11 @@ def list_recordings(
     favorites_only: bool = False,
     db: Session = Depends(get_db)
 ):
-    query = db.query(Recording).join(User)
+    # Clamp: an unbounded page_size lets one request materialise the whole
+    # table (and, on the recordings list, fan out into an ffprobe per row).
+    page = max(1, page)
+    page_size = max(1, min(page_size, settings.MAX_PAGE_SIZE))
+    query = db.query(Recording).join(User).options(joinedload(Recording.user))
     count_query = db.query(func.count()).select_from(Recording).join(User)
 
     if status_filter:
@@ -1065,9 +1069,18 @@ def list_live_events(
     page_size: int = 100,
     event_type: str | None = None,
     search: str | None = None,
+    after_id: int | None = None,
     db: Session = Depends(get_db),
 ):
-    """Return paginated live chat/gift events for a recording."""
+    """Return live chat/gift events for a recording.
+
+    Pass ``after_id`` to fetch only events newer than one already held.  The
+    chat panel polls every few seconds while a stream is live; without a
+    cursor it re-downloaded the full window every time, which dominated
+    bandwidth on a busy stream.
+    """
+    page = max(1, page)
+    page_size = max(1, min(page_size, settings.MAX_PAGE_SIZE))
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
@@ -1093,7 +1106,24 @@ def list_live_events(
         )
 
     total = count_query.scalar() or 0
-    events = query.order_by(LiveEvent.offset_seconds.asc()).offset((page - 1) * page_size).limit(page_size).all()
+
+    if after_id is not None:
+        # Incremental fetch: ids are monotonic in insert order, so this is the
+        # natural "what arrived since" cursor. Ordered by id (not offset) so
+        # the client can append and track the high-water mark.
+        events = (
+            query.filter(LiveEvent.id > after_id)
+            .order_by(LiveEvent.id.asc())
+            .limit(page_size)
+            .all()
+        )
+    else:
+        events = (
+            query.order_by(LiveEvent.offset_seconds.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
 
     return LiveEventListResponse(
         events=[LiveEventResponse.model_validate(e) for e in events],

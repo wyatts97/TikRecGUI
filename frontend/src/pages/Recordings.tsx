@@ -33,6 +33,7 @@ import { ListSkeleton } from '@/components/Skeleton'
 import { api, type Recording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
+import { useConfirm } from '@/components/ConfirmDialog'
 import toast from 'react-hot-toast'
 
 const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'danger' | 'secondary-outline'> = {
@@ -46,6 +47,7 @@ const statusVariantMap: Record<string, 'secondary' | 'info' | 'success' | 'dange
 
 export default function Recordings() {
   const fmt = useDateFormat()
+  const { confirm, confirmDialog } = useConfirm()
   const [searchParams, setSearchParams] = useSearchParams()
   const [page, setPage] = useState(() => {
     const p = searchParams.get('page')
@@ -72,6 +74,12 @@ export default function Recordings() {
     useExportJob()
 
   // Sync state to URL search params
+  // Selection is per-page: carrying it across pages meant "Delete" could act
+  // on rows scrolled out of view.
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [page, statusFilter, usernameFilter, sortBy, sortOrder])
+
   useEffect(() => {
     const params = new URLSearchParams()
     if (page > 1) params.set('page', String(page))
@@ -196,6 +204,24 @@ export default function Recordings() {
   }
 
 
+  const handleStopAll = async () => {
+    const ok = await confirm({
+      title: 'Stop all active recordings?',
+      description: 'Every in-flight recording is ended immediately. Captured footage is kept, but recording does not resume on its own.',
+      confirmLabel: 'Stop All',
+    })
+    if (ok) stopAllMutation.mutate()
+  }
+
+  const handleDeleteRow = async (id: number, username: string) => {
+    const ok = await confirm({
+      title: `Delete recording of @${username}?`,
+      description: 'The recording and its file will be permanently deleted. This cannot be undone.',
+      confirmLabel: 'Delete',
+    })
+    if (ok) deleteRecordingMutation.mutate(id)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -208,7 +234,7 @@ export default function Recordings() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="danger"
-            onClick={() => stopAllMutation.mutate()}
+            onClick={handleStopAll}
             disabled={stopAllMutation.isPending}
           >
             {stopAllMutation.isPending ? (
@@ -351,7 +377,15 @@ export default function Recordings() {
                           type="checkbox"
                           className="rounded border-gray-300 dark:border-neutral-600"
                           aria-label="Select all recordings on this page"
-                          checked={selectedIds.size === recordings.length && recordings.length > 0}
+                          {...(() => {
+                            const selectedOnPage = recordings.filter((r) => selectedIds.has(r.id)).length
+                            return {
+                              checked: recordings.length > 0 && selectedOnPage === recordings.length,
+                              ref: (el: HTMLInputElement | null) => {
+                                if (el) el.indeterminate = selectedOnPage > 0 && selectedOnPage < recordings.length
+                              },
+                            }
+                          })()}
                           onChange={(e) => setSelectedIds(e.target.checked ? new Set(recordings.map((r) => r.id)) : new Set())}
                         />
                       </th>
@@ -430,9 +464,9 @@ export default function Recordings() {
                               </button>
                             )}
                             <button
-                              title="Delete" aria-label="Delete recording"
+                              title="Delete" aria-label={`Delete recording of @${row.username}`}
                               className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
-                              onClick={() => deleteRecordingMutation.mutate(row.id)}
+                              onClick={() => handleDeleteRow(row.id, row.username)}
                               disabled={deleteRecordingMutation.isPending}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -501,6 +535,7 @@ export default function Recordings() {
           </DialogFooter>
         </DialogPopup>
       </Dialog>
+      {confirmDialog}
     </div>
   )
 }

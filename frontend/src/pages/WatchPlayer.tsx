@@ -48,30 +48,44 @@ function triggerDownload(url: string) {
   document.body.removeChild(a)
 }
 
+// Whisper gives us start times only, so a cue runs until the next one starts
+// (capped, so a long gap doesn't leave one line on screen for minutes).
+const SRT_MAX_CUE_SECONDS = 3
+
+function srtTimestamp(totalSeconds: number): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const hh = Math.floor(totalSeconds / 3600)
+  const mm = Math.floor((totalSeconds % 3600) / 60)
+  const ss = Math.floor(totalSeconds % 60)
+  return `${pad(hh)}:${pad(mm)}:${pad(ss)},000`
+}
+
 function formatTranscriptAsSrt(transcriptText: string): string {
   const lines = transcriptText.split('\n').filter(Boolean)
-  const entries: string[] = []
-  let index = 1
+  // Two passes: an entry's end time is the *next* entry's start, so nothing
+  // can be emitted until the whole list is parsed.
+  const parsed: { seconds: number; text: string }[] = []
   for (const line of lines) {
     const match = line.match(/\[(\d{2}:\d{2}(?::\d{2})?)\]\s*(.*)/)
-    if (match) {
-      const ts = match[1]
-      const text = match[2]
-      // Pad timestamp parts to SRT format: 00:00:00,000
-      const parts = ts.split(':')
-      let hh = '00', mm = '00', ss = '00'
-      if (parts.length === 3) {
-        hh = parts[0]; mm = parts[1]; ss = parts[2]
-      } else if (parts.length === 2) {
-        mm = parts[0]; ss = parts[1]
-      }
-      const start = `${hh}:${mm}:${ss},000`
-      // Estimate end time (next entry or +3s)
-      entries.push(`${index}\n${start} --> ?\n${text}\n`)
-      index++
-    }
+    if (!match) continue
+    const parts = match[1].split(':').map(Number)
+    const seconds =
+      parts.length === 3
+        ? parts[0] * 3600 + parts[1] * 60 + parts[2]
+        : parts[0] * 60 + parts[1]
+    parsed.push({ seconds, text: match[2] })
   }
-  return entries.join('\n')
+
+  return parsed
+    .map((entry, i) => {
+      const next = parsed[i + 1]
+      let end = entry.seconds + SRT_MAX_CUE_SECONDS
+      // Only clamp when the next cue is strictly later; two lines sharing a
+      // timestamp would otherwise produce a zero-length cue that players drop.
+      if (next && next.seconds > entry.seconds) end = Math.min(end, next.seconds)
+      return `${i + 1}\n${srtTimestamp(entry.seconds)} --> ${srtTimestamp(end)}\n${entry.text}\n`
+    })
+    .join('\n')
 }
 
 function formatTranscriptAsTxt(transcriptText: string): string {
@@ -81,6 +95,9 @@ function formatTranscriptAsTxt(transcriptText: string): string {
     .map((line) => line.replace(/\[\d{2}:\d{2}(?::\d{2})?\]\s*/, ''))
     .join('\n')
 }
+
+// ~2 minutes at 5s.
+const SPRITE_POLL_MAX_ATTEMPTS = 24
 
 const WATCH_TABS = ['player', 'transcript', 'chat'] as const
 
@@ -109,7 +126,9 @@ export default function WatchPlayer() {
       const rec = query.state.data
       if (!rec) return false
       if (rec.transcript_status === 'processing' || rec.transcript_status === 'pending') return 3000
-      if (!rec.sprite_ready) return 5000
+      // Bounded: sprite generation can fail or be skipped entirely, in which
+      // case this polled forever.
+      if (!rec.sprite_ready && query.state.dataUpdateCount <= SPRITE_POLL_MAX_ATTEMPTS) return 5000
       return false
     },
   })

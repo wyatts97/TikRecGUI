@@ -13,9 +13,13 @@ import { useExportJob } from '@/hooks/useExportJob'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 import { RecordingVideoCard } from '@/components/ui/recording-video-card'
+import { useConfirm } from '@/components/ConfirmDialog'
 import { api, type Recording } from '@/lib/api'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import toast from 'react-hot-toast'
+
+// ~2 minutes at 5s. Thumbnails that aren't ready by then are not coming.
+const THUMBNAIL_POLL_MAX_ATTEMPTS = 24
 
 const ITEMS_PER_PAGE = 12
 
@@ -53,6 +57,7 @@ export default function Watch() {
   const debouncedSearch = useDebouncedValue(searchQuery.trim(), 300)
 
   const [repairingId, setRepairingId] = useState<number | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   const toggleSelection = (id: number) => {
@@ -151,7 +156,11 @@ export default function Watch() {
     placeholderData: keepPreviousData,
     refetchInterval: (query) => {
       const recs = query.state.data?.recordings ?? []
-      return recs.some((r) => !r.thumbnail_ready) ? 5000 : false
+      if (!recs.some((r) => !r.thumbnail_ready)) return false
+      // Bounded: a failed recording never gets a thumbnail, so one bad row
+      // used to pin a 5s poll for as long as the tab stayed open.
+      if (query.state.dataUpdateCount > THUMBNAIL_POLL_MAX_ATTEMPTS) return false
+      return 5000
     },
   })
 
@@ -168,6 +177,15 @@ export default function Watch() {
     const val = String(value)
     setSortBy(val)
     setPage(1)
+  }
+
+  const handleDeleteSelected = async () => {
+    const ok = await confirm({
+      title: `Delete ${selectedIds.size} recording(s)?`,
+      description: 'The recordings and their files will be permanently deleted. This cannot be undone.',
+      confirmLabel: 'Delete',
+    })
+    if (ok) batchDeleteMutation.mutate(Array.from(selectedIds))
   }
 
   return (
@@ -240,7 +258,7 @@ export default function Watch() {
           <Button
             variant="danger"
             size="sm"
-            onClick={() => batchDeleteMutation.mutate(Array.from(selectedIds))}
+            onClick={handleDeleteSelected}
             disabled={batchDeleteMutation.isPending}
           >
             <Trash2 className="h-3.5 w-3.5 mr-1.5" />
@@ -341,6 +359,7 @@ export default function Watch() {
           )}
         </>
       )}
+      {confirmDialog}
     </div>
   )
 }

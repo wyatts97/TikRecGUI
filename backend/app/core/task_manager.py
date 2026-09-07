@@ -703,7 +703,16 @@ class TaskManager:
         with self._lock:
             if recording_id in self._tasks:
                 return False
-            
+
+            if len(self._tasks) >= settings.MAX_CONCURRENT_RECORDINGS:
+                logger.warning(
+                    "Refusing to start recording %s for %s: at the concurrency "
+                    "limit of %s. Raise MAX_CONCURRENT_RECORDINGS if the host "
+                    "can carry more.",
+                    recording_id, username, settings.MAX_CONCURRENT_RECORDINGS,
+                )
+                return False
+
             task = RecordingTask(
                 recording_id=recording_id,
                 username=username,

@@ -16,18 +16,30 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
   onUnauthorized = handler
 }
 
+/**
+ * Report a dead session from a transport that can't surface a 401 itself.
+ * EventSource is the case that matters: it exposes neither status nor body,
+ * so the SSE hook has to detect the failure and say so explicitly.
+ */
+export function notifyUnauthorized() {
+  onUnauthorized?.()
+}
+
 async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
   const response = await fetch(`${API_BASE}${endpoint}`, {
+    // Spread caller options FIRST so the merged headers below survive. The
+    // other order silently dropped Content-Type (and credentials) the moment
+    // any caller passed its own `headers`.
+    ...options,
     // The session lives in an HttpOnly cookie; it must ride along on every call.
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...options?.headers,
     },
-    ...options,
   })
 
   if (response.status === 401) {
@@ -44,7 +56,13 @@ async function fetchApi<T>(
     return undefined as T
   }
 
-  return response.json()
+  // A 200 with a non-JSON body (proxy interstitial, truncated response) used
+  // to surface to the user as "Unexpected token < in JSON at position 0".
+  try {
+    return (await response.json()) as T
+  } catch {
+    throw new Error("Server returned an unreadable response")
+  }
 }
 
 export interface ExportJob {
@@ -468,13 +486,18 @@ export const api = {
     liveClipStop: (id: number) =>
       fetchApi<LiveClipStatus>(`/recordings/${id}/live-clip/stop`, { method: "POST" }),
     
-    getEvents: (id: number, page = 1, pageSize = 100, eventType?: string, search?: string) => {
+    /**
+     * @param afterId Return only events newer than this id. Lets the chat
+     * panel poll for deltas instead of re-downloading the whole window.
+     */
+    getEvents: (id: number, page = 1, pageSize = 100, eventType?: string, search?: string, afterId?: number) => {
       const params = new URLSearchParams({
         page: page.toString(),
         page_size: pageSize.toString(),
       })
       if (eventType) params.set("event_type", eventType)
       if (search) params.set("search", search)
+      if (afterId !== undefined) params.set("after_id", afterId.toString())
       return fetchApi<LiveEventListResponse>(`/recordings/${id}/events?${params}`)
     },
 

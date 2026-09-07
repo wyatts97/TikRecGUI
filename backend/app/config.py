@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     DEFAULT_MAX_CONSECUTIVE_BAD_RECORDINGS: int = 3
     DEFAULT_CIRCUIT_BREAKER_LOOKBACK_MINUTES: int = 120
 
+    # Hard ceiling on simultaneous recordings.  Each one costs a thread, an
+    # ffmpeg process, a network stream and sustained disk writes, so without a
+    # cap a watchlist that all goes live at once exhausts the host.
+    MAX_CONCURRENT_RECORDINGS: int = 10
+    # Upper bound on any client-supplied page size, so `?page_size=1000000`
+    # cannot materialise an entire library in one request.
+    MAX_PAGE_SIZE: int = 200
+
     # --- Security -------------------------------------------------------
     # This app is designed to be internet-reachable, so auth is on by default.
     # Only turn it off for local development behind a trusted network.

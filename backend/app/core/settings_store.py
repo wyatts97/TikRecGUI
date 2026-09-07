@@ -5,6 +5,7 @@ Backed by a JSON file (``data/settings.json``) so changes made in the WebUI
 come from ``app.config.settings``.
 """
 import json
+import os
 import threading
 from typing import Any
 
@@ -33,9 +34,21 @@ class SettingsStore:
                 self._data = {}
 
     def _save(self) -> None:
+        # Atomic write. A truncated file here is silently swallowed by _load()
+        # and resets every runtime setting to defaults -- wiping the user's
+        # proxy, notification sinks and retention policy. Same tmp+replace
+        # dance core/auth.py uses for the credential file.
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._path, "w") as f:
-            json.dump(self._data, f, indent=2)
+        tmp = self._path.with_suffix(self._path.suffix + ".tmp")
+        try:
+            with open(tmp, "w") as f:
+                json.dump(self._data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self._path)
+        except BaseException:
+            tmp.unlink(missing_ok=True)
+            raise
 
     def get(self, key: str, default: Any = None) -> Any:
         with self._lock:

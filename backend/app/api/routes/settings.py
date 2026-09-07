@@ -251,7 +251,11 @@ def test_notification_sink(sink: str):
 
 
 @router.get("/health")
-async def health_check():
+def health_check():
+    # Deliberately sync: this handler makes a blocking HTTP call to TikTok
+    # (is_country_blacklisted) and a blocking psutil sample. As `async def`
+    # those ran on the event loop and stalled *every* other request for the
+    # duration. A plain `def` lets Starlette run it in the threadpool.
     cookies_data = _read_json_file(settings.COOKIES_FILE, {})
     has_cookies = bool(cookies_data.get("sessionid_ss"))
 

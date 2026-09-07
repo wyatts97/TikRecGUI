@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.db.database import get_db, get_session, run_background
 from app.db.models import User, Recording
 from app.schemas.user import UserCreate, UserUpdate, UserResponse, UserStatusResponse
@@ -22,6 +23,9 @@ def list_users(
     watchlist_only: bool = True,
     db: Session = Depends(get_db)
 ):
+    # Clamp: `?limit=` was unbounded.
+    skip = max(0, skip)
+    limit = max(1, min(limit, settings.MAX_PAGE_SIZE))
     query = db.query(User)
     if monitoring_only:
         query = query.filter(User.is_monitoring == True)

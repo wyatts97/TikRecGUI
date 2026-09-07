@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { UnauthorizedError } from './lib/api'
 import { BrowserRouter } from 'react-router-dom'
@@ -25,6 +25,19 @@ const queryClient = new QueryClient({
       if (error instanceof UnauthorizedError) return // handled by AuthProvider
       const message = error instanceof Error ? error.message : 'Request failed'
       toast.error(message, { id: `query-error-${String(query.queryKey[0])}` })
+    },
+  }),
+  // The query-side counterpart above only covers reads. A mutation without
+  // its own onError was completely silent: clicking "Transcribe" or the
+  // sidebar sync and having it fail produced no toast, no log, nothing.
+  // Mutations that define onError themselves still win -- this is only the
+  // fallback for the ones that don't.
+  mutationCache: new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => {
+      if (mutation.options.onError) return
+      if (error instanceof UnauthorizedError) return // handled by AuthProvider
+      const message = error instanceof Error ? error.message : 'Action failed'
+      toast.error(message)
     },
   }),
   defaultOptions: {

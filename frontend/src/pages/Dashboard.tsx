@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity, CheckCircle2, Cpu } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Badge } from 'components/selia/badge'
@@ -9,24 +9,29 @@ import { IconBox } from 'components/selia/icon-box'
 import { Avatar, AvatarImage, AvatarFallback, AvatarIndicator } from 'components/selia/avatar'
 import { Meter, MeterValue, MeterTrack, MeterIndicator } from 'components/selia/meter'
 import EmptyState from '@/components/EmptyState'
+import QueryError from '@/components/QueryError'
 import { api, type ActiveRecording } from '@/lib/api'
 import { formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { Link, useNavigate } from 'react-router-dom'
 import { clickable } from '@/lib/a11y'
+import toast from 'react-hot-toast'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const fmt = useDateFormat()
+  const queryClient = useQueryClient()
   const retriedIdsRef = useRef<Set<number>>(new Set())
   const handleAvatarError = (id: number) => {
     if (!retriedIdsRef.current.has(id)) {
       retriedIdsRef.current.add(id)
-      api.users.refresh(id, true)
+      // Best-effort avatar repair; ignore failures rather than raising
+      // an unhandled rejection from an <img onError> handler.
+      api.users.refresh(id, true).catch(() => {})
     }
   }
 
-  const { data: users = [], isLoading: usersLoading } = useQuery({
+  const { data: users = [], isLoading: usersLoading, isError: usersError, error: usersErr, refetch: refetchUsers } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.users.list(),
     refetchInterval: 30000,
@@ -36,6 +41,16 @@ export default function Dashboard() {
     queryKey: ['activeRecordings'],
     queryFn: () => api.recordings.getActive(),
     refetchInterval: 5000,
+  })
+
+  const startRecordingMutation = useMutation({
+    mutationFn: (username: string) => api.recordings.start({ username }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+      queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
+      toast.success('Recording started')
+    },
+    onError: (error: Error) => toast.error(error.message),
   })
 
   const { data: recentRecordings } = useQuery({
@@ -89,6 +104,10 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {usersError ? (
+        <QueryError error={usersErr} what="your dashboard" onRetry={() => refetchUsers()} />
+      ) : (
+      <>
       {health?.country_blacklisted && (
         <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-900">
           <CardBody className="flex items-center gap-3 py-4">
@@ -351,12 +370,16 @@ export default function Dashboard() {
                       <ItemDescription>@{user.username}</ItemDescription>
                     </ItemContent>
                     <ItemAction>
-                      <Link to={`/watchlist?record=${user.id}`}>
-                        <Button size="sm" variant="secondary">
-                          <Play className="h-3 w-3 mr-1" />
-                          Record
-                        </Button>
-                      </Link>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        aria-label={`Start recording @${user.username}`}
+                        onClick={() => startRecordingMutation.mutate(user.username)}
+                        disabled={startRecordingMutation.isPending}
+                      >
+                        <Play className="h-3 w-3 mr-1" />
+                        Record
+                      </Button>
                     </ItemAction>
                   </Item>
                 ))}
@@ -477,6 +500,8 @@ export default function Dashboard() {
           </CardBody>
         </Card>
       </div>
+      </>
+      )}
     </div>
   )
 }

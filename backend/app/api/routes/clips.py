@@ -248,6 +248,10 @@ def list_clips(
     favorites_only: bool = False,
     db: Session = Depends(get_db)
 ):
+    # Clamp: an unbounded page_size lets one request materialise the whole
+    # table (and, on the recordings list, fan out into an ffprobe per row).
+    page = max(1, page)
+    page_size = max(1, min(page_size, settings.MAX_PAGE_SIZE))
     # OUTER joins: a clip outlives its recording, so an inner join would make
     # every clip whose source was deleted silently vanish from the list.
     # The recording is still eagerly loaded where it exists, for callers that

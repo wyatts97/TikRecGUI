@@ -1,6 +1,9 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { api, type AppNotification } from '@/lib/api'
+import { api, notifyUnauthorized, type AppNotification } from '@/lib/api'
+
+/** Give up reconnecting after this many consecutive failures. */
+const MAX_FAILURES = 5
 
 type NotificationCache = { notifications: AppNotification[]; unread: number }
 
@@ -17,46 +20,83 @@ export function useNotificationStream() {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    const es = new EventSource(api.notifications.streamUrl())
+    let es: EventSource | null = null
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let failures = 0
+    let cancelled = false
 
-    es.onmessage = (e) => {
-      let notif: AppNotification | null = null
-      try {
-        notif = JSON.parse(e.data)
-      } catch {
-        return
+    const connect = () => {
+      if (cancelled) return
+      es = new EventSource(api.notifications.streamUrl())
+
+      es.onopen = () => {
+        failures = 0
       }
-      if (!notif || !notif.id) return
-      const incoming = notif
 
-      queryClient.setQueryData(
-        ['notifications'],
-        (old: NotificationCache | undefined) => {
-          const list = old?.notifications ?? []
-          if (list.some((n) => n.id === incoming.id)) return old
-          return {
-            notifications: [incoming, ...list].slice(0, 50),
-            unread: (old?.unread ?? 0) + 1,
+      es.onmessage = (e) => {
+        let notif: AppNotification | null = null
+        try {
+          notif = JSON.parse(e.data)
+        } catch {
+          return
+        }
+        if (!notif || !notif.id) return
+        const incoming = notif
+
+        queryClient.setQueryData(
+          ['notifications'],
+          (old: NotificationCache | undefined) => {
+            const list = old?.notifications ?? []
+            if (list.some((n) => n.id === incoming.id)) return old
+            return {
+              notifications: [incoming, ...list].slice(0, 50),
+              unread: (old?.unread ?? 0) + 1,
+            }
+          }
+        )
+
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try {
+            new Notification(incoming.title, {
+              body: incoming.message,
+              tag: `tikrec-${incoming.id}`,
+            })
+          } catch {
+            /* ignore */
           }
         }
-      )
+      }
 
-      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-        try {
-          new Notification(incoming.title, {
-            body: incoming.message,
-            tag: `tikrec-${incoming.id}`,
-          })
-        } catch {
-          /* ignore */
+      es.onerror = () => {
+        // EventSource can see neither the status code nor the body, so an
+        // expired session looks exactly like a network blip -- and the built-in
+        // reconnect then hammers a 401 endpoint forever. Take reconnection over
+        // ourselves: close, back off, and after a few failures ask the server
+        // whether we are still logged in.
+        es?.close()
+        es = null
+        failures += 1
+
+        if (failures >= MAX_FAILURES) {
+          api.auth
+            .status()
+            .then((s) => {
+              if (!cancelled && !s.authenticated) notifyUnauthorized()
+            })
+            .catch(() => {})
+          return
         }
+
+        retryTimer = setTimeout(connect, Math.min(30_000, 1_000 * 2 ** failures))
       }
     }
 
-    es.onerror = () => {
-      // EventSource reconnects on its own.
-    }
+    connect()
 
-    return () => es.close()
+    return () => {
+      cancelled = true
+      if (retryTimer) clearTimeout(retryTimer)
+      es?.close()
+    }
   }, [queryClient])
 }

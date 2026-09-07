@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import ChatPanel from '@/components/ChatPanel'
+import { useConfirm } from '@/components/ConfirmDialog'
 import FlvPlayer from '@/components/FlvPlayer'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import toast from 'react-hot-toast'
@@ -17,6 +18,7 @@ const LIVE_TABS = ['player', 'chat'] as const
 
 export default function LivePlayer() {
   const fmt = useDateFormat()
+  const { confirm, confirmDialog } = useConfirm()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -39,7 +41,6 @@ export default function LivePlayer() {
     try {
       setUrlError(false)
       const { live_url, type } = await api.recordings.getLiveUrl(recordingId)
-      console.debug('[LivePlayer] stream URL:', live_url, type)
       setLiveUrl(live_url)
       setStreamType(type)
       setPlayerError(false)
@@ -49,11 +50,16 @@ export default function LivePlayer() {
     }
   }, [recordingId])
 
+  const streamIsActive = recording?.status === 'pending' || recording?.status === 'recording'
+
   useEffect(() => {
+    // Once the stream has ended there is no URL to get, so continuing to poll
+    // only produced a 404 and an error toast every 30 seconds, forever.
+    if (!streamIsActive) return
     fetchLiveUrl()
     const interval = setInterval(fetchLiveUrl, 30000)
     return () => clearInterval(interval)
-  }, [fetchLiveUrl])
+  }, [fetchLiveUrl, streamIsActive])
 
   // When the player reports an error, immediately refresh the URL. TikTok live
   // URLs expire after ~5 minutes, so a fresh URL often fixes playback.
@@ -111,10 +117,14 @@ export default function LivePlayer() {
     onError: (e: Error) => toast.error(e.message || 'Failed to save clip'),
   })
 
-  const handleSeek = useCallback((seconds: number) => {
-    // No-op for live streams — seeking isn't supported
-    void seconds
-  }, [])
+  const handleStop = async () => {
+    const ok = await confirm({
+      title: 'Stop this recording?',
+      description: 'The live capture ends immediately. Footage recorded so far is kept, but capture cannot be resumed.',
+      confirmLabel: 'Stop Recording',
+    })
+    if (ok) stopMutation.mutate()
+  }
 
   if (isLoading) {
     return (
@@ -187,7 +197,7 @@ export default function LivePlayer() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => stopMutation.mutate()}
+            onClick={handleStop}
             disabled={stopMutation.isPending}
             className="shrink-0"
           >
@@ -341,7 +351,6 @@ export default function LivePlayer() {
                 recording={recording}
                 chatSearch={chatSearch}
                 onChatSearchChange={setChatSearch}
-                onSeek={handleSeek}
                 variant="inline"
               />
               </div>
@@ -358,11 +367,11 @@ export default function LivePlayer() {
             recording={recording}
             chatSearch={chatSearch}
             onChatSearchChange={setChatSearch}
-            onSeek={handleSeek}
             variant="panel"
           />
         )}
       </div>
+      {confirmDialog}
     </div>
   )
 }

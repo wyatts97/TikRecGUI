@@ -8,6 +8,7 @@ import { api, ActiveRecording } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import FlvPlayer from '@/components/FlvPlayer'
 import EmptyState from '@/components/EmptyState'
+import QueryError from '@/components/QueryError'
 import { VideoGridSkeleton } from '@/components/Skeleton'
 import { StaggerContainer, StaggerItem } from '@/components/motion'
 
@@ -139,7 +140,7 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
 
 export default function Live() {
   const queryClient = useQueryClient()
-  const { data: activeRecordings = [], isLoading } = useQuery({
+  const { data: activeRecordings = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['activeRecordings'],
     queryFn: () => api.recordings.getActive(),
     refetchInterval: 5000,
@@ -173,7 +174,9 @@ export default function Live() {
         </Button>
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <QueryError error={error} what="active recordings" onRetry={() => refetch()} />
+      ) : isLoading ? (
         <VideoGridSkeleton count={6} className="sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3" />
       ) : activeRecordings.length === 0 ? (
         <EmptyState

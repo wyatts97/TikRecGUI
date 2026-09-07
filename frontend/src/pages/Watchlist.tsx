@@ -47,6 +47,7 @@ import {
 } from 'components/selia/drawer'
 import { api, type Recording } from '@/lib/api'
 import { useDateFormat } from '@/lib/timezone-context'
+import { useConfirm } from '@/components/ConfirmDialog'
 import toast from 'react-hot-toast'
 import EmptyState from '@/components/EmptyState'
 import QueryError from '@/components/QueryError'
@@ -56,6 +57,7 @@ const PER_PAGE = 20
 
 export default function Watchlist() {
   const fmt = useDateFormat()
+  const { confirm, confirmDialog } = useConfirm()
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [importText, setImportText] = useState('')
@@ -148,6 +150,34 @@ export default function Watchlist() {
     },
   })
 
+  const handleStopAll = async () => {
+    const ok = await confirm({
+      title: 'Stop all active recordings?',
+      description: 'Every in-flight recording is ended immediately. Captured footage is kept, but recording does not resume on its own.',
+      confirmLabel: 'Stop All',
+    })
+    if (ok) stopAllMutation.mutate()
+  }
+
+  const handleRemoveOne = async (id: number, username: string) => {
+    const ok = await confirm({
+      title: `Remove @${username} from the watchlist?`,
+      description: 'They will no longer be monitored for live streams. Existing recordings are kept.',
+      confirmLabel: 'Remove',
+    })
+    if (ok) removeFromWatchlistMutation.mutate(id)
+    return ok
+  }
+
+  const handleRemoveSelected = async () => {
+    const ok = await confirm({
+      title: `Remove ${selectedIds.size} user(s) from the watchlist?`,
+      description: 'They will no longer be monitored for live streams. Existing recordings are kept.',
+      confirmLabel: 'Remove',
+    })
+    if (ok) batchRemoveMutation.mutate(Array.from(selectedIds))
+  }
+
   const startRecordingMutation = useMutation({
     mutationFn: (username: string) => api.recordings.start({ username }),
     onSuccess: () => {
@@ -158,6 +188,16 @@ export default function Watchlist() {
     onError: (error: Error) => {
       toast.error(error.message)
     },
+  })
+
+  const batchRemoveMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.users.removeFromWatchlist(id))),
+    onSuccess: (_res, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setSelectedIds(new Set())
+      toast.success(`Removed ${ids.length} user(s)`)
+    },
+    onError: (error: Error) => toast.error(error.message),
   })
 
   const batchToggleMonitoring = useMutation({
@@ -192,11 +232,29 @@ export default function Watchlist() {
     }
   }
 
+  const [refreshingAll, setRefreshingAll] = useState(false)
+
   const handleRefreshAll = async () => {
-    for (const user of users) {
-      await refreshUserMutation.mutateAsync(user.id)
+    if (refreshingAll) return
+    setRefreshingAll(true)
+    let ok = 0
+    let failed = 0
+    try {
+      for (const user of users) {
+        // Per-user try/catch: one unreachable profile must not abandon the
+        // rest of the watchlist half-refreshed.
+        try {
+          await refreshUserMutation.mutateAsync(user.id)
+          ok++
+        } catch {
+          failed++
+        }
+      }
+    } finally {
+      setRefreshingAll(false)
     }
-      toast.success('All user statuses updated')
+    if (failed === 0) toast.success(`Refreshed ${ok} user(s)`)
+    else toast.error(`Refreshed ${ok} user(s), ${failed} failed`)
   }
 
   const filteredUsers = useMemo(() => {
@@ -247,27 +305,32 @@ export default function Watchlist() {
       return
     }
     let completed = 0
-    let failed = 0
+    const failedNames: string[] = []
     const run = async () => {
       for (const username of usernames) {
         try {
           await api.users.create(username, true)
           completed++
         } catch {
-          failed++
+          failedNames.push(username)
         }
       }
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      setImportDialogOpen(false)
       setImportText('')
-      setImportStatus(null)
-      if (failed === 0) {
+      if (failedNames.length === 0) {
+        setImportDialogOpen(false)
+        setImportStatus(null)
         toast.success(`Added ${completed} user(s) to your watchlist`)
       } else {
-        toast.success(`Added ${completed} user(s), ${failed} failed`)
+        // Keep the dialog open and name the failures -- reporting them through
+        // a success toast gave the user nothing to act on.
+        const preview = failedNames.slice(0, 5).join(', ')
+        const more = failedNames.length > 5 ? ` and ${failedNames.length - 5} more` : ''
+        setImportStatus(`Added ${completed}; ${failedNames.length} failed: ${preview}${more}`)
+        toast.error(`${failedNames.length} of ${usernames.length} user(s) failed to import`)
       }
     }
-    run()
+    void run()
   }, [importText, queryClient])
 
   return (
@@ -296,7 +359,7 @@ export default function Watchlist() {
               </DialogHeader>
               <DialogBody>
                 <textarea
-                  className="w-full min-h-[160px] rounded-lg border border-input bg-background p-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full min-h-[160px] rounded-lg border border-input-border bg-background p-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-primary-border"
                   placeholder={`@user1\n@user2\n@user3`}
                   value={importText}
                   onChange={(e) => { setImportText(e.target.value); setImportStatus(null) }}
@@ -323,13 +386,21 @@ export default function Watchlist() {
             <ClipboardList className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Button variant="outline" onClick={handleRefreshAll} disabled={users.length === 0}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh All
+          <Button
+            variant="outline"
+            onClick={() => { void handleRefreshAll() }}
+            disabled={users.length === 0 || refreshingAll}
+          >
+            {refreshingAll ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            {refreshingAll ? 'Refreshing…' : 'Refresh All'}
           </Button>
           <Button
             variant="danger"
-            onClick={() => stopAllMutation.mutate()}
+            onClick={handleStopAll}
             disabled={stopAllMutation.isPending}
           >
             {stopAllMutation.isPending ? (
@@ -402,7 +473,13 @@ export default function Watchlist() {
               <Input
                 placeholder="Search users…"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  // Without this, filtering while on page 2 slices past the end
+                  // of the results: a header with no rows, no empty state, and
+                  // no pager to get back with.
+                  setPage(1)
+                }}
                 className="pl-9 h-9 w-full sm:w-64"
               />
             </div>
@@ -441,11 +518,8 @@ export default function Watchlist() {
               <Button
                 size="sm"
                 variant="danger"
-                onClick={() => {
-                  Array.from(selectedIds).forEach((id) =>
-                    removeFromWatchlistMutation.mutate(id)
-                  )
-                }}
+                onClick={handleRemoveSelected}
+                disabled={batchRemoveMutation.isPending}
               >
                 <Trash2 className="h-3 w-3 mr-1" />
                 Remove
@@ -559,7 +633,7 @@ export default function Watchlist() {
                                   if (sib) sib.style.display = 'flex'
                                   if (!retriedIdsRef.current.has(row.id)) {
                                     retriedIdsRef.current.add(row.id)
-                                    api.users.refresh(row.id, true)
+                                    api.users.refresh(row.id, true).catch(() => {})
                                   }
                                 }}
                               />
@@ -624,7 +698,7 @@ export default function Watchlist() {
                             <button
                               title="Remove" aria-label={`Remove @${row.username} from watchlist`}
                               className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
-                              onClick={() => removeFromWatchlistMutation.mutate(row.id)}
+                              onClick={() => handleRemoveOne(row.id, row.username)}
                               disabled={removeFromWatchlistMutation.isPending}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -697,7 +771,7 @@ export default function Watchlist() {
                       if (fallback) fallback.style.display = 'flex'
                       if (!retriedIdsRef.current.has(detailUser.id)) {
                         retriedIdsRef.current.add(detailUser.id)
-                        api.users.refresh(detailUser.id, true)
+                        api.users.refresh(detailUser.id, true).catch(() => {})
                       }
                     }}
                   />
@@ -788,9 +862,11 @@ export default function Watchlist() {
                   size="sm"
                   variant="danger"
                   className="flex-1"
-                  onClick={() => {
-                    removeFromWatchlistMutation.mutate(detailUser.id)
-                    setDetailUserId(null)
+                  onClick={async () => {
+                    // Only close the drawer if the removal was actually confirmed.
+                    if (await handleRemoveOne(detailUser.id, detailUser.username)) {
+                      setDetailUserId(null)
+                    }
                   }}
                 >
                   <Trash2 className="h-3 w-3 mr-1" />
@@ -876,6 +952,7 @@ export default function Watchlist() {
         </DrawerBody>
         </DrawerPopup>
       </Drawer>
+      {confirmDialog}
     </div>
   )
 }

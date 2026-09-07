@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { MessageCircle, Search, Loader2 } from 'lucide-react'
@@ -13,6 +13,8 @@ function formatOffset(seconds: number): string {
   if (h > 0) return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
+
+const EVENT_PAGE_SIZE = 500
 
 interface ChatPanelProps {
   recording: Recording
@@ -32,18 +34,43 @@ export default function ChatPanel({
 }: ChatPanelProps) {
   const [tabFilter, setTabFilter] = useState<'all' | 'chat' | 'gifts'>('all')
 
-  const { data: eventsData, isLoading } = useQuery({
+  // Accumulated locally so each poll only has to carry what is new. Fetching
+  // the full window every 3s was the single most expensive thing in the app:
+  // on a busy stream it re-downloaded megabytes a minute, per viewer.
+  const [events, setEvents] = useState<LiveEvent[]>([])
+  const afterIdRef = useRef<number | null>(null)
+
+  // The buffer belongs to one (recording, filter) pair; changing either means
+  // starting over rather than appending onto unrelated rows.
+  useEffect(() => {
+    setEvents([])
+    afterIdRef.current = null
+  }, [recording.id, tabFilter])
+
+  const { isLoading } = useQuery({
     queryKey: ['live-events', recording.id, tabFilter],
-    queryFn: () => api.recordings.getEvents(
-      recording.id,
-      1,
-      500,
-      tabFilter === 'all' ? undefined : tabFilter,
-    ),
+    queryFn: async () => {
+      const after = afterIdRef.current
+      const res = await api.recordings.getEvents(
+        recording.id,
+        1,
+        EVENT_PAGE_SIZE,
+        tabFilter === 'all' ? undefined : tabFilter,
+        undefined,
+        after ?? undefined,
+      )
+      if (after === null) {
+        setEvents(res.events)
+      } else if (res.events.length > 0) {
+        setEvents((prev) => [...prev, ...res.events])
+      }
+      // Advance the high-water mark. An empty first page leaves this at 0,
+      // which correctly asks for "everything" on the next poll.
+      afterIdRef.current = res.events.reduce((m, e) => Math.max(m, e.id), after ?? 0)
+      return res
+    },
     refetchInterval: recording.status === 'recording' ? 3000 : false,
   })
-
-  const events = eventsData?.events ?? []
 
   // Memoised: this component polls every 3 seconds, and the filter previously
   // re-ran over up to 500 events on every render.
@@ -142,13 +169,18 @@ export default function ChatPanel({
               }}
             >
             <p key={ev.id} className={`leading-relaxed ${ev.event_type === 'gift' ? 'text-amber-600 dark:text-amber-400' : ''}`}>
-              <button
-                onClick={() => onSeek?.(ev.offset_seconds)}
-                className="text-primary hover:underline cursor-pointer"
-                title={`Jump to ${formatOffset(ev.offset_seconds)}`}
-              >
-                [{formatOffset(ev.offset_seconds)}]
-              </button>
+              {onSeek ? (
+                <button
+                  onClick={() => onSeek(ev.offset_seconds)}
+                  className="text-primary hover:underline cursor-pointer"
+                  title={`Jump to ${formatOffset(ev.offset_seconds)}`}
+                >
+                  [{formatOffset(ev.offset_seconds)}]
+                </button>
+              ) : (
+                // Live streams can't seek, so the timestamp must not look clickable.
+                <span className="text-muted-foreground">[{formatOffset(ev.offset_seconds)}]</span>
+              )}
               {' '}
               <span className="font-semibold text-foreground">{ev.user_nickname}</span>
               {ev.event_type === 'chat' ? (

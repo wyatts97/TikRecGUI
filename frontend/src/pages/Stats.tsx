@@ -25,6 +25,7 @@ import {
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
 import EmptyState from '@/components/EmptyState'
 import { api } from '@/lib/api'
+import QueryError from '@/components/QueryError'
 import { formatBytes } from '@/lib/utils'
 
 
@@ -67,7 +68,7 @@ function ChartTooltipStyle() {
 }
 
 export default function Stats() {
-  const { data: overview, isLoading: overviewLoading } = useQuery({
+  const { data: overview, isLoading: overviewLoading, isError: overviewError, error: overviewErr, refetch: refetchOverview } = useQuery({
     queryKey: ['stats', 'overview'],
     queryFn: () => api.stats.overview(),
   })
@@ -117,6 +118,10 @@ export default function Stats() {
         </div>
       </div>
 
+      {overviewError ? (
+        <QueryError error={overviewErr} what="analytics" onRetry={() => refetchOverview()} />
+      ) : (
+      <>
       {/* Headline stats */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Clock} label="Total hours recorded" value={overviewLoading ? '—' : `${overview?.total_hours ?? 0}h`} />
@@ -257,6 +262,8 @@ export default function Stats() {
           )}
         </CardBody>
       </Card>
+      </>
+      )}
     </div>
   )
 }

@@ -537,7 +537,7 @@ export default function SettingsPage() {
             <Label htmlFor="timezone">Timezone</Label>
             <select
               id="timezone"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="flex h-10 w-full rounded-md border border-input-border bg-background px-3 py-2 text-sm"
               value={formData.timezone || 'UTC'}
               onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
             >
@@ -914,7 +914,7 @@ export default function SettingsPage() {
                   <CardBody className="space-y-4">
                     <div className="grid gap-2">
                       <Label htmlFor="m-timezone">Timezone</Label>
-                      <select id="m-timezone" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={formData.timezone || 'UTC'} onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}>
+                      <select id="m-timezone" className="flex h-10 w-full rounded-md border border-input-border bg-background px-3 py-2 text-sm" value={formData.timezone || 'UTC'} onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}>
                         <optgroup label="UTC"><option value="UTC">UTC</option></optgroup>
                         <optgroup label="Americas">
                           <option value="America/New_York">Eastern Time — New York (ET)</option>

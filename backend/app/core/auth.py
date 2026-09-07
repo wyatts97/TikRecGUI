@@ -78,14 +78,24 @@ class AuthState:
                 logger.exception("Could not read %s; re-provisioning credentials", path)
                 data = {}
 
-        # An explicit APP_PASSWORD always wins, so operators can rotate the
-        # password by changing the environment and restarting.
-        env_password = os.environ.get("APP_PASSWORD")
+        # Read through Settings, not os.environ, so an APP_PASSWORD set in a
+        # .env file actually applies -- pydantic-settings loads .env into the
+        # Settings object but never exports it to the process environment.
+        env_password = settings.APP_PASSWORD
+        stored = bool(data.get("password_hash") and data.get("salt"))
 
-        if env_password:
+        # APP_PASSWORD *seeds* the credential; it does not override an existing
+        # one on every boot. Overriding meant a container restart silently
+        # reverted any password the user had since changed. FORCE_RESET is the
+        # deliberate break-glass path.
+        force_reset = os.environ.get("APP_PASSWORD_FORCE_RESET", "").lower() in ("1", "true", "yes")
+
+        if env_password and (not stored or force_reset):
             self._salt = secrets.token_bytes(16)
             self._hash = _hash_password(env_password, self._salt)
-        elif data.get("password_hash") and data.get("salt"):
+            if force_reset:
+                logger.warning("APP_PASSWORD_FORCE_RESET set; login password reset from environment.")
+        elif stored:
             self._salt = base64.b64decode(data["salt"])
             self._hash = data["password_hash"]
         else:
