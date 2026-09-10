@@ -281,7 +281,7 @@ class RecordingTask:
         # earlier status-change time (Phase 1 can precede Phase 3 by 5-30 s).
         _chat_started_at = datetime.utcnow()
         try:
-            live_chat_service.start_listening(
+            _chat_started = live_chat_service.start_listening(
                 recording_id=self.recording_id,
                 username=self.username,
                 room_id=self.room_id,
@@ -289,6 +289,16 @@ class RecordingTask:
                 proxy=self.proxy,
                 cookies=self.cookies,
             )
+            if not _chat_started:
+                # Refused (duplicate listener, or the MAX_WORKERS cap). The
+                # recording proceeds either way, but say so loudly: otherwise
+                # the missing chat only shows up as an empty timeline later.
+                logger.warning(
+                    "Chat capture NOT started for recording %d (@%s) - no chat or "
+                    "gift events will be captured for this recording",
+                    self.recording_id,
+                    self.username,
+                )
         except Exception as e:
             logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
 
