@@ -23,7 +23,7 @@ const iconBoxVariants = cva(
         danger:
           'bg-danger text-danger-foreground before:absolute before:inset-0 before:bg-gradient-to-b before:from-white/[0.12] before:to-transparent',
         'primary-subtle':
-          'bg-primary/10 text-primary before:hidden',
+          'bg-primary/10 text-primary-ink before:hidden',
         'secondary-subtle':
           'bg-secondary/10 text-secondary-foreground before:hidden',
         'tertiary-subtle':

@@ -104,7 +104,7 @@ export default function ChatPanel({
             className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
               tabFilter === tab
                 ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent'
             }`}
           >
             {tab === 'all' ? 'All' : tab === 'chat' ? 'Chat' : 'Gifts'}
@@ -168,11 +168,11 @@ export default function ChatPanel({
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >
-            <p key={ev.id} className={`leading-relaxed ${ev.event_type === 'gift' ? 'text-amber-600 dark:text-amber-400' : ''}`}>
+            <p key={ev.id} className={`leading-relaxed ${ev.event_type === 'gift' ? 'text-warning' : ''}`}>
               {onSeek ? (
                 <button
                   onClick={() => onSeek(ev.offset_seconds)}
-                  className="text-primary hover:underline cursor-pointer"
+                  className="text-primary-ink hover:underline cursor-pointer"
                   title={`Jump to ${formatOffset(ev.offset_seconds)}`}
                 >
                   [{formatOffset(ev.offset_seconds)}]
@@ -214,7 +214,7 @@ export default function ChatPanel({
           <MessageCircle className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Chat & Gifts</span>
           {events.length > 0 && (
-            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-green-500" />
+            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-success" />
           )}
         </div>
         <div className="flex-1 p-3 space-y-3 overflow-y-auto min-h-0">

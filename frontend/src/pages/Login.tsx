@@ -30,7 +30,7 @@ export default function Login() {
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-3 mb-8">
           <div className="rounded-xl bg-primary-subtle p-3">
-            <Lock className="h-6 w-6 text-primary" aria-hidden="true" />
+            <Lock className="h-6 w-6 text-primary-ink" aria-hidden="true" />
           </div>
           <h1 className="text-xl font-semibold text-foreground">TikRec</h1>
           <p className="text-sm text-muted-foreground">Sign in to continue</p>

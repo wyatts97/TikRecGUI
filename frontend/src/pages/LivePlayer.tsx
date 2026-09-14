@@ -149,7 +149,7 @@ export default function LivePlayer() {
         role="status"
         aria-label="Loading"
       >
-        <LoaderCircle className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary" aria-hidden="true" />
+        <LoaderCircle className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary-ink" aria-hidden="true" />
         <span className="sr-only">Loading…</span>
       </div>
     )
@@ -186,10 +186,10 @@ export default function LivePlayer() {
             {isActive && (
               <>
                 <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-danger" />
                 </span>
-                <span className="text-red-500 font-medium">LIVE</span>
+                <span className="text-danger font-medium">LIVE</span>
                 <span className="mx-1">·</span>
               </>
             )}
@@ -217,7 +217,7 @@ export default function LivePlayer() {
             disabled={stopMutation.isPending}
             className="shrink-0"
           >
-            <Square className="h-3.5 w-3.5 mr-1.5 fill-red-500 text-red-500" />
+            <Square className="h-3.5 w-3.5 mr-1.5 fill-danger text-danger" />
             Stop
           </Button>
         )}
@@ -284,8 +284,8 @@ export default function LivePlayer() {
             {isActive && liveUrl && (
               <div className="absolute top-3 right-3 flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-bold px-2 py-1 rounded-full uppercase">
                 <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-red-500" />
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-danger opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-danger" />
                 </span>
                 {streamType}
               </div>
@@ -329,7 +329,7 @@ export default function LivePlayer() {
           {/* Mobile chat */}
           <div className="lg:hidden border border-border rounded-xl overflow-hidden">
             <div
-              className="flex border-b border-border bg-muted/40"
+              className="flex border-b border-border bg-secondary"
               role="tablist"
               aria-label="Player views"
               onKeyDown={tabListKeyDown(
@@ -343,7 +343,7 @@ export default function LivePlayer() {
                 {...tabProps('player', !showChat)}
                 className={`px-4 py-2.5 text-sm font-medium transition-colors ${
                   !showChat
-                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    ? 'bg-background text-primary-ink border-b-2 border-primary -mb-px'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -354,7 +354,7 @@ export default function LivePlayer() {
                 {...tabProps('chat', showChat)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
                   showChat
-                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    ? 'bg-background text-primary-ink border-b-2 border-primary -mb-px'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >

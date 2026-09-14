@@ -199,7 +199,7 @@ export default function Storage() {
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-lg bg-primary-subtle flex items-center justify-center">
-                  <HardDrive className="h-5 w-5 text-primary" />
+                  <HardDrive className="h-5 w-5 text-primary-ink" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{formatBytes(total)}</p>
@@ -211,8 +211,8 @@ export default function Storage() {
           <StaggerItem>
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                  <Video className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className="h-10 w-10 rounded-lg bg-info/15 flex items-center justify-center">
+                  <Video className="h-5 w-5 text-info" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{formatBytes(recordingBytes)}</p>
@@ -224,8 +224,8 @@ export default function Storage() {
           <StaggerItem>
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                  <Crown className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <div className="h-10 w-10 rounded-lg bg-primary-subtle flex items-center justify-center">
+                  <Crown className="h-5 w-5 text-primary-ink" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{formatBytes(clipBytes)}</p>
@@ -237,8 +237,8 @@ export default function Storage() {
           <StaggerItem>
             <div className="rounded-xl border border-border bg-card p-4">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                  <Archive className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <div className="h-10 w-10 rounded-lg bg-warning/15 flex items-center justify-center">
+                  <Archive className="h-5 w-5 text-warning" />
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-foreground">{formatBytes(storageStats?.backup_storage ?? 0)}</p>
@@ -259,7 +259,7 @@ export default function Storage() {
             {isLoading ? (
               <div className="p-4 space-y-3">
                 {Array.from({ length: loadingRows }).map((_, i) => (
-                  <div key={i} className="h-12 rounded-lg bg-muted/60 animate-pulse" />
+                  <div key={i} className="h-12 rounded-lg bg-secondary animate-pulse" />
                 ))}
               </div>
             ) : (byUser?.length ?? 0) === 0 ? (
@@ -269,7 +269,7 @@ export default function Storage() {
               </div>
             ) : (
               <table className="w-full text-sm text-left">
-                <thead className="bg-muted/40 text-xs uppercase text-muted-foreground sticky top-0">
+                <thead className="bg-secondary text-xs uppercase text-muted-foreground sticky top-0">
                   <tr>
                     <th className="px-4 py-2 font-medium">User</th>
                     <th className="px-4 py-2 font-medium text-right">Recordings</th>
@@ -332,7 +332,7 @@ export default function Storage() {
             {largestLoading ? (
               <div className="p-4 space-y-3">
                 {Array.from({ length: loadingRows }).map((_, i) => (
-                  <div key={i} className="h-14 rounded-lg bg-muted/60 animate-pulse" />
+                  <div key={i} className="h-14 rounded-lg bg-secondary animate-pulse" />
                 ))}
               </div>
             ) : (largest?.length ?? 0) === 0 ? (
@@ -342,7 +342,7 @@ export default function Storage() {
               </div>
             ) : (
               <table className="w-full text-sm text-left">
-                <thead className="bg-muted/40 text-xs uppercase text-muted-foreground sticky top-0">
+                <thead className="bg-secondary text-xs uppercase text-muted-foreground sticky top-0">
                   <tr>
                     <th className="px-4 py-2 w-10">
                       <span className="sr-only">Select</span>
@@ -362,13 +362,13 @@ export default function Storage() {
                           type="checkbox"
                           checked={selected.has(r.id)}
                           onChange={() => toggleSelect(r.id)}
-                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                          className="h-4 w-4 rounded border-border text-primary-ink focus:ring-primary"
                         />
                       </td>
                       <td className="px-4 py-3">
                         <button
                           onClick={() => navigate(`/watch/${r.id}`)}
-                          className="text-left font-medium text-foreground hover:text-primary hover:underline"
+                          className="text-left font-medium text-foreground hover:text-primary-ink hover:underline"
                         >
                           {r.filename}
                         </button>
@@ -383,9 +383,9 @@ export default function Storage() {
                         <span className={cn(
                           'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
                           r.status === 'completed' && 'bg-success/10 text-success',
-                          r.status === 'recording' && 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300',
-                          r.status === 'compressed' && 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300',
-                          !['completed', 'recording', 'compressed'].includes(r.status) && 'bg-muted text-muted-foreground'
+                          r.status === 'recording' && 'bg-danger/15 text-danger',
+                          r.status === 'compressed' && 'bg-warning/15 text-warning',
+                          !['completed', 'recording', 'compressed'].includes(r.status) && 'bg-secondary text-muted'
                         )}>
                           {r.status}
                         </span>
@@ -399,7 +399,7 @@ export default function Storage() {
         </div>
 
         {/* Info note */}
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        <div className="flex items-start gap-3 rounded-lg border border-border bg-secondary p-3 text-sm text-muted-foreground">
           <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
           <p>
             Compress moves original recordings to a backup archive and replaces them with smaller remuxed versions. Deleted recordings are removed permanently.

@@ -83,8 +83,10 @@ export default function LiveProfileCard({
         <div className="bg-linear-to-b from-card/0 to-card absolute inset-x-0 bottom-0 h-3/4 rounded-[calc(var(--radius-xl)-3px)] pointer-events-none" />
       )}
 
-      <Badge variant="danger" pill size="sm" className="absolute top-3.5 left-3.5 z-10 font-semibold tracking-wide">
-        <Circle className="fill-current" aria-hidden="true" />
+      {/* Sits on the photo, not a theme surface: a fixed dark scrim keeps it
+          legible over any image in every theme. */}
+      <Badge pill size="sm" className="absolute top-3.5 left-3.5 z-10 font-semibold tracking-wide bg-black/60 text-white backdrop-blur-sm">
+        <Circle className="fill-red-500 text-red-500" aria-hidden="true" />
         LIVE
       </Badge>
 

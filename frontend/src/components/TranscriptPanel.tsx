@@ -70,7 +70,7 @@ export default function TranscriptPanel({
 
       {recording.transcript_status === 'failed' && (
         <div className="flex flex-col items-center gap-2 py-6">
-          <p className="text-sm text-red-600">Transcription failed.</p>
+          <p className="text-sm text-danger">Transcription failed.</p>
           <Button size="sm" variant="outline" onClick={onTranscribe}>
             Retry
           </Button>
@@ -89,7 +89,7 @@ export default function TranscriptPanel({
               className="pl-8 h-8 text-sm"
             />
           </div>
-          <div className={`font-mono text-xs space-y-1 ${variant === 'panel' ? '' : 'max-h-80 overflow-y-auto rounded-lg border border-border bg-card/60 dark:bg-black/30 p-3'}`}>
+          <div className={`font-mono text-xs space-y-1 ${variant === 'panel' ? '' : 'max-h-80 overflow-y-auto rounded-lg border border-border bg-code p-3'}`}>
             {recording.transcript_text
               .split('\n')
               .filter((line: string) => !transcriptSearch || line.toLowerCase().includes(transcriptSearch.toLowerCase()))
@@ -108,7 +108,7 @@ export default function TranscriptPanel({
                       <>
                         <button
                           onClick={() => onSeek?.(parsed.seconds)}
-                          className="text-primary hover:underline cursor-pointer"
+                          className="text-primary-ink hover:underline cursor-pointer"
                           title={`Jump to ${parsed.timestamp}`}
                         >
                           [{parsed.timestamp}]
@@ -134,7 +134,7 @@ export default function TranscriptPanel({
           <FileText className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium">Transcript</span>
           {recording.transcript_status === 'done' && (
-            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-green-500" />
+            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-success" />
           )}
         </div>
         <div className="flex-1 p-3 space-y-3 overflow-y-auto min-h-0">

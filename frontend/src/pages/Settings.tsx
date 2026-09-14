@@ -26,13 +26,12 @@ import {
 import { api, type Settings } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { useTheme } from '@/hooks/useTheme'
 import AccentPicker from '@/components/AccentPicker'
+import ThemeOptions from '@/components/ThemeOptions'
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const isDesktop = useMediaQuery('(min-width: 768px)')
-  const { theme, setTheme } = useTheme()
   const [mobileTab, setMobileTab] = useState('status')
 
   const { data: settings, isLoading } = useQuery({
@@ -73,7 +72,7 @@ export default function SettingsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12" role="status" aria-label="Loading settings">
-        <svg className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12a9 9 0 1 1-6.219-8.56" />
         </svg>
         <span className="sr-only">Loading settings…</span>
@@ -85,7 +84,7 @@ export default function SettingsPage() {
   // and mobile status cards.
   const resourceMeters =
     health?.cpu_percent != null && health?.ram_percent != null ? (
-      <div className="grid gap-4 p-3 rounded-lg bg-muted/40">
+      <div className="grid gap-4 p-3 rounded-lg bg-secondary">
         {[
           { label: 'CPU', value: health.cpu_percent },
           { label: 'RAM', value: health.ram_percent },
@@ -144,7 +143,7 @@ export default function SettingsPage() {
           <CardDescription>Current system health and configuration status</CardDescription>
         </CardHeader>
         <CardBody className="space-y-4">
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
             <span className="text-sm font-medium">API Status</span>
             <div className="flex items-center gap-2">
               {health?.status === 'healthy' ? (
@@ -159,13 +158,13 @@ export default function SettingsPage() {
                   <IconBox variant="warning-subtle" size="sm">
                     <AlertCircle className="h-4 w-4" />
                   </IconBox>
-                  <span className="text-sm text-yellow-600">Unknown</span>
+                  <span className="text-sm text-warning">Unknown</span>
                 </>
               )}
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
             <span className="text-sm font-medium">Recorder</span>
             <div className="flex items-center gap-2">
               {health?.recorder_available ? (
@@ -180,13 +179,13 @@ export default function SettingsPage() {
                   <IconBox variant="warning-subtle" size="sm">
                     <AlertCircle className="h-4 w-4" />
                   </IconBox>
-                  <span className="text-sm text-yellow-600">Unavailable</span>
+                  <span className="text-sm text-warning">Unavailable</span>
                 </>
               )}
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
             <span className="text-sm font-medium">Region Status</span>
             <div className="flex items-center gap-2">
               {health?.country_blacklisted ? (
@@ -194,7 +193,7 @@ export default function SettingsPage() {
                   <IconBox variant="warning-subtle" size="sm">
                     <AlertCircle className="h-4 w-4" />
                   </IconBox>
-                  <span className="text-sm text-yellow-600">Restricted</span>
+                  <span className="text-sm text-warning">Restricted</span>
                 </>
               ) : (
                 <>
@@ -207,7 +206,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
             <span className="text-sm font-medium">Cookies</span>
             <div className="flex items-center gap-2">
               {health?.cookies_configured ? (
@@ -228,7 +227,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
             <span className="text-sm font-medium">Output Directory</span>
             <span className="text-sm text-muted-foreground truncate max-w-[200px]">
               {health?.recordings_dir || settings?.output_dir}
@@ -247,7 +246,7 @@ export default function SettingsPage() {
               href="https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1"
+              className="text-primary-ink hover:underline inline-flex items-center gap-1"
             >
               Learn how <ExternalLink className="h-3 w-3" />
             </a>
@@ -312,7 +311,7 @@ export default function SettingsPage() {
               href="https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-enable-upload-to-telegram"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary hover:underline inline-flex items-center gap-1"
+              className="text-primary-ink hover:underline inline-flex items-center gap-1"
             >
               Learn how <ExternalLink className="h-3 w-3" />
             </a>
@@ -650,7 +649,7 @@ export default function SettingsPage() {
               </optgroup>
             </select>
           </div>
-          <div className="p-3 rounded-lg bg-muted/40 text-sm">
+          <div className="p-3 rounded-lg bg-secondary text-sm">
             <span className="text-muted-foreground">Current time in selected zone: </span>
             <span className="font-medium tabular-nums">
               {new Date().toLocaleString('en-US', {
@@ -676,26 +675,7 @@ export default function SettingsPage() {
           <CardDescription>Choose your preferred theme and accent color</CardDescription>
         </CardHeader>
         <CardBody className="space-y-5">
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { value: 'light' as const, label: 'Light', bg: 'bg-white', border: 'border-gray-200', dot: 'bg-gray-400' },
-              { value: 'dark' as const, label: 'Dark', bg: 'bg-gray-800', border: 'border-gray-700', dot: 'bg-gray-500' },
-              { value: 'neo-futurism' as const, label: 'Neo-Futurism', bg: 'bg-black', border: 'border-purple-900', dot: 'bg-red-500' },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setTheme(option.value)}
-                className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
-                  theme === option.value ? 'border-primary' : option.border
-                } ${option.bg}`}
-              >
-                <div className={`h-4 w-4 rounded-full ${option.dot} ${theme === option.value ? 'ring-2 ring-white ring-offset-2 ring-offset-background' : ''}`} />
-                <span className={`text-xs font-medium ${option.value === 'light' ? 'text-gray-800' : 'text-white'}`}>
-                  {option.label}
-                </span>
-              </button>
-            ))}
-          </div>
+          <ThemeOptions />
           <div className="border-t border-border pt-5">
             <AccentPicker />
           </div>
@@ -747,7 +727,7 @@ export default function SettingsPage() {
                     <CardDescription>Current system health and configuration status</CardDescription>
                   </CardHeader>
                   <CardBody className="space-y-4">
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
                       <span className="text-sm font-medium">API Status</span>
                       <div className="flex items-center gap-2">
                         {health?.status === 'healthy' ? (
@@ -757,13 +737,13 @@ export default function SettingsPage() {
                           </>
                         ) : (
                           <>
-                            <AlertCircle className="h-4 w-4 text-yellow-500" />
-                            <span className="text-sm text-yellow-600">Unknown</span>
+                            <AlertCircle className="h-4 w-4 text-warning" />
+                            <span className="text-sm text-warning">Unknown</span>
                           </>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
                       <span className="text-sm font-medium">Recorder</span>
                       <div className="flex items-center gap-2">
                         {health?.recorder_available ? (
@@ -773,19 +753,19 @@ export default function SettingsPage() {
                           </>
                         ) : (
                           <>
-                            <AlertCircle className="h-4 w-4 text-yellow-500" />
-                            <span className="text-sm text-yellow-600">Unavailable</span>
+                            <AlertCircle className="h-4 w-4 text-warning" />
+                            <span className="text-sm text-warning">Unavailable</span>
                           </>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
                       <span className="text-sm font-medium">Region Status</span>
                       <div className="flex items-center gap-2">
                         {health?.country_blacklisted ? (
                           <>
-                            <AlertCircle className="h-4 w-4 text-yellow-500" />
-                            <span className="text-sm text-yellow-600">Restricted</span>
+                            <AlertCircle className="h-4 w-4 text-warning" />
+                            <span className="text-sm text-warning">Restricted</span>
                           </>
                         ) : (
                           <>
@@ -795,7 +775,7 @@ export default function SettingsPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
                       <span className="text-sm font-medium">Cookies</span>
                       <div className="flex items-center gap-2">
                         {health?.cookies_configured ? (
@@ -811,7 +791,7 @@ export default function SettingsPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-secondary">
                       <span className="text-sm font-medium">Output Directory</span>
                       <span className="text-sm text-muted-foreground truncate max-w-[200px]">
                         {health?.recordings_dir || settings?.output_dir}
@@ -827,7 +807,7 @@ export default function SettingsPage() {
                     <CardTitle>TikTok Cookies</CardTitle>
                     <CardDescription>
                       Required for accessing restricted content.{' '}
-                      <a href="https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                      <a href="https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies" target="_blank" rel="noopener noreferrer" className="text-primary-ink hover:underline inline-flex items-center gap-1">
                         Learn how <ExternalLink className="h-3 w-3" />
                       </a>
                     </CardDescription>
@@ -855,7 +835,7 @@ export default function SettingsPage() {
                     <CardTitle>Telegram Integration</CardTitle>
                     <CardDescription>
                       Upload recordings to Telegram automatically.{' '}
-                      <a href="https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-enable-upload-to-telegram" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline inline-flex items-center gap-1">
+                      <a href="https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-enable-upload-to-telegram" target="_blank" rel="noopener noreferrer" className="text-primary-ink hover:underline inline-flex items-center gap-1">
                         Learn how <ExternalLink className="h-3 w-3" />
                       </a>
                     </CardDescription>
@@ -1024,7 +1004,7 @@ export default function SettingsPage() {
                         </optgroup>
                       </select>
                     </div>
-                    <div className="p-3 rounded-lg bg-muted/40 text-sm">
+                    <div className="p-3 rounded-lg bg-secondary text-sm">
                       <span className="text-muted-foreground">Current time in selected zone: </span>
                       <span className="font-medium tabular-nums">
                         {new Date().toLocaleString('en-US', {
@@ -1051,26 +1031,7 @@ export default function SettingsPage() {
                     <CardDescription>Choose your preferred theme and accent color</CardDescription>
                   </CardHeader>
                   <CardBody className="space-y-5">
-                    <div className="grid grid-cols-3 gap-3">
-                      {[
-                        { value: 'light' as const, label: 'Light', bg: 'bg-white', border: 'border-gray-200', dot: 'bg-gray-400' },
-                        { value: 'dark' as const, label: 'Dark', bg: 'bg-gray-800', border: 'border-gray-700', dot: 'bg-gray-500' },
-                        { value: 'neo-futurism' as const, label: 'Neo-Futurism', bg: 'bg-black', border: 'border-purple-900', dot: 'bg-red-500' },
-                      ].map((option) => (
-                        <button
-                          key={option.value}
-                          onClick={() => setTheme(option.value)}
-                          className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-3 transition-colors ${
-                            theme === option.value ? 'border-primary' : option.border
-                          } ${option.bg}`}
-                        >
-                          <div className={`h-4 w-4 rounded-full ${option.dot} ${theme === option.value ? 'ring-2 ring-white ring-offset-2 ring-offset-background' : ''}`} />
-                          <span className={`text-xs font-medium ${option.value === 'light' ? 'text-gray-800' : 'text-white'}`}>
-                            {option.label}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
+                    <ThemeOptions />
                     <div className="border-t border-border pt-5">
                       <AccentPicker />
                     </div>

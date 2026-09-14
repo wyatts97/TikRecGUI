@@ -6,7 +6,6 @@ import { UnauthorizedError } from './lib/api'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
-import 'preline/non-auto'
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -58,4 +57,3 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-window.HSStaticMethods?.autoInit()

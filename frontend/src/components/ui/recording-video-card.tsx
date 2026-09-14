@@ -49,7 +49,7 @@ export function RecordingVideoCard({
         onClick={onClick}
       >
         {/* Thumbnail */}
-        <div className="relative aspect-video overflow-hidden bg-muted" {...scrub.handlers}>
+        <div className="relative aspect-video overflow-hidden bg-secondary" {...scrub.handlers}>
           <ScrubOverlay style={scrub.style} fraction={scrub.fraction} />
           {onSelect && (
             <div
@@ -105,12 +105,12 @@ export function RecordingVideoCard({
                   whileTap={{ scale: 0.95 }}
                   className="flex h-14 w-14 items-center justify-center rounded-full bg-background/90 shadow-lg shadow-primary/20"
                 >
-                  <Play className="h-6 w-6 text-primary ml-0.5" />
+                  <Play className="h-6 w-6 text-primary-ink ml-0.5" />
                 </motion.div>
               </div>
             </>
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/60">
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-secondary">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
               <span className="text-xs text-muted-foreground font-medium">Processing…</span>
             </div>
@@ -154,7 +154,7 @@ export function RecordingVideoCard({
                   <Heart
                     className={cn(
                       'h-4 w-4',
-                      recording.is_favorite && 'fill-red-500 text-red-500',
+                      recording.is_favorite && 'fill-danger text-danger',
                     )}
                   />
                 </Button>
@@ -163,7 +163,7 @@ export function RecordingVideoCard({
                 <Button
                   variant="plain"
                   size="icon"
-                  className="h-8 w-8 text-amber-500 hover:text-amber-600"
+                  className="h-8 w-8 text-warning hover:text-warning/80"
                   onClick={onRepair}
                   disabled={isRepairing}
                   title="Repair recording"

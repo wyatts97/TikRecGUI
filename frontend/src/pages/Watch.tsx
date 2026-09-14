@@ -241,7 +241,7 @@ export default function Watch() {
       {exportJob && <ExportProgress job={exportJob} onCancel={cancelExport} />}
 
       {selectedIds.size > 0 && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/60 border border-border/50">
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-secondary border border-border/50">
           <span className="text-sm font-medium">
             {selectedIds.size} selected
           </span>

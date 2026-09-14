@@ -13,7 +13,7 @@ export function ScrubOverlay({
 }) {
   if (!style) return null
   return (
-    <div className="absolute inset-0 z-[5] pointer-events-none bg-muted" style={style} aria-hidden="true">
+    <div className="absolute inset-0 z-[5] pointer-events-none bg-secondary" style={style} aria-hidden="true">
       {fraction !== null && (
         <div className="absolute inset-x-0 bottom-0 h-0.5 bg-black/40">
           <div className="h-full bg-primary" style={{ width: `${fraction * 100}%` }} />

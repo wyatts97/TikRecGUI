@@ -37,7 +37,7 @@ export default function GlobalSearch() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary-subtle">
-          <SearchIcon className="h-5 w-5 text-primary" />
+          <SearchIcon className="h-5 w-5 text-primary-ink" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Library Search</h1>
@@ -64,7 +64,7 @@ export default function GlobalSearch() {
         />
       ) : isLoading ? (
         <div className="flex items-center justify-center py-16" role="status" aria-label="Searching">
-          <svg className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="h-6 w-6 animate-spin motion-reduce:animate-none text-primary-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 12a9 9 0 1 1-6.219-8.56" />
           </svg>
         </div>
@@ -79,7 +79,7 @@ export default function GlobalSearch() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <FileText className="h-4 w-4 text-primary" />
+                  <FileText className="h-4 w-4 text-primary-ink" />
                   Transcripts
                   <Badge variant="secondary" size="sm">{data?.transcript_count}</Badge>
                 </CardTitle>
@@ -89,7 +89,7 @@ export default function GlobalSearch() {
                   <div key={t.recording_id} className="rounded-lg border border-border p-3">
                     <button
                       onClick={() => navigate(`/watch/${t.recording_id}`)}
-                      className="text-sm font-medium text-foreground hover:text-primary transition-colors"
+                      className="text-sm font-medium text-foreground hover:text-primary-ink transition-colors"
                     >
                       @{t.username} · Recording #{t.recording_id}
                     </button>
@@ -100,7 +100,7 @@ export default function GlobalSearch() {
                           onClick={() => jumpTo(t.recording_id, m.offset_seconds)}
                           className="group flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent transition-colors"
                         >
-                          <span className="inline-flex items-center gap-1 shrink-0 text-xs font-mono text-primary">
+                          <span className="inline-flex items-center gap-1 shrink-0 text-xs font-mono text-primary-ink">
                             <Clock className="h-3 w-3" />
                             {formatDuration(m.offset_seconds)}
                           </span>
@@ -122,7 +122,7 @@ export default function GlobalSearch() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
-                  <MessageCircle className="h-4 w-4 text-primary" />
+                  <MessageCircle className="h-4 w-4 text-primary-ink" />
                   Chat & gifts
                   <Badge variant="secondary" size="sm">{data?.event_count}</Badge>
                 </CardTitle>
@@ -134,7 +134,7 @@ export default function GlobalSearch() {
                     onClick={() => jumpTo(ev.recording_id, ev.offset_seconds)}
                     className="group flex w-full items-start gap-3 py-2.5 text-left hover:bg-accent -mx-2 px-2 rounded-md transition-colors"
                   >
-                    <span className="inline-flex items-center gap-1 shrink-0 text-xs font-mono text-primary pt-0.5">
+                    <span className="inline-flex items-center gap-1 shrink-0 text-xs font-mono text-primary-ink pt-0.5">
                       <Clock className="h-3 w-3" />
                       {formatDuration(ev.offset_seconds)}
                     </span>
@@ -145,7 +145,7 @@ export default function GlobalSearch() {
                       <p className="text-sm text-foreground flex items-center gap-1.5">
                         {ev.event_type === 'gift' ? (
                           <>
-                            <Gift className="h-3.5 w-3.5 text-pink-500 shrink-0" />
+                            <Gift className="h-3.5 w-3.5 text-warning shrink-0" />
                             <span>Sent {ev.gift_name}</span>
                           </>
                         ) : (

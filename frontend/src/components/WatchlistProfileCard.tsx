@@ -88,8 +88,9 @@ export default function WatchlistProfileCard({
       {/* Top row: live state + selection */}
       <div className="absolute top-3.5 inset-x-3.5 z-10 flex items-center justify-between pointer-events-none">
         {live ? (
-          <Badge variant="danger" pill size="sm" className="font-semibold tracking-wide">
-            <Circle className="fill-current" aria-hidden="true" />
+          // On the photo: fixed scrim, legible over any image in every theme.
+          <Badge pill size="sm" className="font-semibold tracking-wide bg-black/60 text-white backdrop-blur-sm">
+            <Circle className="fill-red-500 text-red-500" aria-hidden="true" />
             {recording ? 'REC' : 'LIVE'}
           </Badge>
         ) : (

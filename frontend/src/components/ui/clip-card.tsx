@@ -43,7 +43,7 @@ export function ClipCard({
       className="group overflow-hidden cursor-pointer border border-border bg-card hover:shadow-md transition-shadow"
       onClick={onClick}
     >
-      <div className="relative aspect-video bg-muted overflow-hidden" {...scrub.handlers}>
+      <div className="relative aspect-video bg-secondary overflow-hidden" {...scrub.handlers}>
         <ScrubOverlay style={scrub.style} fraction={scrub.fraction} />
         {onSelect && (
           <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
@@ -73,19 +73,19 @@ export function ClipCard({
             }}
           />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/60">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-secondary">
             <Loader2 className="h-8 w-8 text-muted-foreground animate-spin motion-reduce:animate-none mb-2" />
             <span className="text-xs text-muted-foreground font-medium">Processing…</span>
           </div>
         )}
-        <div className="absolute inset-0 items-center justify-center bg-muted hidden">
+        <div className="absolute inset-0 items-center justify-center bg-secondary hidden">
           <Scissors className="h-12 w-12 text-muted-foreground" aria-hidden="true" />
         </div>
 
         {clip.thumbnail_ready && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
             <div className="h-12 w-12 rounded-full bg-background/90 flex items-center justify-center">
-              <Play className="h-5 w-5 text-primary ml-0.5" aria-hidden="true" />
+              <Play className="h-5 w-5 text-primary-ink ml-0.5" aria-hidden="true" />
             </div>
           </div>
         )}
@@ -117,7 +117,7 @@ export function ClipCard({
                   title={clip.is_favorite ? 'Unfavorite' : 'Favorite'}
                   aria-label={clip.is_favorite ? 'Remove from favorites' : 'Add to favorites'}
                 >
-                  <Heart className={cn('h-4 w-4', clip.is_favorite && 'fill-red-500 text-red-500')} />
+                  <Heart className={cn('h-4 w-4', clip.is_favorite && 'fill-danger text-danger')} />
                 </Button>
               )}
               {onDownload && (

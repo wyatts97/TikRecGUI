@@ -234,7 +234,7 @@ function LiveNow({
       {loading ? (
         <Rail>
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-[420px] rounded-xl bg-muted/50 animate-pulse motion-reduce:animate-none" />
+            <div key={i} className="h-[420px] rounded-xl bg-secondary animate-pulse motion-reduce:animate-none" />
           ))}
         </Rail>
       ) : live.length === 0 ? (
@@ -289,7 +289,7 @@ function StatCard({
           </div>
           <div>
             {value === undefined ? (
-              <div className="h-8 w-16 rounded bg-muted animate-pulse motion-reduce:animate-none" />
+              <div className="h-8 w-16 rounded bg-accent animate-pulse motion-reduce:animate-none" />
             ) : (
               <p className="text-3xl font-semibold tabular-nums text-foreground">{value.toLocaleString()}</p>
             )}

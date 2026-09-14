@@ -241,7 +241,7 @@ export default function WatchPlayer() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12" role="status" aria-label="Loading">
-        <Loader2 className="h-6 w-6 text-primary animate-spin motion-reduce:animate-none" />
+        <Loader2 className="h-6 w-6 text-primary-ink animate-spin motion-reduce:animate-none" />
         <span className="sr-only">Loading…</span>
       </div>
     )
@@ -288,9 +288,9 @@ export default function WatchPlayer() {
       </div>
 
       {!recording.thumbnail_ready && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900">
-          <Loader2 className="h-4 w-4 text-amber-600 dark:text-amber-400 animate-spin shrink-0" />
-          <p className="text-sm text-amber-800 dark:text-amber-200 font-medium">
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-warning/10 border border-warning/30">
+          <Loader2 className="h-4 w-4 text-warning animate-spin shrink-0" />
+          <p className="text-sm text-foreground font-medium">
             Video is still being processed. It will be available shortly.
           </p>
         </div>
@@ -390,7 +390,7 @@ export default function WatchPlayer() {
               variant="outline"
               onClick={() => setDeleteDialogOpen(true)}
               disabled={deleteMutation.isPending}
-              className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+              className="ring-danger/40 text-danger hover:bg-danger/10"
             >
               <Trash2 className="h-4 w-4" />
               Delete
@@ -440,7 +440,7 @@ export default function WatchPlayer() {
 
           {/* Mobile transcript tab */}
           <div className="border border-border rounded-xl overflow-hidden lg:hidden">
-            <div className="flex border-b border-border bg-muted/40"
+            <div className="flex border-b border-border bg-secondary"
               role="tablist"
               aria-label="Player views"
               onKeyDown={tabListKeyDown(WATCH_TABS, activeTab, setActiveTab)}
@@ -450,7 +450,7 @@ export default function WatchPlayer() {
                 {...tabProps('player', activeTab === 'player')}
                 className={`px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'player'
-                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    ? 'bg-background text-primary-ink border-b-2 border-primary -mb-px'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -461,14 +461,14 @@ export default function WatchPlayer() {
                 {...tabProps('transcript', activeTab === 'transcript')}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'transcript'
-                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    ? 'bg-background text-primary-ink border-b-2 border-primary -mb-px'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <FileText className="h-3.5 w-3.5" />
                 Transcript
                 {recording.transcript_status === 'done' && (
-                  <span className="ml-1 h-1.5 w-1.5 rounded-full bg-green-500" />
+                  <span className="ml-1 h-1.5 w-1.5 rounded-full bg-success" />
                 )}
               </button>
               <button
@@ -476,7 +476,7 @@ export default function WatchPlayer() {
                 {...tabProps('chat', activeTab === 'chat')}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors ${
                   activeTab === 'chat'
-                    ? 'bg-background text-primary border-b-2 border-primary -mb-px'
+                    ? 'bg-background text-primary-ink border-b-2 border-primary -mb-px'
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >

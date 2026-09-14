@@ -1,5 +1,5 @@
-import { useEffect, lazy, Suspense } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
+import { Routes, Route } from 'react-router-dom'
 import { ThemeProvider } from './hooks/useTheme'
 import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
@@ -26,7 +26,7 @@ const Login = lazy(() => import('./pages/Login'))
 function FullscreenSpinner() {
   return (
   <div className="flex h-screen items-center justify-center" role="status" aria-label="Loading">
-    <svg className="h-7 w-7 animate-spin motion-reduce:animate-none text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg className="h-7 w-7 animate-spin motion-reduce:animate-none text-primary-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
     </svg>
     <span className="sr-only">Loading…</span>
@@ -77,12 +77,6 @@ function ToasterWrapper() {
 }
 
 function App() {
-  const location = useLocation()
-
-  useEffect(() => {
-    window.HSStaticMethods?.autoInit()
-  }, [location.pathname])
-
   return (
     <ErrorBoundary>
     <AuthProvider>

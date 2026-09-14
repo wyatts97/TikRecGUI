@@ -45,7 +45,7 @@ function StatCard({
     <Card>
       <CardBody className="flex items-center gap-4 py-5">
         <div className="flex items-center justify-center h-11 w-11 rounded-xl bg-primary-subtle shrink-0">
-          <Icon className="h-5 w-5 text-primary" />
+          <Icon className="h-5 w-5 text-primary-ink" />
         </div>
         <div className="min-w-0">
           <p className="text-2xl font-bold text-foreground leading-tight">{value}</p>
@@ -110,7 +110,7 @@ export default function Stats() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary-subtle">
-          <BarChart3 className="h-5 w-5 text-primary" />
+          <BarChart3 className="h-5 w-5 text-primary-ink" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Analytics</h1>

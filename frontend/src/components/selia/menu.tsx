@@ -233,7 +233,7 @@ export function MenuCheckboxItem({
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth="3"
-          className="size-4 text-primary"
+          className="size-4 text-primary-ink"
           viewBox="0 0 24 24"
         >
           <path d="M20 6 9 17l-5-5"></path>

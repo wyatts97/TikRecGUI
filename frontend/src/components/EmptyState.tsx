@@ -14,7 +14,7 @@ export default function EmptyState({ icon: Icon, title, description, actionLabel
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="flex flex-col items-center gap-4 p-6 sm:p-8 rounded-2xl bg-card border border-border shadow-subtle max-w-sm">
         <div className="flex items-center justify-center h-16 w-16 rounded-full bg-primary-subtle">
-          <Icon className="h-8 w-8 text-primary" />
+          <Icon className="h-8 w-8 text-primary-ink" />
         </div>
         <div>
           <p className="text-lg font-medium text-foreground">{title}</p>

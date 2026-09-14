@@ -8,8 +8,8 @@ export const badgeVariants = cva(
   {
     variants: {
       variant: {
-        primary: 'bg-primary/15 text-primary',
-        'primary-outline': 'border-primary text-primary',
+        primary: 'bg-primary/15 text-primary-ink',
+        'primary-outline': 'border-primary text-primary-ink',
         secondary: 'bg-secondary/50 text-secondary-foreground',
         'secondary-outline': 'border-secondary text-secondary-foreground',
         tertiary: 'bg-tertiary/15 text-tertiary',

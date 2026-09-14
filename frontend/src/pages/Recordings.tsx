@@ -293,7 +293,7 @@ export default function Recordings() {
               <select
                 value={statusFilter || 'all'}
                 onChange={(e) => { const val = e.target.value; setStatusFilter(val === 'all' ? undefined : val); setPage(1) }}
-                className="h-8 px-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-800 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="h-8 px-2 text-sm rounded-lg border border-input-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
               >
                 <option value="all">All Status</option>
                 <option value="recording">Recording</option>
@@ -305,12 +305,12 @@ export default function Recordings() {
                 placeholder="Filter by user…"
                 value={usernameFilter}
                 onChange={(e) => { setUsernameFilter(e.target.value); setPage(1) }}
-                className="h-8 px-3 text-sm rounded-lg border border-gray-200 bg-white text-gray-800 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-44"
+                className="h-8 px-3 text-sm rounded-lg border border-input-border bg-input text-foreground focus:outline-none focus:ring-2 focus:ring-primary w-44"
               />
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
-                  className="h-8 px-2 text-xs text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-white transition-colors"
+                  className="h-8 px-2 text-xs text-muted hover:text-foreground transition-colors"
                 >
                   Clear
                 </button>
@@ -369,13 +369,13 @@ export default function Recordings() {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-neutral-700">
-                  <thead className="bg-gray-50 dark:bg-neutral-800">
+                <table className="min-w-full divide-y divide-table-separator">
+                  <thead className="bg-table-head">
                     <tr>
                       <th scope="col" className="px-4 py-3 text-start">
                         <input
                           type="checkbox"
-                          className="rounded border-gray-300 dark:border-neutral-600"
+                          className="rounded border-input-border"
                           aria-label="Select all recordings on this page"
                           {...(() => {
                             const selectedOnPage = recordings.filter((r) => selectedIds.has(r.id)).length
@@ -389,22 +389,22 @@ export default function Recordings() {
                           onChange={(e) => setSelectedIds(e.target.checked ? new Set(recordings.map((r) => r.id)) : new Set())}
                         />
                       </th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">User</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Status</th>
-                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Transcript</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Duration</th>
-                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Size</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Date</th>
-                      <th scope="col" className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Actions</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-muted uppercase tracking-wide">User</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-muted uppercase tracking-wide">Status</th>
+                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-muted uppercase tracking-wide">Transcript</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-muted uppercase tracking-wide">Duration</th>
+                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-muted uppercase tracking-wide">Size</th>
+                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-muted uppercase tracking-wide">Date</th>
+                      <th scope="col" className="px-4 py-3 text-end text-xs font-medium text-muted uppercase tracking-wide">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
+                  <tbody className="divide-y divide-table-separator">
                     {recordings.map((row) => (
-                      <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-neutral-800 transition-colors">
+                      <tr key={row.id} className="hover:bg-table-accent transition-colors">
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
-                            className="rounded border-gray-300 dark:border-neutral-600"
+                            className="rounded border-input-border"
                             aria-label={`Select recording ${row.filename}`}
                             checked={selectedIds.has(row.id)}
                             onChange={(e) => {
@@ -416,8 +416,8 @@ export default function Recordings() {
                           />
                         </td>
                         <td className="px-4 py-3">
-                          <span className="block text-sm font-semibold text-gray-800 dark:text-neutral-200">@{row.username}</span>
-                          <span className="block text-xs text-gray-500 dark:text-neutral-400 truncate max-w-[200px]">{row.filename}</span>
+                          <span className="block text-sm font-semibold text-foreground">@{row.username}</span>
+                          <span className="block text-xs text-muted truncate max-w-[200px]">{row.filename}</span>
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={statusVariantMap[row.status] || 'secondary'}>{row.status}</Badge>
@@ -430,24 +430,24 @@ export default function Recordings() {
                           ) : row.transcript_status === 'pending' ? (
                             <Badge variant="secondary" className="text-xs">Pending</Badge>
                           ) : (
-                            <span className="text-xs text-gray-400 dark:text-neutral-500">—</span>
+                            <span className="text-xs text-dimmed">—</span>
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm text-gray-600 dark:text-neutral-300">{formatDuration(row.duration_seconds)}</span>
+                          <span className="text-sm text-foreground">{formatDuration(row.duration_seconds)}</span>
                         </td>
                         <td className="hidden sm:table-cell px-4 py-3">
-                          <span className="text-sm text-gray-600 dark:text-neutral-300">{formatBytes(row.file_size)}</span>
+                          <span className="text-sm text-foreground">{formatBytes(row.file_size)}</span>
                         </td>
                         <td className="px-4 py-3">
-                          <span className="text-sm text-gray-500 dark:text-neutral-400">{fmt(row.started_at || row.created_at)}</span>
+                          <span className="text-sm text-muted">{fmt(row.started_at || row.created_at)}</span>
                         </td>
                         <td className="px-4 py-3 text-end">
                           <div className="inline-flex rounded-lg shadow-sm">
                             {row.status === 'recording' && (
                               <button
                                 title="Stop recording" aria-label="Stop recording recording"
-                                className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
+                                className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-border bg-card text-danger hover:bg-danger/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => stopRecordingMutation.mutate(row.id)}
                                 disabled={stopRecordingMutation.isPending}
                               >
@@ -457,7 +457,7 @@ export default function Recordings() {
                             {(row.status === 'completed' || row.status === 'stopped') && (
                               <button
                                 title="Download" aria-label="Download recording"
-                                className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-neutral-800 transition-colors"
+                                className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-border bg-card text-primary-ink hover:bg-primary-subtle disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                 onClick={() => handleDownload(row)}
                               >
                                 <Download className="h-3.5 w-3.5" />
@@ -465,7 +465,7 @@ export default function Recordings() {
                             )}
                             <button
                               title="Delete" aria-label={`Delete recording of @${row.username}`}
-                              className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
+                              className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-border bg-card text-danger hover:bg-danger/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                               onClick={() => handleDeleteRow(row.id, row.username)}
                               disabled={deleteRecordingMutation.isPending}
                             >
@@ -481,13 +481,13 @@ export default function Recordings() {
 
               {/* Pagination */}
               {total > perPage && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-neutral-700">
-                  <span className="text-sm text-gray-500 dark:text-neutral-400">
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border">
+                  <span className="text-sm text-muted">
                     {(page - 1) * perPage + 1}–{Math.min(page * perPage, total)} of {total}
                   </span>
                   <div className="inline-flex rounded-lg shadow-sm">
                     <button
-                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-border bg-card text-foreground hover:bg-accent disabled:opacity-50"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
                       aria-label="Previous page"
@@ -495,7 +495,7 @@ export default function Recordings() {
                       <ChevronLeft className="h-4 w-4" />
                     </button>
                     <button
-                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-border bg-card text-foreground hover:bg-accent disabled:opacity-50"
                       onClick={() => setPage((p) => p + 1)}
                       disabled={page * perPage >= total}
                       aria-label="Next page"

@@ -230,7 +230,7 @@ export function SelectItem({
       </BaseSelect.ItemText>
       <BaseSelect.ItemIndicator className="ml-auto">
         <svg
-          className="size-4 text-primary"
+          className="size-4 text-primary-ink"
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
           fill="none"

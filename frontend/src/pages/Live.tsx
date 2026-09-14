@@ -37,7 +37,7 @@ export default function Live() {
       ) : isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="h-[420px] rounded-xl bg-muted/50 animate-pulse motion-reduce:animate-none" />
+            <div key={i} className="h-[420px] rounded-xl bg-secondary animate-pulse motion-reduce:animate-none" />
           ))}
         </div>
       ) : activeRecordings.length === 0 ? (

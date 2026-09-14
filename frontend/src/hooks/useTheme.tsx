@@ -1,143 +1,185 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  ACCENT_PRESETS,
+  accentTokensAllThemes,
+  type AccentPreset,
+  type AccentTokens,
+  type ThemeName,
+} from '@/lib/color.mjs'
 
-type Theme = 'light' | 'dark' | 'neo-futurism'
+export { ACCENT_PRESETS }
+export type { AccentPreset }
 
-export interface AccentPreset {
-  key: string
-  label: string
-  /** Swatch color for the picker UI. */
-  swatch: string
-  /** Override applied to the `--primary` token, or null to use the theme default. */
-  primary: string | null
-  /** Override applied to the `--primary-border` token. */
-  border: string | null
+/** What the user picked. `system` follows the OS light/dark preference. */
+export type ThemeChoice = 'system' | ThemeName
+export type ResolvedTheme = ThemeName
+
+// Storage keys are shared with the pre-paint script in index.html.
+const THEME_KEY = 'tikrec-theme'
+const ACCENT_KEY = 'tikrec-accent'
+const ACCENT_CSS_KEY = 'tikrec-accent-css'
+const ACCENT_STYLE_ID = 'tikrec-accent'
+
+/** Browser chrome colour per theme (hex of each theme's --background). */
+const THEME_COLOR: Record<ResolvedTheme, string> = {
+  light: '#f3f5f7',
+  dark: '#191b1d',
+  darker: '#000000',
 }
 
-/** Built-in accent presets. `default` clears any override (theme blue). */
-export const ACCENT_PRESETS: AccentPreset[] = [
-  { key: 'default', label: 'Default', swatch: 'oklch(0.5784 0.2057 262.95)', primary: null, border: null },
-  { key: 'violet', label: 'Violet', swatch: 'oklch(0.561 0.2456 302.32)', primary: 'oklch(0.561 0.2456 302.32)', border: 'oklch(0.512 0.233 302.4)' },
-  { key: 'pink', label: 'Pink', swatch: 'oklch(0.6559 0.2118 354.31)', primary: 'oklch(0.6559 0.2118 354.31)', border: 'oklch(0.592 0.205 354.4)' },
-  { key: 'rose', label: 'Rose', swatch: 'oklch(0.6368 0.2078 25.33)', primary: 'oklch(0.6368 0.2078 25.33)', border: 'oklch(0.575 0.198 25.4)' },
-  { key: 'orange', label: 'Orange', swatch: 'oklch(0.7049 0.1867 47.6)', primary: 'oklch(0.7049 0.1867 47.6)', border: 'oklch(0.646 0.18 47.7)' },
-  { key: 'emerald', label: 'Emerald', swatch: 'oklch(0.6959 0.1491 162.48)', primary: 'oklch(0.6959 0.1491 162.48)', border: 'oklch(0.627 0.142 162.5)' },
-  { key: 'teal', label: 'Teal', swatch: 'oklch(0.7045 0.1234 182.5)', primary: 'oklch(0.7045 0.1234 182.5)', border: 'oklch(0.637 0.118 182.6)' },
-]
+const THEME_CHOICES: ThemeChoice[] = ['system', 'light', 'dark', 'darker']
 
 interface ThemeContextValue {
-  theme: Theme
-  setTheme: (theme: Theme) => void
+  theme: ThemeChoice
+  resolvedTheme: ResolvedTheme
+  setTheme: (theme: ThemeChoice) => void
   accent: string
   setAccent: (accent: string) => void
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: 'light',
+  theme: 'system',
+  resolvedTheme: 'light',
   setTheme: () => {},
   accent: 'default',
   setAccent: () => {},
 })
 
-function getSystemTheme(): Theme {
-  if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
+function safeGet(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
   }
-  return 'light'
 }
 
-function getStoredTheme(): Theme | null {
-  const stored = localStorage.getItem('tikrec-theme')
-  if (stored === 'light' || stored === 'dark' || stored === 'neo-futurism') return stored
-  return null
+function safeSet(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch {
+    /* Storage unavailable: preferences just won't persist. */
+  }
 }
 
-function getStoredAccent(): string {
-  return localStorage.getItem('tikrec-accent') || 'default'
+function readStoredTheme(): ThemeChoice {
+  const stored = safeGet(THEME_KEY)
+  // "Neo-Futurism" was renamed "Darker".
+  if (stored === 'neo-futurism') {
+    safeSet(THEME_KEY, 'darker')
+    return 'darker'
+  }
+  return THEME_CHOICES.includes(stored as ThemeChoice) ? (stored as ThemeChoice) : 'system'
+}
+
+function systemTheme(): ResolvedTheme {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
+
+function applyTheme(resolved: ResolvedTheme) {
+  const root = document.documentElement
+  root.dataset.theme = resolved
+  root.classList.toggle('dark', resolved !== 'light')
+  root.classList.remove('light')
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (!meta) {
+    meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    document.head.appendChild(meta)
+  }
+  meta.content = THEME_COLOR[resolved]
+}
+
+/**
+ * CSS for an accent override. A stylesheet rather than inline properties on
+ * <html>: nested `data-theme` elements (the Settings previews) re-declare the
+ * theme tokens, which would shadow inline values. `html [data-theme]` also
+ * out-specifies the theme blocks regardless of stylesheet order.
+ */
+function accentCss(tokens: Record<ResolvedTheme, AccentTokens>): string {
+  return (Object.keys(tokens) as ResolvedTheme[])
+    .map((theme) => {
+      const t = tokens[theme]
+      return (
+        `html[data-theme='${theme}'],html [data-theme='${theme}']{` +
+        `--primary:${t.primary};--primary-foreground:${t.primaryForeground};` +
+        `--primary-border:${t.primaryBorder};--primary-ink:${t.primaryInk}}`
+      )
+    })
+    .join('')
+}
+
+/** Resolve an accent key (preset key or raw hex) to its colour, or null. */
+export function accentColor(accent: string): string | null {
+  const preset = ACCENT_PRESETS.find((p) => p.key === accent)
+  if (preset) return preset.color
+  return accent && accent !== 'default' ? accent : null
 }
 
 function applyAccent(accent: string) {
-  const root = window.document.documentElement
-  const preset = ACCENT_PRESETS.find((p) => p.key === accent)
-  // Custom accent stored as a raw color string when not a known preset.
-  const isCustom = !preset && accent !== 'default'
-  const primary = preset?.primary ?? (isCustom ? accent : null)
-  const border = preset?.border ?? (isCustom ? accent : null)
-  if (primary) {
-    root.style.setProperty('--primary', primary)
-    root.style.setProperty('--primary-border', border ?? primary)
-  } else {
-    root.style.removeProperty('--primary')
-    root.style.removeProperty('--primary-border')
-  }
+  const root = document.documentElement
+  // Clean up inline overrides written by earlier versions.
+  for (const prop of ['--primary', '--primary-border']) root.style.removeProperty(prop)
+  safeSet('tikrec-accent-resolved', null)
 
-  // Cache the resolved values so the pre-paint script in index.html can apply
-  // the accent without duplicating ACCENT_PRESETS.
-  try {
-    if (primary) {
-      localStorage.setItem(
-        'tikrec-accent-resolved',
-        JSON.stringify({ primary, border: border ?? primary })
-      )
-    } else {
-      localStorage.removeItem('tikrec-accent-resolved')
+  let style = document.getElementById(ACCENT_STYLE_ID) as HTMLStyleElement | null
+  const color = accentColor(accent)
+  let css = ''
+  if (color) {
+    try {
+      css = accentCss(accentTokensAllThemes(color))
+    } catch {
+      css = '' // Unparseable custom colour: fall back to the theme default.
     }
-  } catch {
-    /* Storage unavailable -- the accent just applies a frame later. */
   }
+  if (!css) {
+    style?.remove()
+    safeSet(ACCENT_CSS_KEY, null)
+    return
+  }
+  if (!style) {
+    style = document.createElement('style')
+    style.id = ACCENT_STYLE_ID
+    document.head.appendChild(style)
+  }
+  style.textContent = css
+  // Cached so the pre-paint script applies the accent before first paint.
+  safeSet(ACCENT_CSS_KEY, css)
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    const stored = getStoredTheme()
-    return stored ?? getSystemTheme()
-  })
-  const [accent, setAccentState] = useState<string>(() => getStoredAccent())
+  const [theme, setThemeState] = useState<ThemeChoice>(readStoredTheme)
+  const [system, setSystem] = useState<ResolvedTheme>(systemTheme)
+  const [accent, setAccentState] = useState<string>(() => safeGet(ACCENT_KEY) || 'default')
+
+  const resolvedTheme: ResolvedTheme = theme === 'system' ? system : theme
 
   useEffect(() => {
-    applyAccent(accent)
-  }, [accent])
-
-  useEffect(() => {
-    const root = window.document.documentElement
-    root.classList.remove('light', 'dark')
-    root.removeAttribute('data-theme')
-
-    if (theme === 'light') {
-      root.classList.add('light')
-    } else if (theme === 'dark') {
-      root.classList.add('dark')
-    } else if (theme === 'neo-futurism') {
-      root.classList.add('dark')
-      root.setAttribute('data-theme', 'theme-neo-futurism')
-    }
-  }, [theme])
-
-  useEffect(() => {
-    const listener = (e: MediaQueryListEvent) => {
-      if (!getStoredTheme()) {
-        setThemeState(e.matches ? 'dark' : 'light')
-      }
-    }
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const listener = (e: MediaQueryListEvent) => setSystem(e.matches ? 'dark' : 'light')
     mq.addEventListener('change', listener)
     return () => mq.removeEventListener('change', listener)
   }, [])
 
-  const setTheme = (newTheme: Theme) => {
-    localStorage.setItem('tikrec-theme', newTheme)
-    setThemeState(newTheme)
-  }
+  useEffect(() => applyTheme(resolvedTheme), [resolvedTheme])
+  useEffect(() => applyAccent(accent), [accent])
 
-  const setAccent = (newAccent: string) => {
-    localStorage.setItem('tikrec-accent', newAccent)
-    setAccentState(newAccent)
-  }
+  const setTheme = useCallback((next: ThemeChoice) => {
+    safeSet(THEME_KEY, next)
+    setThemeState(next)
+  }, [])
 
-  return (
-    <ThemeContext.Provider value={{ theme, setTheme, accent, setAccent }}>
-      {children}
-    </ThemeContext.Provider>
+  const setAccent = useCallback((next: string) => {
+    safeSet(ACCENT_KEY, next)
+    setAccentState(next)
+  }, [])
+
+  const value = useMemo(
+    () => ({ theme, resolvedTheme, setTheme, accent, setAccent }),
+    [theme, resolvedTheme, setTheme, accent, setAccent],
   )
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 
 export function useTheme() {

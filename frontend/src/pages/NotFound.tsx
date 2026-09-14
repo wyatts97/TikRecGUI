@@ -6,7 +6,7 @@ export default function NotFound() {
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
       <div className="rounded-xl bg-primary-subtle p-3">
-        <FileQuestion className="h-6 w-6 text-primary" aria-hidden="true" />
+        <FileQuestion className="h-6 w-6 text-primary-ink" aria-hidden="true" />
       </div>
       <div className="space-y-1">
         <h1 className="text-xl font-semibold text-foreground">Page not found</h1>

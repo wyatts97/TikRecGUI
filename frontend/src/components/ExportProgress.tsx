@@ -26,13 +26,13 @@ export default function ExportProgress({ job, onCancel }: ExportProgressProps) {
         <button
           onClick={onCancel}
           aria-label="Cancel export"
-          className="shrink-0 flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted/60 transition-colors"
+          className="shrink-0 flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent transition-colors"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
       <div
-        className="h-2 w-full rounded-full bg-muted/30 overflow-hidden"
+        className="h-2 w-full rounded-full bg-secondary overflow-hidden"
         role="progressbar"
         aria-valuenow={Math.round(job.percent)}
         aria-valuemin={0}

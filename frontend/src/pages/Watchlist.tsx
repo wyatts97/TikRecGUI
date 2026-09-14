@@ -493,7 +493,7 @@ export default function Watchlist() {
                         id="monitoring"
                         checked={isMonitoring}
                         onChange={(e) => setIsMonitoring(e.target.checked)}
-                        className="rounded border-gray-300"
+                        className="rounded border-input-border"
                       />
                       <Label htmlFor="monitoring" className="text-sm font-normal">
                         Enable automatic monitoring
@@ -540,7 +540,7 @@ export default function Watchlist() {
         </div>
         <div>
           {selectedCount > 0 && (
-            <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-muted/40">
+            <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-secondary">
               <span className="text-sm font-medium mr-2">{selectedCount} selected</span>
               <Button
                 size="sm"
@@ -592,7 +592,7 @@ export default function Watchlist() {
           ) : isLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 8 }, (_, i) => (
-                <div key={i} className="h-80 rounded-xl bg-muted/50 animate-pulse motion-reduce:animate-none" />
+                <div key={i} className="h-80 rounded-xl bg-secondary animate-pulse motion-reduce:animate-none" />
               ))}
             </div>
           ) : filteredUsers.length === 0 ? (
@@ -718,7 +718,7 @@ export default function Watchlist() {
                       }
                     }}
                   />
-                  <span className="hidden h-full w-full items-center justify-center text-2xl font-medium text-primary fallback-initial">
+                  <span className="hidden h-full w-full items-center justify-center text-2xl font-medium text-primary-ink fallback-initial">
                     {detailUser.username[0].toUpperCase()}
                   </span>
                 </div>
@@ -836,12 +836,12 @@ export default function Watchlist() {
                     {userRecordings.recordings.slice(0, 10).map((rec: Recording) => (
                       <div
                         key={rec.id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/40 cursor-pointer transition-colors"
+                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent cursor-pointer transition-colors"
                         onClick={() => {
                           window.open(`/watch/${rec.id}`, '_blank')
                         }}
                       >
-                        <div className="h-10 w-14 rounded bg-muted overflow-hidden shrink-0 relative">
+                        <div className="h-10 w-14 rounded bg-secondary overflow-hidden shrink-0 relative">
                           {rec.thumbnail_ready ? (
                             <>
                               <img
