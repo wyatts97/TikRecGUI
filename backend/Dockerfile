@@ -50,6 +50,11 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+# glibc malloc gives every thread its own arena and seldom returns freed memory
+# to the OS. This backend runs many threads (monitor, recording tasks, chat
+# listeners, executors), so cap the arenas and trim free memory eagerly.
+ENV MALLOC_ARENA_MAX=2
+ENV MALLOC_TRIM_THRESHOLD_=131072
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

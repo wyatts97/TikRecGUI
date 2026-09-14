@@ -1,22 +1,21 @@
+from __future__ import annotations
+
+import functools
 import logging
 import os
 import threading
 import asyncio
 from datetime import datetime
-from typing import Optional
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Optional
 
 import httpx
-from TikTokLive import TikTokLiveClient
-from TikTokLive.client.errors import (
-    AuthenticatedWebSocketConnectionError,
-    UserNotFoundError,
-    UserOfflineError,
-)
-from TikTokLive.client.web.web_settings import WebDefaults
-from TikTokLive.events import CommentEvent, GiftEvent, ConnectEvent
 
 from app.db.database import get_session
 from app.db.models import LiveEvent
+
+if TYPE_CHECKING:
+    from TikTokLive import TikTokLiveClient
 
 logger = logging.getLogger("tikrec.live_chat")
 
@@ -26,8 +25,33 @@ _FAILED = "failed"            # transient refusal; worth retrying with backoff
 _AUTH_BLOCKED = "auth_blocked"  # library refused to send the session ID
 _FATAL = "fatal"              # retrying cannot help (room gone, user missing)
 
-# Errors that no amount of retrying will fix for this room.
-_FATAL_ERRORS = (UserNotFoundError, UserOfflineError)
+
+@functools.cache
+def _ttl() -> SimpleNamespace:
+    """Import TikTokLive on first use.
+
+    Its generated protobuf models add ~30 MB of resident memory, which an idle
+    backend with nothing recording has no use for.
+    """
+    from TikTokLive import TikTokLiveClient
+    from TikTokLive.client.errors import (
+        AuthenticatedWebSocketConnectionError,
+        UserNotFoundError,
+        UserOfflineError,
+    )
+    from TikTokLive.client.web.web_settings import WebDefaults
+    from TikTokLive.events import CommentEvent, ConnectEvent, GiftEvent
+
+    return SimpleNamespace(
+        TikTokLiveClient=TikTokLiveClient,
+        AuthenticatedWebSocketConnectionError=AuthenticatedWebSocketConnectionError,
+        # Errors that no amount of retrying will fix for this room.
+        FATAL_ERRORS=(UserNotFoundError, UserOfflineError),
+        WebDefaults=WebDefaults,
+        CommentEvent=CommentEvent,
+        ConnectEvent=ConnectEvent,
+        GiftEvent=GiftEvent,
+    )
 
 
 def _sign_server_host() -> str:
@@ -38,7 +62,7 @@ def _sign_server_host() -> str:
     (api.eulerstream.com -> tiktok.eulerstream.com), so it is read from the
     library rather than hardcoded.
     """
-    return WebDefaults.tiktok_sign_url.split("://", 1)[-1]
+    return _ttl().WebDefaults.tiktok_sign_url.split("://", 1)[-1]
 
 
 class LiveChatListener:
@@ -265,9 +289,10 @@ class LiveChatListener:
     def _classify(self, exc: BaseException, connected: bool) -> str:
         """Map a connection failure to a retry decision, recording why."""
         self.last_error = f"{type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}".strip()
-        if isinstance(exc, AuthenticatedWebSocketConnectionError):
+        ttl = _ttl()
+        if isinstance(exc, ttl.AuthenticatedWebSocketConnectionError):
             return _AUTH_BLOCKED
-        if isinstance(exc, _FATAL_ERRORS):
+        if isinstance(exc, ttl.FATAL_ERRORS):
             return _FATAL
         return _CONNECTED if connected else _FAILED
 
@@ -279,8 +304,9 @@ class LiveChatListener:
         from a refused handshake, and a retryable refusal from one that will
         fail identically every time.
         """
+        ttl = _ttl()
         web_proxy, ws_proxy = self._make_proxy_objects()
-        client = TikTokLiveClient(
+        client = ttl.TikTokLiveClient(
             unique_id=f"@{self.username}",
             web_proxy=web_proxy,
             ws_proxy=ws_proxy,
@@ -291,8 +317,8 @@ class LiveChatListener:
 
         # --- Event handlers ---
 
-        @client.on(ConnectEvent)
-        async def on_connect(event: ConnectEvent):
+        @client.on(ttl.ConnectEvent)
+        async def on_connect(event):
             nonlocal connected
             connected = True
             self.connected = True
@@ -308,8 +334,8 @@ class LiveChatListener:
                 authed,
             )
 
-        @client.on(CommentEvent)
-        async def on_comment(event: CommentEvent):
+        @client.on(ttl.CommentEvent)
+        async def on_comment(event):
             if self._stop_event.is_set():
                 await client.disconnect()
                 return
@@ -337,8 +363,8 @@ class LiveChatListener:
             except Exception as e:
                 logger.warning("Failed to save chat event: %s", e)
 
-        @client.on(GiftEvent)
-        async def on_gift(event: GiftEvent):
+        @client.on(ttl.GiftEvent)
+        async def on_gift(event):
             if self._stop_event.is_set():
                 await client.disconnect()
                 return

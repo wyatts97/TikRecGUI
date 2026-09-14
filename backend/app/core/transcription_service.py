@@ -1,4 +1,7 @@
+import json
 import logging
+import subprocess
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -9,43 +12,60 @@ from app.core.media_utils import recording_path
 
 logger = logging.getLogger(__name__)
 
-_MODEL_LOCK = threading.Lock()
-_model = None
-
-# Local cache directory — the Dockerfile pre-downloads the model here at
-# build time so no HuggingFace traffic is needed at runtime.
+# Model cache; the first job downloads the model here and later jobs reuse it.
 _WHISPER_CACHE_DIR = Path(settings.DATA_DIR) / "whisper_cache"
 
+# Directory that contains the ``app`` package, so ``python -m app.core...``
+# resolves no matter what the API process's working directory is.
+_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
-def _get_model():
-    """Lazy-load the faster-whisper model from the local cache directory.
+# Generous cap so a wedged worker can't block the queue forever; CPU Whisper
+# "tiny" runs well under real time, so twice the recording length is ample.
+_MIN_TIMEOUT_SECONDS = 600
 
-    Uses beam_size=1 (greedy) and VAD filtering for CPU-optimised speed.
-    The model is expected to be pre-downloaded at Docker build time to
-    ``/app/data/whisper_cache``; if not present, faster-whisper falls back
-    to its default HuggingFace download as usual.
+
+class TranscriptionFailed(Exception):
+    """The worker process could not produce a transcript."""
+
+
+def _run_worker(video_path: Path, duration_seconds: int | None, on_start=None) -> dict:
+    """Transcribe *video_path* in a child process and return its JSON result.
+
+    Whisper runs out-of-process so its model, runtimes and audio buffers are
+    returned to the OS when the job ends, instead of staying resident in the
+    API process (see ``app/core/transcribe_worker.py``).
     """
-    global _model
-    if _model is not None:
-        return _model
-    with _MODEL_LOCK:
-        if _model is not None:
-            return _model
-        try:
-            from faster_whisper import WhisperModel
-            model_size = "tiny"
-            _WHISPER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            logger.info("Loading Whisper model '%s' from cache: %s", model_size, _WHISPER_CACHE_DIR)
-            _model = WhisperModel(
-                model_size,
-                device="cpu",
-                compute_type="int8",
-                download_root=str(_WHISPER_CACHE_DIR),
-            )
-            logger.info("Whisper model loaded")
-        except Exception as exc:
-            logger.error("Failed to load Whisper model: %s", exc)
-        return _model
+    _WHISPER_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    timeout = max(_MIN_TIMEOUT_SECONDS, 2 * (duration_seconds or 0))
+    proc = subprocess.Popen(
+        [
+            sys.executable, "-m", "app.core.transcribe_worker",
+            str(video_path), "--cache-dir", str(_WHISPER_CACHE_DIR),
+        ],
+        cwd=str(_BACKEND_ROOT),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if on_start is not None:
+        on_start(proc)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        raise TranscriptionFailed(f"worker timed out after {timeout}s")
+    stderr_tail = stderr.decode(errors="replace")[-2000:]
+    if proc.returncode != 0:
+        raise TranscriptionFailed(f"worker exited {proc.returncode}: {stderr_tail}")
+    try:
+        result = json.loads(stdout)
+        lines = result["lines"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise TranscriptionFailed(f"worker returned invalid output ({exc}): {stderr_tail}")
+    if not isinstance(lines, list):
+        raise TranscriptionFailed("worker returned non-list lines")
+    return result
 
 
 def _reset_stuck_processing(db) -> None:
@@ -84,6 +104,9 @@ class TranscriptionService:
     MAX_WORKERS = 1
 
     def __init__(self):
+        self._proc: subprocess.Popen | None = None
+        self._proc_lock = threading.Lock()
+        self._shutting_down = False
         self._queue: list[int] = []
         self._queue_cond = threading.Condition()
         self._executor = ThreadPoolExecutor(
@@ -114,6 +137,21 @@ class TranscriptionService:
                 )
                 self._queue_cond.notify()
 
+    def shutdown(self) -> None:
+        """Kill a running worker so it doesn't outlive the API process."""
+        with self._proc_lock:
+            self._shutting_down = True
+            proc = self._proc
+        if proc is not None and proc.poll() is None:
+            logger.info("Stopping transcription worker (pid %d)", proc.pid)
+            proc.kill()
+
+    def _set_proc(self, proc: subprocess.Popen | None) -> None:
+        with self._proc_lock:
+            self._proc = proc
+            if proc is not None and self._shutting_down:
+                proc.kill()
+
     def get_queue(self) -> list[int]:
         """Return a copy of the current queue (for status/debug)."""
         with self._queue_cond:
@@ -140,6 +178,7 @@ class TranscriptionService:
 
         # --- Phase 1: short DB read — validate and mark as processing ---
         video_path: Path | None = None
+        duration_seconds: int | None = None
         try:
             with get_session() as db:
                 recording = db.query(Recording).filter(Recording.id == recording_id).first()
@@ -153,45 +192,29 @@ class TranscriptionService:
                     db.commit()
                     logger.warning("Transcription skipped for recording %d: file not found", recording_id)
                     return
+                duration_seconds = recording.duration_seconds
                 recording.transcript_status = "processing"
                 db.commit()
         except Exception as exc:
             logger.error("Transcription pre-check failed for recording %d: %s", recording_id, exc)
             return
 
-        # --- Phase 2: load model (outside DB session) ---
-        model = _get_model()
-        if model is None:
-            try:
-                with get_session() as db:
-                    rec = db.query(Recording).filter(Recording.id == recording_id).first()
-                    if rec:
-                        rec.transcript_status = "failed"
-                        db.commit()
-            except Exception:
-                pass
-            return
-
-        # --- Phase 3: run Whisper inference (no DB session held) ---
+        # --- Phase 2-3: run Whisper in a child process (no DB session held) ---
         try:
             logger.info("Starting Whisper inference for recording %d (%s)", recording_id, video_path.name)
-            segments, info = model.transcribe(
-                str(video_path),
-                beam_size=1,
-                vad_filter=True,
-            )
-            parts = []
-            for seg in segments:
-                start = _fmt_timestamp(seg.start)
-                end = _fmt_timestamp(seg.end)
-                parts.append(f"[{start} --> {end}] {seg.text.strip()}")
+            try:
+                result = _run_worker(video_path, duration_seconds, on_start=self._set_proc)
+            finally:
+                self._set_proc(None)
+            parts = result["lines"]
             transcript_text = "\n".join(parts)
             logger.info(
                 "Whisper inference done for recording %d — %d segments, lang=%s (%.0f%%)",
-                recording_id, len(parts), info.language, info.language_probability * 100,
+                recording_id, len(parts), result.get("language"),
+                (result.get("language_probability") or 0) * 100,
             )
         except Exception as exc:
-            logger.error("Whisper inference failed for recording %d: %s", recording_id, exc, exc_info=True)
+            logger.error("Whisper inference failed for recording %d: %s", recording_id, exc)
             try:
                 with get_session() as db:
                     rec = db.query(Recording).filter(Recording.id == recording_id).first()
@@ -237,13 +260,6 @@ class TranscriptionService:
                 "snippet": snippet,
             })
         return out
-
-
-def _fmt_timestamp(seconds: float) -> str:
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    return f"{h:02d}:{m:02d}:{s:02d}"
 
 
 def _extract_snippet(text: str, query: str, context: int = 80) -> str:

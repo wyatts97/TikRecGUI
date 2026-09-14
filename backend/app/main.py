@@ -168,6 +168,7 @@ async def lifespan(app: FastAPI):
     yield
     monitor_service.stop()
     task_manager.shutdown()
+    transcription_service.shutdown()
     # Delete any archives still sitting in temp.
     export_service.shutdown()
 
