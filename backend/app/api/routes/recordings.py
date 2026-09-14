@@ -26,6 +26,7 @@ from app.schemas.live_event import LiveEventResponse, LiveEventListResponse
 from app.core.recorder_service import recorder_service
 from app.core.task_manager import task_manager
 from app.core.live_clip_service import live_clip_service
+from app.core.live_chat_service import live_chat_service
 from app.core.media_utils import (
     generate_recording_filename,
     generate_sprite,
@@ -173,7 +174,12 @@ def _is_sprite_ready(recording: Recording, db: Session | None = None) -> bool:
     return False
 
 
-def _build_response(rec: Recording, db: Session | None = None) -> RecordingResponse:
+def _build_response(
+    rec: Recording, db: Session | None = None, include_transcript: bool = True
+) -> RecordingResponse:
+    # List endpoints pass include_transcript=False: a full Whisper transcript
+    # is ~75 KB per hour of stream, which made a 12-row page ~900 KB while the
+    # list UIs only read transcript_status.
     # Corruption state is cached on the row (set at finalize/repair time) so
     # list endpoints never shell out to ffprobe. Legacy rows have a NULL flag;
     # probe those once lazily and backfill so it's fast on subsequent loads.
@@ -208,7 +214,7 @@ def _build_response(rec: Recording, db: Session | None = None) -> RecordingRespo
         thumbnail_ready=_is_thumbnail_ready(rec, db),
         sprite_ready=_is_sprite_ready(rec, db),
         transcript_status=rec.transcript_status,
-        transcript_text=rec.transcript_text,
+        transcript_text=rec.transcript_text if include_transcript else None,
         is_favorite=rec.is_favorite or False,
         is_corrupt=is_corrupt,
     )
@@ -292,7 +298,7 @@ def list_recordings(
     recordings = query.order_by(*order).offset((page - 1) * page_size).limit(page_size).all()
 
     return RecordingListResponse(
-        recordings=[_build_response(rec) for rec in recordings],
+        recordings=[_build_response(rec, include_transcript=False) for rec in recordings],
         total=total,
         page=page,
         page_size=page_size
@@ -455,6 +461,7 @@ def get_active_recordings(db: Session = Depends(get_db)):
         duration = None
         if rec.started_at:
             duration = int((now - rec.started_at).total_seconds())
+        chat_connected, chat_error = live_chat_service.get_status(rec.id)
         out.append(ActiveRecordingResponse(
             id=rec.id,
             user_id=rec.user_id,
@@ -463,6 +470,8 @@ def get_active_recordings(db: Session = Depends(get_db)):
             started_at=rec.started_at,
             duration_seconds=duration,
             room_id=rec.user.room_id,
+            chat_connected=chat_connected,
+            chat_error=None if chat_connected else chat_error,
         ))
 
     return out

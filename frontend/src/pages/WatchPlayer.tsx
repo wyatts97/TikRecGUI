@@ -125,7 +125,8 @@ export default function WatchPlayer() {
     refetchInterval: (query: any) => {
       const rec = query.state.data
       if (!rec) return false
-      if (rec.transcript_status === 'processing' || rec.transcript_status === 'pending') return 3000
+      // Whisper takes minutes on CPU; a 3s poll mostly re-fetched an unchanged row.
+      if (rec.transcript_status === 'processing' || rec.transcript_status === 'pending') return 10000
       // Bounded: sprite generation can fail or be skipped entirely, in which
       // case this polled forever.
       if (!rec.sprite_ready && query.state.dataUpdateCount <= SPRITE_POLL_MAX_ATTEMPTS) return 5000

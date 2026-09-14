@@ -45,7 +45,9 @@ export default function Layout() {
   const { data: activeRecordings = [] } = useQuery({
     queryKey: ['activeRecordings'],
     queryFn: () => api.recordings.getActive(),
-    refetchInterval: 5000,
+    // Slow fallback only: useNotificationStream invalidates this the moment a
+    // recording starts or ends.
+    refetchInterval: 30000,
   })
 
   const triggerCheckMutation = useMutation({

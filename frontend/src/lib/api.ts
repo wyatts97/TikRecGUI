@@ -114,6 +114,7 @@ export interface Recording {
   thumbnail_ready: boolean
   sprite_ready: boolean
   transcript_status: string | null
+  /** Only populated by the single-recording endpoint; always null in list responses. */
   transcript_text: string | null
   is_favorite: boolean
   is_corrupt?: boolean
@@ -177,6 +178,9 @@ export interface ActiveRecording {
   started_at: string | null
   duration_seconds: number | null
   room_id: string | null
+  chat_connected: boolean
+  /** Why chat is not being captured, when chat_connected is false. */
+  chat_error: string | null
 }
 
 export interface AutoCleanupConfig {
@@ -204,6 +208,8 @@ export interface Settings {
   output_dir: string
   default_bitrate: string | null
   automatic_interval: number
+  /** Send the session ID to the Euler Stream sign server for chat capture. */
+  chat_authenticated: boolean
   auto_cleanup: AutoCleanupConfig
   timezone: string
 }

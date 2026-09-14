@@ -52,6 +52,10 @@ _MAX_RESUME_ATTEMPTS = 30
 _RESUME_BACKOFF_SECONDS = (3, 5, 10, 15, 30)
 _OFFLINE_CONFIRMATION_SECONDS = 90
 _SEGMENT_CHECK_INTERVAL = 0.5
+# A segment that captured cleanly for at least this long is treated as a
+# healthy session whose URL expired: the resume counter resets and the next
+# segment starts without backoff.
+_HEALTHY_SEGMENT_SECONDS = 60
 
 # Independent re-confirmation of liveness while a segment is actively
 # capturing. The stall detector only catches a *dead* stream (no bytes); it
@@ -217,6 +221,7 @@ class RecordingTask:
         self._ts_path: Path | None = None
         self._log_path: Path | None = None
         self._proc: subprocess.Popen | None = None
+        self._chat_started_at: datetime = datetime.utcnow()
         self._start_time: float | None = None
         self._capture_error: str | None = None
         self._segments: list[Path] = []
@@ -279,28 +284,8 @@ class RecordingTask:
         # Start live chat/gift capture after stream URL is confirmed so that
         # offset_seconds values align with the video start time rather than the
         # earlier status-change time (Phase 1 can precede Phase 3 by 5-30 s).
-        _chat_started_at = datetime.utcnow()
-        try:
-            _chat_started = live_chat_service.start_listening(
-                recording_id=self.recording_id,
-                username=self.username,
-                room_id=self.room_id,
-                started_at=_chat_started_at,
-                proxy=self.proxy,
-                cookies=self.cookies,
-            )
-            if not _chat_started:
-                # Refused (duplicate listener, or the MAX_WORKERS cap). The
-                # recording proceeds either way, but say so loudly: otherwise
-                # the missing chat only shows up as an empty timeline later.
-                logger.warning(
-                    "Chat capture NOT started for recording %d (@%s) - no chat or "
-                    "gift events will be captured for this recording",
-                    self.recording_id,
-                    self.username,
-                )
-        except Exception as e:
-            logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
+        self._chat_started_at = datetime.utcnow()
+        self._start_chat(self.room_id)
 
         # --- Phase 3: resumable capture into sequential segments ---
         # TikTok live URLs expire every few minutes. Instead of finalizing the
@@ -359,6 +344,7 @@ class RecordingTask:
                 break
 
             self._proc = proc
+            segment_started = time.time()
             logger.info(
                 "Recording %d: started segment %d%s",
                 self.recording_id, segment_index, " (resumed)" if resumed else "",
@@ -433,9 +419,14 @@ class RecordingTask:
             self._proc = None
 
             # Record the segment if it produced any data.
+            segment_healthy = False
             if segment_path.exists() and segment_path.stat().st_size > 0:
                 self._segments.append(segment_path)
                 self._capture_error = None  # a good segment clears prior transient errors
+                segment_healthy = (
+                    not segment_failed
+                    and time.time() - segment_started >= _HEALTHY_SEGMENT_SECONDS
+                )
             elif not self._stop_event.is_set():
                 logger.warning(
                     "Recording %d: segment %d produced no data; treating as end-of-stream",
@@ -452,6 +443,24 @@ class RecordingTask:
 
             # Otherwise, decide whether the session really ended or just needs a fresh URL.
             if segment_failed or proc.poll() is not None:
+                if segment_healthy:
+                    # A long, clean segment ending is almost always the signed
+                    # URL expiring (~every 30 min), not the broadcast ending.
+                    # Reset the counter so backoff doesn't grow across a long
+                    # session, and try a fresh URL straight away: every second
+                    # spent here is a second missing from the recording.
+                    resume_attempts = 0
+                    fresh_url = _resolve_fresh_live_url(room_id, api, self.username)
+                    if fresh_url:
+                        live_url = fresh_url
+                        resumed = True
+                        logger.info(
+                            "Recording %d: segment ended after %ds; fast-resuming with fresh URL (room %s)",
+                            self.recording_id, int(time.time() - segment_started), room_id,
+                        )
+                        self._start_chat(room_id, resumed=True)
+                        continue
+
                 resume_attempts += 1
                 if resume_attempts > _MAX_RESUME_ATTEMPTS:
                     logger.warning(
@@ -498,12 +507,46 @@ class RecordingTask:
                     "Recording %d: resuming session with fresh URL (room %s)",
                     self.recording_id, room_id,
                 )
+                self._start_chat(room_id, resumed=True)
             else:
                 # This path should be unreachable; treat as session end to be safe.
                 break
 
         self._total_elapsed_seconds = time.time() - self._start_time
         self._finalize_recording()
+
+    def _start_chat(self, room_id: str, resumed: bool = False) -> None:
+        """Start chat capture, or restart it if the previous listener died.
+
+        Offsets stay relative to the original ``_chat_started_at`` so events
+        captured after a resume still line up with the stitched video.
+        """
+        if resumed and live_chat_service.is_listening(self.recording_id):
+            return
+        try:
+            started = live_chat_service.start_listening(
+                recording_id=self.recording_id,
+                username=self.username,
+                room_id=room_id,
+                started_at=self._chat_started_at,
+                proxy=self.proxy,
+                cookies=self.cookies,
+            )
+        except Exception as e:
+            logger.warning("Failed to start chat capture for recording %d: %s", self.recording_id, e)
+            return
+        if started and resumed:
+            logger.info("Recording %d: restarted chat capture after resume", self.recording_id)
+        elif not started and not resumed:
+            # Refused (the MAX_WORKERS cap). The recording proceeds either
+            # way, but say so loudly: otherwise the missing chat only shows
+            # up as an empty timeline later.
+            logger.warning(
+                "Chat capture NOT started for recording %d (@%s) - no chat or "
+                "gift events will be captured for this recording",
+                self.recording_id,
+                self.username,
+            )
 
     def _finalize_recording(self) -> None:
         """Finalize a recording: flush file, update DB, stop chat, remux, thumbnails.
@@ -792,6 +835,8 @@ class MonitorService:
 
     # Delay between individual user checks (seconds)
     _INTER_USER_DELAY = 1.5
+    # How long to skip re-checking a room that TikTok says is private.
+    _PRIVATE_LIVE_BACKOFF = 900
     # Exponential-backoff limits
     _BACKOFF_BASE = 2          # first retry waits 2 s
     _BACKOFF_MAX = 60          # never wait more than 60 s per user
@@ -821,6 +866,10 @@ class MonitorService:
         self._check_failures: dict[int, int] = {}
         # Users whose circuit breaker has tripped — only notify once per trip
         self._circuit_notified: set[int] = set()
+        # user_id -> (room_id, monotonic deadline). A live that needs a login
+        # fails the stream-URL check identically every cycle, so after the
+        # first failure the same room is not re-probed until the deadline.
+        self._private_rooms: dict[int, tuple[str, float]] = {}
         # Last time retention cleanup ran, so it fires about once a day.
         self._last_cleanup_at: datetime | None = None
 
@@ -855,6 +904,31 @@ class MonitorService:
             "interval_minutes": self._interval_seconds() // 60,
             "check_interval": self._interval_seconds(),
         }
+
+    def _mark_private_live(self, user, room_id: str) -> None:
+        """Record that *user*'s live in *room_id* needs a login, notifying once per room."""
+        previous = self._private_rooms.get(user.id)
+        self._private_rooms[user.id] = (room_id, time.monotonic() + self._PRIVATE_LIVE_BACKOFF)
+        if previous is not None and previous[0] == room_id:
+            return
+        logger.warning(
+            "@%s is live in a private room (%s) that requires login cookies; "
+            "re-checking in %d min",
+            user.username, room_id, self._PRIVATE_LIVE_BACKOFF // 60,
+        )
+        try:
+            notification_service.publish(
+                type="private_live",
+                title=f"@{user.username} is live, but the stream is private",
+                message=(
+                    "TikTok only lets logged-in viewers with access watch this live, so it "
+                    "can't be recorded. If it's followers- or subscribers-only, the account "
+                    "in your Settings cookies needs that access."
+                ),
+                data={"user_id": user.id, "username": user.username, "room_id": room_id},
+            )
+        except Exception:
+            logger.debug("Failed to publish private-live notification", exc_info=True)
 
     def _circuit_tripped(self, user_id: int) -> bool:
         """Return True if auto-recording should be paused for *user_id*.
@@ -1041,6 +1115,7 @@ class MonitorService:
                 self._check_failures.pop(user.id, None)
 
             if not is_live or not room_id:
+                self._private_rooms.pop(user.id, None)
                 # --- Update user status (short session) ---
                 with get_session() as db:
                     u = db.query(User).filter(User.id == user.id).first()
@@ -1053,6 +1128,17 @@ class MonitorService:
                 if self._stop_event.wait(timeout=self._INTER_USER_DELAY):
                     return
                 continue
+
+            # --- Known private live in the same room: skip the confirmation
+            # round-trips until the backoff expires or the room changes. ---
+            private = self._private_rooms.get(user.id)
+            if private is not None:
+                if private[0] == room_id and time.monotonic() < private[1]:
+                    if self._stop_event.wait(timeout=self._INTER_USER_DELAY):
+                        return
+                    continue
+                if private[0] != room_id:
+                    self._private_rooms.pop(user.id, None)
 
             # --- Mass-simultaneous-live anomaly guard: if an unusually large
             # share of the watchlist has already come back "live" this cycle,
@@ -1104,10 +1190,13 @@ class MonitorService:
                     live_url = recorder_service.get_live_url(room_id, username=user.username)
                     confirmed_live = bool(live_url)
                 except Exception as e:
-                    logger.info(
-                        "Independent stream-URL check failed for @%s: %s", user.username, e,
-                    )
                     confirmed_live = False
+                    if "private" in str(e).lower():
+                        self._mark_private_live(user, room_id)
+                    else:
+                        logger.info(
+                            "Independent stream-URL check failed for @%s: %s", user.username, e,
+                        )
 
             if not confirmed_live:
                 logger.info(

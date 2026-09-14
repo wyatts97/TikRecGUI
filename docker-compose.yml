@@ -5,8 +5,11 @@ services:
       dockerfile: Dockerfile
     container_name: tikrec-backend
     restart: unless-stopped
+    # Loopback only. The UI's nginx reaches the backend over the Docker
+    # network; publishing on all interfaces let internet scanners hit the API
+    # directly and bypass nginx.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./recordings:/app/recordings
       - ./data:/app/data

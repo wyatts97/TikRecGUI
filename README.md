@@ -140,8 +140,8 @@ The backend will automatically:
 | Service   | URL                        |
 |-----------|----------------------------|
 | Frontend  | http://localhost:3000       |
-| API       | http://localhost:8000       |
-| API Docs  | http://localhost:8000/docs  |
+| API       | http://localhost:8000 (loopback only; the UI reaches it via `/api`) |
+| API Docs  | http://localhost:8000/docs (when `ENABLE_DOCS=true`) |
 
 ### Environment Variables
 
@@ -168,6 +168,15 @@ TikTok restricts livestream access in many regions. Setting cookies (especially 
 3. **Verify**: The dashboard will show connected users if cookies are valid
 
 For detailed instructions, see the [official guide](https://github.com/Michele0303/tiktok-live-recorder/blob/main/docs/GUIDE.md#how-to-set-cookies).
+
+### Live Chat Capture
+
+Chat and gift events are captured with [TikTokLive](https://github.com/isaackogan/TikTokLive), which connects **anonymously by default**. The **Use session for live chat capture** toggle (Settings → TikTok Cookies) sends your session ID to the Euler Stream sign server instead. TikTok refuses fewer signed-in connections from datacenter IPs, but a session ID grants full access to your account, so enable it only if you accept that risk. The Live page shows whether chat is being captured for each active recording.
+
+### Running on a VPS
+
+- The backend port is published on `127.0.0.1` only. Expose the app through the frontend (port 3000), never port 8000 directly.
+- Put HTTPS in front of port 3000 (Caddy, a Cloudflare Tunnel, or Tailscale), then set `COOKIE_SECURE=true` and add your HTTPS URL to `ALLOWED_ORIGINS`.
 
 ### Proxy
 

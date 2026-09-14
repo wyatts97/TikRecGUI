@@ -55,6 +55,17 @@ export function useNotificationStream() {
           }
         )
 
+        // Recording lifecycle events also mean the recording lists are stale.
+        // Refreshing here lets the periodic polls elsewhere stay slow.
+        if (incoming.type === 'user_live' || incoming.type.startsWith('recording_')) {
+          queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
+          queryClient.invalidateQueries({ queryKey: ['recordings'] })
+          queryClient.invalidateQueries({ queryKey: ['recording'] })
+          queryClient.invalidateQueries({ queryKey: ['users'] })
+        } else if (incoming.type === 'clip_ready') {
+          queryClient.invalidateQueries({ queryKey: ['clips'] })
+        }
+
         if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
           try {
             new Notification(incoming.title, {

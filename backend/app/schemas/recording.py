@@ -86,3 +86,7 @@ class ActiveRecordingResponse(BaseModel):
     started_at: datetime | None = None
     duration_seconds: int | None = None
     room_id: str | None = None
+    # Live chat capture state, so the UI can say "chat not captured" instead
+    # of showing an empty timeline.
+    chat_connected: bool = False
+    chat_error: str | None = None

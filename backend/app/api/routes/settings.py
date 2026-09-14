@@ -149,6 +149,7 @@ def get_settings():
         default_bitrate=settings_store.get("default_bitrate", settings.DEFAULT_BITRATE),
         automatic_interval=settings_store.get("automatic_interval", settings.DEFAULT_AUTOMATIC_INTERVAL),
         max_recording_hours=settings_store.get("max_recording_hours", settings.DEFAULT_MAX_RECORDING_HOURS),
+        chat_authenticated=bool(settings_store.get("chat_authenticated", False)),
         auto_cleanup=AutoCleanupConfig(**auto_cleanup_data),
         notification_sinks=_sink_response(),
         available_notification_events=sinks_module.ALL_EVENTS,
@@ -196,6 +197,9 @@ def update_settings(update: SettingsUpdate):
     if update.max_recording_hours is not None:
         max_hours = max(1, int(update.max_recording_hours))
         settings_store.set("max_recording_hours", max_hours)
+
+    if update.chat_authenticated is not None:
+        settings_store.set("chat_authenticated", bool(update.chat_authenticated))
 
     if update.auto_cleanup is not None:
         settings_store.set("auto_cleanup", {

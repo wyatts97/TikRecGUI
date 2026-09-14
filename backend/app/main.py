@@ -40,6 +40,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class _HealthCheckFilter(logging.Filter):
+    """Drop access-log lines for /api/health (the Docker healthcheck fires
+    every 30s and was most of the backend log)."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/api/health " not in record.getMessage()
+
+
+def _quiet_noisy_loggers() -> None:
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, _HealthCheckFilter) for f in access.filters):
+        access.addFilter(_HealthCheckFilter())
+    # httpx logs every request at INFO with the full URL, including TikTok's
+    # device_id/room_id query strings on each chat retry.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
+_quiet_noisy_loggers()
+
+
 def _find_orphan_sources(video_path: Path) -> list[Path]:
     """Return any leftover capture segments for a recording whose task died."""
     stem_path = video_path.with_suffix("")
@@ -116,6 +136,7 @@ async def lifespan(app: FastAPI):
     # Alembic's env.py calls fileConfig() which resets root logger to
     # WARNING (from alembic.ini).  Restore to INFO so app logs are visible.
     logging.getLogger().setLevel(logging.INFO)
+    _quiet_noisy_loggers()
     monitor_service.start()
 
     # Reconcile orphaned recordings from previous container restarts.

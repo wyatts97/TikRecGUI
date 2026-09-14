@@ -79,6 +79,27 @@ export default function SettingsPage() {
     )
   }
 
+  // Rendered in both the desktop card list and the mobile cookies tab.
+  const chatAuthToggle = (id: string) => (
+    <div className="flex items-start justify-between gap-4 pt-2 border-t border-border">
+      <div>
+        <Label htmlFor={id}>Use session for live chat capture</Label>
+        <p className="text-xs text-muted-foreground mt-1">
+          Chat connects anonymously by default. Turning this on sends your session ID to the
+          Euler Stream sign server, which TikTok refuses less often from a VPS. A session ID
+          grants full access to your TikTok account, so only enable it if you accept that risk.
+        </p>
+      </div>
+      <Switch
+        id={id}
+        checked={formData.chat_authenticated || false}
+        onCheckedChange={() =>
+          setFormData({ ...formData, chat_authenticated: !formData.chat_authenticated })
+        }
+      />
+    </div>
+  )
+
   const tabs = [
     { id: 'status', label: 'Status', icon: Activity },
     { id: 'cookies', label: 'Cookies', icon: Cookie },
@@ -251,6 +272,7 @@ export default function SettingsPage() {
               />
             </div>
           </form>
+          {chatAuthToggle('chat_authenticated')}
         </CardBody>
       </Card>
 
@@ -795,6 +817,7 @@ export default function SettingsPage() {
                         <Input id="m-tt_target_idc" name="tt_target_idc" placeholder="useast2a" autoComplete="off" value={formData.cookies?.tt_target_idc || ''} onChange={(e) => setFormData({ ...formData, cookies: { ...formData.cookies, sessionid_ss: formData.cookies?.sessionid_ss || '', tt_target_idc: e.target.value } })} />
                       </div>
                     </form>
+                    {chatAuthToggle('m-chat_authenticated')}
                   </CardBody>
                 </Card>
               )}

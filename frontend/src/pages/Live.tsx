@@ -7,6 +7,7 @@ import { Button } from '@/components/selia/button'
 import { api, ActiveRecording } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import FlvPlayer from '@/components/FlvPlayer'
+import ChatStatusBadge from '@/components/ChatStatusBadge'
 import EmptyState from '@/components/EmptyState'
 import QueryError from '@/components/QueryError'
 import { VideoGridSkeleton } from '@/components/Skeleton'
@@ -131,6 +132,7 @@ function LiveStreamCard({ recording }: { recording: ActiveRecording }) {
         <div className="min-w-0">
           <p className="font-medium text-sm text-foreground truncate">@{recording.username}</p>
           <p className="text-xs text-muted-foreground mt-0.5">Recording #{recording.id}</p>
+          <ChatStatusBadge recording={recording} className="mt-1.5 max-w-full" />
         </div>
         <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-primary transition-colors" />
       </div>

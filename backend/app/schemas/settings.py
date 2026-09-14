@@ -61,6 +61,7 @@ class SettingsResponse(BaseModel):
     default_bitrate: str | None = None
     automatic_interval: int = 5
     max_recording_hours: int = 8
+    chat_authenticated: bool = False
     auto_cleanup: AutoCleanupConfig = AutoCleanupConfig()
     notification_sinks: NotificationSinksConfig = NotificationSinksConfig()
     available_notification_events: list[str] = []
@@ -74,6 +75,7 @@ class SettingsUpdate(BaseModel):
     default_bitrate: str | None = None
     automatic_interval: int | None = None
     max_recording_hours: int | None = None
+    chat_authenticated: bool | None = None
     auto_cleanup: AutoCleanupConfig | None = None
     notification_sinks: NotificationSinksConfig | None = None
     timezone: str | None = None

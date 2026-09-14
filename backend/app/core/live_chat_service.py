@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import asyncio
 from datetime import datetime
@@ -6,12 +7,38 @@ from typing import Optional
 
 import httpx
 from TikTokLive import TikTokLiveClient
+from TikTokLive.client.errors import (
+    AuthenticatedWebSocketConnectionError,
+    UserNotFoundError,
+    UserOfflineError,
+)
+from TikTokLive.client.web.web_settings import WebDefaults
 from TikTokLive.events import CommentEvent, GiftEvent, ConnectEvent
 
 from app.db.database import get_session
 from app.db.models import LiveEvent
 
 logger = logging.getLogger("tikrec.live_chat")
+
+# Outcomes of a single connection attempt.
+_CONNECTED = "connected"      # socket came up (and later dropped)
+_FAILED = "failed"            # transient refusal; worth retrying with backoff
+_AUTH_BLOCKED = "auth_blocked"  # library refused to send the session ID
+_FATAL = "fatal"              # retrying cannot help (room gone, user missing)
+
+# Errors that no amount of retrying will fix for this room.
+_FATAL_ERRORS = (UserNotFoundError, UserOfflineError)
+
+
+def _sign_server_host() -> str:
+    """Host of the sign server this TikTokLive release talks to.
+
+    TikTokLive only accepts a session ID when WHITELIST_AUTHENTICATED_SESSION_ID_HOST
+    equals this host exactly, and the host has changed between releases
+    (api.eulerstream.com -> tiktok.eulerstream.com), so it is read from the
+    library rather than hardcoded.
+    """
+    return WebDefaults.tiktok_sign_url.split("://", 1)[-1]
 
 
 class LiveChatListener:
@@ -45,6 +72,7 @@ class LiveChatListener:
         started_at: datetime,
         proxy: Optional[str] = None,
         cookies: Optional[dict] = None,
+        authenticated: bool = False,
     ):
         self.recording_id = recording_id
         self.username = username
@@ -52,8 +80,15 @@ class LiveChatListener:
         self.started_at = started_at
         self.proxy = proxy
         self.cookies = cookies
+        # Whether to send the TikTok session ID to the sign server. Flipped to
+        # False for the rest of the session if the library refuses it.
+        self._use_auth = authenticated
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        # Live state for the UI: whether the socket is up right now, and why
+        # the last attempt failed.
+        self.connected = False
+        self.last_error: Optional[str] = None
         # Capture tallies, reported when the listener exits so that "no chat
         # events because the room was quiet" can be told apart from "never
         # connected".
@@ -102,11 +137,12 @@ class LiveChatListener:
     def _apply_session_cookies(self, client: TikTokLiveClient) -> bool:
         """Authenticate the webcast client with the configured TikTok session.
 
-        TikTok rejects far more anonymous handshakes than signed-in ones,
-        particularly from server IPs, so this materially improves the odds of
-        the WebSocket connecting at all.  Returns True if a session was set.
+        Opt-in only (the ``chat_authenticated`` setting): it sends the session
+        ID to the Euler Stream sign server, which TikTokLive refuses to do
+        unless that host is whitelisted. Signed-in handshakes are refused less
+        often from datacenter IPs. Returns True if a session was set.
         """
-        if not self.cookies:
+        if not self._use_auth or not self.cookies:
             return False
         session_id = self.cookies.get("sessionid_ss") or self.cookies.get("sessionid")
         if not session_id:
@@ -116,6 +152,10 @@ class LiveChatListener:
             or self.cookies.get("tt_target_idc")
             or None
         )
+        if not tt_target_idc:
+            # TikTokLive raises ValueError on a session ID without a target IDC.
+            return False
+        os.environ["WHITELIST_AUTHENTICATED_SESSION_ID_HOST"] = _sign_server_host()
         try:
             client.web.set_session(session_id, tt_target_idc)
             return True
@@ -145,12 +185,32 @@ class LiveChatListener:
         try:
             while not self._stop_event.is_set():
                 attempt += 1
-                connected = await self._connect_once(attempt)
+                outcome = await self._connect_once(attempt)
 
                 if self._stop_event.is_set():
                     break
 
-                if connected:
+                if outcome == _AUTH_BLOCKED:
+                    # Deterministic: the library will refuse the session ID on
+                    # every attempt. Drop to anonymous and retry immediately,
+                    # without counting it as a failure.
+                    logger.warning(
+                        "Authenticated chat was blocked by TikTokLive for recording %d; "
+                        "continuing anonymously",
+                        self.recording_id,
+                    )
+                    self._use_auth = False
+                    continue
+
+                if outcome == _FATAL:
+                    logger.warning(
+                        "Chat capture for recording %d stopped: %s",
+                        self.recording_id,
+                        self.last_error,
+                    )
+                    break
+
+                if outcome == _CONNECTED:
                     # A working session dropped mid-stream: reset the backoff
                     # so we get back onto the socket promptly.
                     consecutive_failures = 0
@@ -202,12 +262,22 @@ class LiveChatListener:
                     self._connect_count,
                 )
 
-    async def _connect_once(self, attempt: int) -> bool:
+    def _classify(self, exc: BaseException, connected: bool) -> str:
+        """Map a connection failure to a retry decision, recording why."""
+        self.last_error = f"{type(exc).__name__}: {str(exc).splitlines()[0] if str(exc) else ''}".strip()
+        if isinstance(exc, AuthenticatedWebSocketConnectionError):
+            return _AUTH_BLOCKED
+        if isinstance(exc, _FATAL_ERRORS):
+            return _FATAL
+        return _CONNECTED if connected else _FAILED
+
+    async def _connect_once(self, attempt: int) -> str:
         """Run one connection attempt to exhaustion.
 
-        Returns True if the socket actually connected at least once during
-        this attempt, so the caller can tell a dropped session apart from a
-        handshake that was refused outright.
+        Returns one of the ``_CONNECTED`` / ``_FAILED`` / ``_AUTH_BLOCKED`` /
+        ``_FATAL`` outcomes, so the caller can tell a dropped session apart
+        from a refused handshake, and a retryable refusal from one that will
+        fail identically every time.
         """
         web_proxy, ws_proxy = self._make_proxy_objects()
         client = TikTokLiveClient(
@@ -225,6 +295,8 @@ class LiveChatListener:
         async def on_connect(event: ConnectEvent):
             nonlocal connected
             connected = True
+            self.connected = True
+            self.last_error = None
             self._connect_count += 1
             logger.info(
                 "Chat capture connected for @%s (recording %d, room=%s, "
@@ -316,15 +388,11 @@ class LiveChatListener:
                 fetch_live_check=False,
                 fetch_gift_info=True,
             )
-        except Exception:
-            logger.warning(
-                "Chat capture attempt %d for recording %d failed to start",
-                attempt,
-                self.recording_id,
-                exc_info=True,
-            )
+        except Exception as exc:
+            outcome = self._classify(exc, connected)
+            self._log_failure(exc, outcome, attempt, "failed to start")
             await self._shutdown_client(client)
-            return connected
+            return outcome
 
         try:
             # Poll until recording stops or the connection drops
@@ -365,40 +433,61 @@ class LiveChatListener:
                 exc_info=True,
             )
         finally:
+            self.connected = False
             # The WebSocket handshake runs inside the task returned by start(),
             # so a rejected handshake surfaces ONLY as that task's exception.
             # Without retrieving it here the failure is invisible apart from
             # asyncio's late "Task exception was never retrieved" warning at
             # garbage-collection time.
-            self._log_task_exception(connection_task, attempt)
+            outcome = self._task_outcome(connection_task, connected, attempt)
             await self._shutdown_client(client)
 
-        return connected
+        return outcome
 
-    def _log_task_exception(self, task, attempt: int):
-        """Surface the exception held by a finished connection task."""
+    def _task_outcome(self, task, connected: bool, attempt: int) -> str:
+        """Classify a finished connection task by the exception it holds."""
+        default = _CONNECTED if connected else _FAILED
         if task is None or not task.done():
-            return
+            return default
         try:
             exc = task.exception()
         except asyncio.CancelledError:
-            return
+            return default
         if exc is None:
-            return
+            return default
+        outcome = self._classify(exc, connected)
+        self._log_failure(exc, outcome, attempt, "ended")
+        return outcome
+
+    def _log_failure(self, exc: BaseException, outcome: str, attempt: int, what: str):
+        # Known, deterministic failures get one line; TikTokLive's auth block
+        # message alone is ~20 lines and would otherwise repeat every retry.
+        known = outcome in (_AUTH_BLOCKED, _FATAL)
         logger.warning(
-            "Chat capture connection for recording %d (@%s, attempt %d) ended: %s: %s",
+            "Chat capture attempt %d for recording %d (@%s) %s: %s",
+            attempt,
             self.recording_id,
             self.username,
-            attempt,
-            type(exc).__name__,
-            exc,
-            exc_info=exc,
+            what,
+            self.last_error,
+            exc_info=None if known else exc,
         )
 
     async def _shutdown_client(self, client: TikTokLiveClient):
-        """Tear a client down without letting cleanup errors escape."""
+        """Tear a client down without letting cleanup errors escape.
+
+        ``disconnect()`` is only meaningful once a socket exists; calling it
+        after ``start()`` failed left a half-built coroutine behind ("coroutine
+        'TikTokLiveClient.disconnect' was never awaited"). When nothing
+        connected, just close the HTTP sessions.
+        """
         try:
-            await client.disconnect(close_client=True)
+            if client.connected:
+                await asyncio.wait_for(
+                    client.disconnect(close_client=True), timeout=self.SHUTDOWN_TIMEOUT
+                )
+            else:
+                await asyncio.wait_for(client.close(), timeout=self.SHUTDOWN_TIMEOUT)
         except Exception:
             logger.debug(
                 "Chat client cleanup for recording %d failed",
@@ -427,12 +516,22 @@ class LiveChatService:
         started_at: datetime,
         proxy: Optional[str] = None,
         cookies: Optional[dict] = None,
+        authenticated: Optional[bool] = None,
     ) -> bool:
+        if authenticated is None:
+            from app.core.settings_store import settings_store
+            authenticated = bool(settings_store.get("chat_authenticated", False))
         with self._lock:
-            if recording_id in self._listeners:
-                logger.warning("Already listening for recording %d", recording_id)
-                return False
-            if len(self._listeners) >= self.MAX_WORKERS:
+            existing = self._listeners.get(recording_id)
+            if existing is not None:
+                if existing.is_running():
+                    logger.warning("Already listening for recording %d", recording_id)
+                    return False
+                # A listener that gave up (or crashed) must not block a
+                # restart, e.g. when the recording resumes on a fresh URL.
+                del self._listeners[recording_id]
+            running = sum(1 for l in self._listeners.values() if l.is_running())
+            if running >= self.MAX_WORKERS:
                 logger.warning("Max listeners reached (%d)", self.MAX_WORKERS)
                 return False
 
@@ -443,6 +542,7 @@ class LiveChatService:
                 started_at=started_at,
                 proxy=proxy,
                 cookies=cookies,
+                authenticated=authenticated,
             )
             listener.start()
             self._listeners[recording_id] = listener
@@ -470,6 +570,22 @@ class LiveChatService:
         with self._lock:
             listener = self._listeners.get(recording_id)
             return listener is not None and listener.is_running()
+
+    def get_status(self, recording_id: int) -> tuple[bool, Optional[str]]:
+        """Return ``(connected, last_error)`` for a recording's chat capture.
+
+        ``last_error`` is a short reason when chat is not connected, e.g. the
+        listener gave up or was never started.
+        """
+        with self._lock:
+            listener = self._listeners.get(recording_id)
+        if listener is None:
+            return False, "Chat capture not running"
+        if listener.connected:
+            return True, None
+        if not listener.is_running():
+            return False, listener.last_error or "Chat capture stopped"
+        return False, listener.last_error or "Connecting…"
 
     def get_active_count(self) -> int:
         with self._lock:

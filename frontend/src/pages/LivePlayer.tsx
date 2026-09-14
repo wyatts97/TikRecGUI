@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import ChatPanel from '@/components/ChatPanel'
+import ChatStatusBadge from '@/components/ChatStatusBadge'
 import { useConfirm } from '@/components/ConfirmDialog'
 import FlvPlayer from '@/components/FlvPlayer'
 import ErrorBoundary from '@/components/ErrorBoundary'
@@ -33,7 +34,12 @@ export default function LivePlayer() {
     queryKey: ['recording', recordingId],
     queryFn: () => api.recordings.get(recordingId),
     enabled: !isNaN(recordingId),
-    refetchInterval: 5000,
+    // Once the stream ends this row stops changing (and later carries the
+    // full transcript), so stop polling it.
+    refetchInterval: (q: any) => {
+      const status = q.state.data?.status
+      return status === undefined || status === 'pending' || status === 'recording' ? 5000 : false
+    },
   })
 
   const fetchLiveUrl = useCallback(async () => {
@@ -51,6 +57,16 @@ export default function LivePlayer() {
   }, [recordingId])
 
   const streamIsActive = recording?.status === 'pending' || recording?.status === 'recording'
+
+  // Chat capture state lives on the active-recordings feed (shared cache with
+  // Layout/Live), not on the recording row.
+  const { data: activeRecordings } = useQuery({
+    queryKey: ['activeRecordings'],
+    queryFn: () => api.recordings.getActive(),
+    enabled: streamIsActive,
+    refetchInterval: 10000,
+  })
+  const activeEntry = activeRecordings?.find((r) => r.id === recordingId)
 
   useEffect(() => {
     // Once the stream has ended there is no URL to get, so continuing to poll
@@ -306,6 +322,7 @@ export default function LivePlayer() {
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Status</p>
               </div>
               <p className="mt-1 font-medium text-foreground capitalize">{recording.status}</p>
+              {activeEntry && <ChatStatusBadge recording={activeEntry} className="mt-2" />}
             </div>
           </div>
 
