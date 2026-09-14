@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Body
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -28,6 +28,10 @@ from app.core.media_utils import (
     all_thumbnail_paths,
     generate_sprite,
     recording_path,
+    render_sprite_vtt,
+    sprite_paths,
+    sprite_vtt_version,
+    SPRITE_VERSION,
 )
 
 logger = logging.getLogger("tikrec.clips")
@@ -471,12 +475,12 @@ def thumbnail_clip(clip_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{clip_id}/sprite")
 def get_clip_sprite(clip_id: int, db: Session = Depends(get_db)):
+    """Sprite sheet JPEG. Immutable: the VTT references it as ``?v=<mtime>``."""
     clip = db.query(Clip).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found")
 
-    video_path = clip_directory() / clip.filename
-    sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
+    sprite_path, _ = sprite_paths(clip_directory() / clip.filename)
     if not sprite_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprite not yet generated")
     return FileResponse(
@@ -486,26 +490,43 @@ def get_clip_sprite(clip_id: int, db: Session = Depends(get_db)):
     )
 
 
+# Clip ids whose old-format sprite is being rebuilt, with the start time, so
+# repeated VTT requests don't queue duplicate jobs.
+_SPRITE_UPGRADE_COOLDOWN_SECONDS = 300
+_sprite_upgrade_at: dict[int, float] = {}
+
+
 @router.get("/{clip_id}/thumbnails.vtt")
-def get_clip_sprite_vtt(clip_id: int, db: Session = Depends(get_db)):
-    """Return the WebVTT file for Vidstack hover-scrub thumbnails."""
+def get_clip_sprite_vtt(clip_id: int, request: Request, db: Session = Depends(get_db)):
+    """WebVTT sprite map for Vidstack and the card hover-scrub.
+
+    Revalidated on every use (``no-cache`` + ETag); maps from the older
+    generator are served while a background job rebuilds them.
+    """
     clip = db.query(Clip).filter(Clip.id == clip_id).first()
     if not clip:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Clip not found")
 
     video_path = clip_directory() / clip.filename
-    vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
-    if not vtt_path.exists():
+    rendered = render_sprite_vtt(video_path, f"/api/clips/{clip_id}/sprite")
+    if rendered is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VTT not yet generated")
 
-    content = vtt_path.read_text(encoding="utf-8")
-    absolute_sprite_url = f"/api/clips/{clip_id}/sprite"
-    content = content.replace("sprite#xywh=", f"{absolute_sprite_url}#xywh=")
-    return Response(
-        content=content,
-        media_type="text/vtt",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
-    )
+    _, vtt_path = sprite_paths(video_path)
+    now = time.monotonic()
+    if (
+        sprite_vtt_version(vtt_path) < SPRITE_VERSION
+        and video_path.exists()
+        and now - _sprite_upgrade_at.get(clip_id, float("-inf")) > _SPRITE_UPGRADE_COOLDOWN_SECONDS
+    ):
+        _sprite_upgrade_at[clip_id] = now
+        run_background(generate_sprite, video_path)
+
+    content, etag = rendered
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(content=content, media_type="text/vtt", headers=headers)
 
 
 @router.post("/batch/delete", status_code=status.HTTP_200_OK)

@@ -345,6 +345,124 @@ def _fmt_vtt_time(seconds: float) -> str:
     return f"{h:02d}:{m:02d}:{s:06.3f}"
 
 
+SPRITE_THUMB_W = 160
+SPRITE_THUMB_H = 90
+SPRITE_COLS = 10
+SPRITE_MAX_FRAMES = 300
+SPRITE_MIN_INTERVAL = 2.0
+SPRITE_MAX_INTERVAL = 30.0
+SPRITE_GRAB_WORKERS = 4
+# Bumped whenever the sprite/VTT format changes; older VTTs are regenerated
+# lazily when a player asks for them (see sprite_vtt_version).
+SPRITE_VERSION = 2
+_SPRITE_VERSION_MARKER = "NOTE tikrec-sprite v"
+
+
+def sprite_paths(video_path: Path) -> tuple[Path, Path]:
+    """Return ``(sprite_jpg, sprite_vtt)`` paths for a video."""
+    return (
+        video_path.with_name(video_path.stem + "_sprite.jpg"),
+        video_path.with_name(video_path.stem + "_sprite.vtt"),
+    )
+
+
+def sprite_vtt_version(vtt_path: Path) -> int:
+    """Return the sprite format version recorded in a VTT (1 if unmarked, 0 if unreadable)."""
+    try:
+        with open(vtt_path, "r", encoding="utf-8") as fh:
+            head = fh.read(200)
+    except OSError:
+        return 0
+    idx = head.find(_SPRITE_VERSION_MARKER)
+    if idx == -1:
+        return 1
+    digits = ""
+    for ch in head[idx + len(_SPRITE_VERSION_MARKER):]:
+        if not ch.isdigit():
+            break
+        digits += ch
+    return int(digits) if digits else 1
+
+
+def render_sprite_vtt(video_path: Path, sprite_url: str) -> tuple[str, str] | None:
+    """Return ``(vtt_content, etag)`` for serving a video's sprite map, or None.
+
+    Sprite references become ``<sprite_url>?v=<sprite mtime>`` so the sheet can
+    be cached as immutable: regenerating it changes the URL. The ETag covers
+    both files, so a revalidating client picks up either changing.
+    """
+    sprite_path, vtt_path = sprite_paths(video_path)
+    try:
+        vtt_stat = vtt_path.stat()
+        sprite_stat = sprite_path.stat()
+        content = vtt_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    version = sprite_stat.st_mtime_ns
+    content = content.replace("sprite#xywh=", f"{sprite_url}?v={version}#xywh=")
+    etag = f'"{vtt_stat.st_mtime_ns}-{vtt_stat.st_size}-{version}"'
+    return content, etag
+
+
+def sprite_interval(duration: float) -> float:
+    """Seconds between sprite frames: about 300 frames, clamped to 2-30 s."""
+    return min(SPRITE_MAX_INTERVAL, max(SPRITE_MIN_INTERVAL, duration / SPRITE_MAX_FRAMES))
+
+
+def build_sprite_vtt(
+    timestamps: list[float],
+    duration: float,
+    cols: int = SPRITE_COLS,
+    thumb_w: int = SPRITE_THUMB_W,
+    thumb_h: int = SPRITE_THUMB_H,
+) -> str:
+    """Build the WebVTT map for a sprite sheet.
+
+    *timestamps* are the real capture times of the tiles, in tile order. Each
+    cue runs from its frame's time to the next frame's time (the last one to
+    *duration*), so the cues cover the whole video with no gaps, and a frame
+    that failed to extract can never shift later frames onto the wrong times.
+    """
+    lines = ["WEBVTT", "", f"{_SPRITE_VERSION_MARKER}{SPRITE_VERSION}", ""]
+    for i, start in enumerate(timestamps):
+        # The first cue starts at 0 so the very beginning always has a preview
+        # even when the first successful grab landed later.
+        start = 0.0 if i == 0 else start
+        end = timestamps[i + 1] if i + 1 < len(timestamps) else max(duration, start + 0.001)
+        col, row = i % cols, i // cols
+        lines.append(f"{_fmt_vtt_time(start)} --> {_fmt_vtt_time(end)}")
+        lines.append(f"sprite#xywh={col * thumb_w},{row * thumb_h},{thumb_w},{thumb_h}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _grab_sprite_frame(video_path: Path, timestamp: float, out_path: Path) -> bool:
+    """Extract one scaled frame at *timestamp*. Returns True on success.
+
+    ``-ss`` before ``-i`` seeks quickly to the preceding keyframe, then ffmpeg
+    decodes forward to the exact time, so the frame matches its cue.
+    """
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-nostdin", "-hide_banner", "-loglevel", "error",
+                "-ss", f"{timestamp:.3f}",
+                "-i", str(video_path),
+                "-frames:v", "1",
+                "-vf", f"scale={SPRITE_THUMB_W}:{SPRITE_THUMB_H}",
+                "-an", "-sn", "-dn",
+                str(out_path),
+            ],
+            capture_output=True,
+            timeout=20,
+            check=True,
+        )
+        return out_path.exists() and out_path.stat().st_size > 0
+    except Exception:
+        return False
+
+
 def generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
     """Generate a sprite sheet and WebVTT file for hover-scrub preview.
 
@@ -356,15 +474,11 @@ def generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
     on failure.
 
     **Locking:** a module-level semaphore limits concurrent sprite
-    generation to 2 invocations.
+    generation to 2 invocations; each runs a few frame grabs in parallel.
     """
-    THUMB_W, THUMB_H = 160, 90
-    COLS = 10
-    MAX_FRAMES = 120          # Hard cap to keep memory usage low
-    BASE_INTERVAL = 10        # Default: one frame every 10s
+    from concurrent.futures import ThreadPoolExecutor
 
-    sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
-    vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
+    sprite_path, vtt_path = sprite_paths(video_path)
 
     with _sprite_sem:
         try:
@@ -379,58 +493,49 @@ def generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
             )
             duration = float(probe.stdout.strip())
 
-            interval = max(BASE_INTERVAL, duration / MAX_FRAMES)
-            expected_frames = min(MAX_FRAMES, int(duration / interval) + 1)
+            interval = sprite_interval(duration)
+            # Stop short of the very end: a seek to the last instant fails.
+            targets: list[float] = []
+            t = 0.0
+            while t < duration - 0.25 and len(targets) < SPRITE_MAX_FRAMES:
+                targets.append(round(t, 3))
+                t += interval
+            if not targets:
+                targets = [0.0]
 
             temp_dir = tempfile.mkdtemp(prefix="sprite_frames_")
             try:
-                extracted: list[Path] = []
-                for i in range(expected_frames):
-                    timestamp = i * interval
-                    out_path = Path(temp_dir) / f"raw_{i:03d}.jpg"
-                    try:
-                        subprocess.run(
-                            [
-                                "ffmpeg", "-y",
-                                "-nostdin", "-hide_banner", "-loglevel", "error",
-                                "-ss", str(timestamp),
-                                "-i", str(video_path),
-                                "-vframes", "1",
-                                "-vf", f"scale={THUMB_W}:{THUMB_H}",
-                                "-an", "-sn", "-dn",
-                                str(out_path),
-                            ],
-                            capture_output=True,
-                            timeout=15,
-                            check=True,
-                        )
-                        if out_path.exists() and out_path.stat().st_size > 0:
-                            extracted.append(out_path)
-                    except Exception:
-                        pass
+                raw = [Path(temp_dir) / f"raw_{i:04d}.jpg" for i in range(len(targets))]
+                with ThreadPoolExecutor(max_workers=SPRITE_GRAB_WORKERS) as pool:
+                    ok = list(pool.map(
+                        lambda pair: _grab_sprite_frame(video_path, pair[0], pair[1]),
+                        zip(targets, raw),
+                    ))
 
-                if not extracted:
+                # Keep each surviving frame paired with the time it was taken,
+                # so a failed grab leaves a longer cue instead of shifting
+                # every later frame onto the wrong time.
+                frames = [(ts, path) for ts, path, good in zip(targets, raw, ok) if good]
+                if not frames:
                     return None, None
 
-                # Rename to contiguous sequence for ffmpeg tile
-                for idx, src in enumerate(extracted):
-                    dst = Path(temp_dir) / f"frame_{idx:03d}.jpg"
-                    src.rename(dst)
+                for idx, (_, src) in enumerate(frames):
+                    src.rename(Path(temp_dir) / f"frame_{idx:04d}.jpg")
 
-                frame_count = len(extracted)
-                rows = (frame_count + COLS - 1) // COLS
-                frame_pattern = Path(temp_dir) / "frame_%03d.jpg"
+                frame_count = len(frames)
+                rows = (frame_count + SPRITE_COLS - 1) // SPRITE_COLS
 
                 tile_result = subprocess.run(
                     [
                         "ffmpeg", "-y",
                         "-nostdin", "-hide_banner", "-loglevel", "error",
-                        "-i", str(frame_pattern),
-                        "-vf", f"tile={COLS}x{rows}",
+                        "-i", str(Path(temp_dir) / "frame_%04d.jpg"),
+                        "-vf", f"tile={SPRITE_COLS}x{rows}",
+                        "-q:v", "5",
                         str(sprite_path),
                     ],
                     capture_output=True,
-                    timeout=60,
+                    timeout=120,
                 )
                 if tile_result.returncode != 0:
                     logger.warning(
@@ -443,18 +548,10 @@ def generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
                 if not sprite_path.exists() or sprite_path.stat().st_size == 0:
                     return None, None
 
-                lines = ["WEBVTT", ""]
-                for i in range(frame_count):
-                    start = i * interval
-                    end = min(start + interval, duration)
-                    col = i % COLS
-                    row = i // COLS
-                    lines.append(f"{_fmt_vtt_time(start)} --> {_fmt_vtt_time(end)}")
-                    lines.append(
-                        f"sprite#xywh={col * THUMB_W},{row * THUMB_H},{THUMB_W},{THUMB_H}"
-                    )
-                    lines.append("")
-                vtt_path.write_text("\n".join(lines), encoding="utf-8")
+                vtt_path.write_text(
+                    build_sprite_vtt([ts for ts, _ in frames], duration),
+                    encoding="utf-8",
+                )
 
             finally:
                 shutil.rmtree(temp_dir, ignore_errors=True)
@@ -475,8 +572,8 @@ def generate_sprite(video_path: Path) -> tuple[Path | None, Path | None]:
                                video_path, db_exc)
 
             logger.info(
-                "Sprite generated for %s: %d frames (%dx%d) @ %.1fs interval",
-                video_path.name, frame_count, COLS, rows, interval,
+                "Sprite generated for %s: %d/%d frames (%dx%d) @ %.1fs interval",
+                video_path.name, frame_count, len(targets), SPRITE_COLS, rows, interval,
             )
             return sprite_path, vtt_path
 

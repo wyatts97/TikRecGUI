@@ -8,7 +8,7 @@ import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Body
 from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -38,6 +38,10 @@ from app.core.media_utils import (
     repair_video,
     finalize_segments_to_mp4,
     recording_path,
+    render_sprite_vtt,
+    sprite_paths,
+    sprite_vtt_version,
+    SPRITE_VERSION,
 )
 from app.core.transcription_service import transcription_service
 from app.core.settings_store import settings_store
@@ -854,12 +858,15 @@ def batch_compress_recordings(
 
 @router.get("/{recording_id}/sprite")
 def get_sprite(recording_id: int, db: Session = Depends(get_db)):
-    """Return the sprite sheet JPEG for hover-scrub preview."""
+    """Return the sprite sheet JPEG for hover-scrub preview.
+
+    Cached as immutable: the VTT references it as ``?v=<mtime>``, so a
+    regenerated sheet is fetched under a new URL.
+    """
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
-    video_path = recording_path(recording.filename)
-    sprite_path = video_path.with_name(video_path.stem + "_sprite.jpg")
+    sprite_path, _ = sprite_paths(recording_path(recording.filename))
     if not sprite_path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sprite not yet generated")
     return FileResponse(
@@ -870,29 +877,34 @@ def get_sprite(recording_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{recording_id}/thumbnails.vtt")
-def get_sprite_vtt(recording_id: int, db: Session = Depends(get_db)):
-    """Return the WebVTT file for Vidstack hover-scrub thumbnails.
+def get_sprite_vtt(recording_id: int, request: Request, db: Session = Depends(get_db)):
+    """Return the WebVTT sprite map for Vidstack and the card hover-scrub.
 
-    Rewrites the relative 'sprite' URL inside the VTT to an absolute
-    API endpoint URL so vidstack can resolve it correctly.
+    Revalidated on every use (``no-cache`` + ETag) so a regenerated sprite is
+    picked up immediately. Maps written by an older generator (which could
+    misalign frames) are served as-is while a background job rebuilds them.
     """
     recording = db.query(Recording).filter(Recording.id == recording_id).first()
     if not recording:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
     video_path = recording_path(recording.filename)
-    vtt_path = video_path.with_name(video_path.stem + "_sprite.vtt")
-    if not vtt_path.exists():
+    rendered = render_sprite_vtt(video_path, f"/api/recordings/{recording_id}/sprite")
+    if rendered is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="VTT not yet generated")
-    content = vtt_path.read_text(encoding="utf-8")
-    # Rewrite relative sprite references to absolute API URLs so vidstack
-    # can resolve them without depending on relative URL resolution.
-    absolute_sprite_url = f"/api/recordings/{recording_id}/sprite"
-    content = content.replace("sprite#xywh=", f"{absolute_sprite_url}#xywh=")
-    return Response(
-        content=content,
-        media_type="text/vtt",
-        headers={"Cache-Control": "public, max-age=31536000, immutable"},
-    )
+
+    _, vtt_path = sprite_paths(video_path)
+    if (
+        sprite_vtt_version(vtt_path) < SPRITE_VERSION
+        and video_path.exists()
+        and _claim_retry(_sprite_retry_at, recording.id)
+    ):
+        run_background(generate_sprite, video_path)
+
+    content, etag = rendered
+    headers = {"Cache-Control": "no-cache", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
+    return Response(content=content, media_type="text/vtt", headers=headers)
 
 
 @router.post("/{recording_id}/transcribe", response_model=RecordingResponse)
