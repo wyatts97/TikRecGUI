@@ -606,12 +606,12 @@ class LiveChatService:
         with self._lock:
             listener = self._listeners.get(recording_id)
         if listener is None:
-            return False, "Chat capture not running"
+            return False, "not running"
         if listener.connected:
             return True, None
         if not listener.is_running():
-            return False, listener.last_error or "Chat capture stopped"
-        return False, listener.last_error or "Connecting…"
+            return False, listener.last_error or "stopped"
+        return False, listener.last_error or "connecting…"
 
     def get_active_count(self) -> int:
         with self._lock:

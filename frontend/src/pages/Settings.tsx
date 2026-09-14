@@ -7,6 +7,8 @@ import { IconBox } from '@/components/selia/icon-box'
 import { Input } from '@/components/selia/input'
 import { Label } from '@/components/selia/label'
 import { Switch } from '@/components/selia/switch'
+import { Progress, ProgressLabel, ProgressValue } from '@/components/selia/progress'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectItem,
@@ -78,6 +80,30 @@ export default function SettingsPage() {
       </div>
     )
   }
+
+  // Host CPU and RAM (moved here from the dashboard). Shared by the desktop
+  // and mobile status cards.
+  const resourceMeters =
+    health?.cpu_percent != null && health?.ram_percent != null ? (
+      <div className="grid gap-4 p-3 rounded-lg bg-muted/40">
+        {[
+          { label: 'CPU', value: health.cpu_percent },
+          { label: 'RAM', value: health.ram_percent },
+        ].map(({ label, value }) => (
+          <Progress
+            key={label}
+            value={value}
+            className={cn(
+              value >= 60 && value < 80 && '**:data-[slot=progress-indicator]:bg-warning',
+              value >= 80 && '**:data-[slot=progress-indicator]:bg-danger',
+            )}
+          >
+            <ProgressLabel className="text-sm">{label}</ProgressLabel>
+            <ProgressValue>{() => `${value.toFixed(1)}%`}</ProgressValue>
+          </Progress>
+        ))}
+      </div>
+    ) : null
 
   // Rendered in both the desktop card list and the mobile cookies tab.
   const chatAuthToggle = (id: string) => (
@@ -208,6 +234,7 @@ export default function SettingsPage() {
               {health?.recordings_dir || settings?.output_dir}
             </span>
           </div>
+          {resourceMeters}
         </CardBody>
       </Card>
 
@@ -790,6 +817,7 @@ export default function SettingsPage() {
                         {health?.recordings_dir || settings?.output_dir}
                       </span>
                     </div>
+                    {resourceMeters}
                   </CardBody>
                 </Card>
               )}

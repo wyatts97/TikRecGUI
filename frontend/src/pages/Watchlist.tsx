@@ -5,7 +5,6 @@ import {
   RefreshCw,
   Trash2,
   Play,
-  Radio,
   Eye,
   EyeOff,
   Search,
@@ -21,8 +20,8 @@ import {
   StopCircle,
   ChevronLeft,
   ChevronRight,
+  Radar,
 } from 'lucide-react'
-import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
 import { Button } from 'components/selia/button'
 import { Badge } from 'components/selia/badge'
 import { Input } from 'components/selia/input'
@@ -51,9 +50,16 @@ import { useConfirm } from '@/components/ConfirmDialog'
 import toast from 'react-hot-toast'
 import EmptyState from '@/components/EmptyState'
 import QueryError from '@/components/QueryError'
-import { ListSkeleton } from '@/components/Skeleton'
+import { Checkbox } from 'components/selia/checkbox'
+import WatchlistProfileCard from '@/components/WatchlistProfileCard'
+import { timeAgo } from '@/lib/notifications'
 
 const PER_PAGE = 20
+
+function formatCountdown(seconds: number): string {
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s`
+  return `${Math.round(seconds / 60)}m`
+}
 
 export default function Watchlist() {
   const fmt = useDateFormat()
@@ -74,6 +80,30 @@ export default function Watchlist() {
   const { data: users = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.users.list(),
+  })
+
+  // Shared cache with the sidebar/dashboard; drives the REC badge and Watch button.
+  const { data: activeRecordings = [] } = useQuery({
+    queryKey: ['activeRecordings'],
+    queryFn: () => api.recordings.getActive(),
+    refetchInterval: 30000,
+  })
+
+  // "Check now" moved here from the old sidebar countdown.
+  const { data: monitorStatus } = useQuery({
+    queryKey: ['monitorStatus'],
+    queryFn: () => api.settings.getMonitorStatus(),
+    refetchInterval: 15000,
+  })
+
+  const checkNowMutation = useMutation({
+    mutationFn: () => api.settings.triggerMonitorCheck(),
+    onSuccess: () => {
+      toast.success('Checking your watchlist for live streams')
+      queryClient.invalidateQueries({ queryKey: ['monitorStatus'] })
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ['users'] }), 5000)
+    },
+    onError: (error: Error) => toast.error(error.message),
   })
 
   const { data: detailUser } = useQuery({
@@ -272,6 +302,9 @@ export default function Watchlist() {
   }, [users, searchQuery])
 
   const selectedCount = selectedIds.size
+  const pageUsers = filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+  const selectedOnPage = pageUsers.filter((u) => selectedIds.has(u.id)).length
+  const recordingByUser = new Map(activeRecordings.map((r) => [r.user_id, r]))
 
   // Export: copy @username list to clipboard
   const handleExport = useCallback(() => {
@@ -335,7 +368,7 @@ export default function Watchlist() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight">Watchlist</h1>
           <p className="text-muted-foreground mt-1">
@@ -382,6 +415,24 @@ export default function Watchlist() {
               </DialogFooter>
             </DialogPopup>
           </Dialog>
+          <Button
+            variant="outline"
+            onClick={() => checkNowMutation.mutate()}
+            disabled={checkNowMutation.isPending || users.length === 0}
+            title={monitorStatus?.last_check_at ? `Last check ${timeAgo(monitorStatus.last_check_at)}` : undefined}
+          >
+            {checkNowMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Radar className="h-4 w-4 mr-2" />
+            )}
+            Check now
+            {monitorStatus?.next_check_in_seconds != null && !checkNowMutation.isPending && (
+              <span className="text-dimmed font-normal tabular-nums">
+                · {formatCountdown(monitorStatus.next_check_in_seconds)}
+              </span>
+            )}
+          </Button>
           <Button variant="outline" onClick={handleExport} disabled={users.length === 0}>
             <ClipboardList className="h-4 w-4 mr-2" />
             Export
@@ -464,10 +515,12 @@ export default function Watchlist() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
+      <section aria-label="Watchlist creators">
+        <div className="mb-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <CardTitle>Users ({filteredUsers.length})</CardTitle>
+            <h2 className="text-xl font-semibold tracking-tight text-foreground">
+              Creators <span className="text-dimmed font-normal">({filteredUsers.length})</span>
+            </h2>
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -484,8 +537,8 @@ export default function Watchlist() {
               />
             </div>
           </div>
-        </CardHeader>
-        <CardBody>
+        </div>
+        <div>
           {selectedCount > 0 && (
             <div className="flex items-center gap-2 mb-4 p-3 rounded-lg bg-muted/40">
               <span className="text-sm font-medium mr-2">{selectedCount} selected</span>
@@ -537,7 +590,11 @@ export default function Watchlist() {
           {isError ? (
             <QueryError error={error} what="your watchlist" onRetry={() => refetch()} />
           ) : isLoading ? (
-            <div className="p-4"><ListSkeleton rows={8} /></div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }, (_, i) => (
+                <div key={i} className="h-80 rounded-xl bg-muted/50 animate-pulse motion-reduce:animate-none" />
+              ))}
+            </div>
           ) : filteredUsers.length === 0 ? (
             <EmptyState
               icon={Users}
@@ -548,197 +605,83 @@ export default function Watchlist() {
             />
           ) : (
             <>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-neutral-700">
-                  <thead className="bg-gray-50 dark:bg-neutral-800">
-                    <tr>
-                      <th scope="col" className="px-4 py-3 text-start">
-                        <input
-                          type="checkbox"
-                          className="rounded border-gray-300 dark:border-neutral-600"
-                          aria-label="Select all users on this page"
-                          {...(() => {
-                            const pageRows = filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE)
-                            const selectedOnPage = pageRows.filter((u) => selectedIds.has(u.id)).length
-                            return {
-                              // Previously compared the *global* selection size
-                              // against this page's length, so selecting 20 rows
-                              // on page 1 showed page 2 as fully checked too.
-                              checked: pageRows.length > 0 && selectedOnPage === pageRows.length,
-                              ref: (el: HTMLInputElement | null) => {
-                                if (el) el.indeterminate = selectedOnPage > 0 && selectedOnPage < pageRows.length
-                              },
-                            }
-                          })()}
-                          onChange={(e) => {
-                            const pageRows = filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE)
-                            setSelectedIds(e.target.checked ? new Set(pageRows.map((u) => u.id)) : new Set())
-                          }}
-                        />
-                      </th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Name</th>
-                      <th scope="col" className="px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Status</th>
-                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Monitoring</th>
-                      <th scope="col" className="hidden sm:table-cell px-4 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Last Checked</th>
-                      <th scope="col" className="px-4 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wide dark:text-neutral-400">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200 dark:divide-neutral-700">
-                    {/* Rows stay real <tr>s so table semantics survive; the
-                        keyboard path is added rather than swapping the role for
-                        "button", which would hide the row structure from screen
-                        readers. */}
-                    {filteredUsers.slice((page - 1) * PER_PAGE, page * PER_PAGE).map((row) => (
-                      <tr
-                        key={row.id}
-                        className="hover:bg-gray-50 dark:hover:bg-neutral-800 cursor-pointer transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-                        tabIndex={0}
-                        aria-label={`View details for @${row.username}`}
-                        onClick={() => setDetailUserId(row.id)}
-                        onKeyDown={(e) => {
-                          if (e.target !== e.currentTarget) return
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            setDetailUserId(row.id)
-                          }
-                        }}
-                      >
-                        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            className="rounded border-gray-300 dark:border-neutral-600"
-                            aria-label={`Select @${row.username}`}
-                            checked={selectedIds.has(row.id)}
-                            onChange={(e) => {
-                              const next = new Set(selectedIds)
-                              if (e.target.checked) next.add(row.id)
-                              else next.delete(row.id)
-                              setSelectedIds(next)
-                            }}
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-x-3">
-                            <div className="h-[38px] w-[38px] rounded-full overflow-hidden bg-gray-100 dark:bg-neutral-700 flex-shrink-0 flex items-center justify-center">
-                              <img
-                                src={api.users.getAvatarUrl(row.id)}
-                                alt={row.username}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                                decoding="async"
-                                onError={(e) => {
-                                  const img = e.target as HTMLImageElement
-                                  img.style.display = 'none'
-                                  const sib = img.nextElementSibling as HTMLElement
-                                  if (sib) sib.style.display = 'flex'
-                                  if (!retriedIdsRef.current.has(row.id)) {
-                                    retriedIdsRef.current.add(row.id)
-                                    api.users.refresh(row.id, true).catch(() => {})
-                                  }
-                                }}
-                              />
-                              <span className="text-sm font-medium text-gray-600 dark:text-neutral-300" style={{ display: 'none' }}>
-                                {row.username[0].toUpperCase()}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="block text-sm font-semibold text-gray-800 dark:text-neutral-200">
-                                {row.display_name && row.display_name !== row.username ? row.display_name : row.username}
-                              </span>
-                              {row.display_name && row.display_name !== row.username && (
-                                <span className="block text-xs text-gray-500 dark:text-neutral-400">@{row.username}</span>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {row.is_live ? (
-                            <Badge variant="danger" className="gap-1">
-                              <Radio className="h-3 w-3" />LIVE
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary">Offline</Badge>
-                          )}
-                        </td>
-                        <td className="hidden sm:table-cell px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            className="inline-flex items-center gap-1.5 text-sm"
-                            onClick={() => toggleMonitoringMutation.mutate({ id: row.id, isMonitoring: !row.is_monitoring })}
-                          >
-                            {row.is_monitoring ? (
-                              <><Eye className="h-4 w-4 text-green-500" /><span className="text-green-600 dark:text-green-400">On</span></>
-                            ) : (
-                              <><EyeOff className="h-4 w-4 text-gray-400" /><span className="text-gray-400">Off</span></>
-                            )}
-                          </button>
-                        </td>
-                        <td className="hidden sm:table-cell px-4 py-3">
-                          <span className="text-sm text-gray-500 dark:text-neutral-400">{fmt(row.last_checked)}</span>
-                        </td>
-                        <td className="px-4 py-3 text-end" onClick={(e) => e.stopPropagation()}>
-                          <div className="inline-flex rounded-lg shadow-sm">
-                            <button
-                              title="Refresh" aria-label={`Refresh @${row.username}'s profile`}
-                              className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800 transition-colors"
-                              onClick={() => refreshUserMutation.mutate(row.id)}
-                              disabled={refreshUserMutation.isPending}
-                            >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                            </button>
-                            {row.is_live && (
-                              <button
-                                title="Record now" aria-label={`Start recording @${row.username}`}
-                                className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-blue-400 dark:hover:bg-neutral-800 transition-colors"
-                                onClick={() => startRecordingMutation.mutate(row.username)}
-                                disabled={startRecordingMutation.isPending}
-                              >
-                                <Play className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            <button
-                              title="Remove" aria-label={`Remove @${row.username} from watchlist`}
-                              className="py-1.5 px-2 inline-flex items-center gap-x-1 -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-neutral-900 dark:border-neutral-700 dark:text-red-400 dark:hover:bg-neutral-800 transition-colors"
-                              onClick={() => handleRemoveOne(row.id, row.username)}
-                              disabled={removeFromWatchlistMutation.isPending}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+                  <Checkbox
+                    checked={pageUsers.length > 0 && selectedOnPage === pageUsers.length}
+                    indeterminate={selectedOnPage > 0 && selectedOnPage < pageUsers.length}
+                    onCheckedChange={(checked) =>
+                      setSelectedIds(checked ? new Set(pageUsers.map((u) => u.id)) : new Set())
+                    }
+                    aria-label="Select all users on this page"
+                  />
+                  Select page
+                </label>
+                <span className="text-sm text-dimmed">
+                  {filteredUsers.filter((u) => u.is_live).length} live · {filteredUsers.filter((u) => u.is_monitoring).length} monitored
+                </span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {pageUsers.map((user) => (
+                  <WatchlistProfileCard
+                    key={user.id}
+                    user={user}
+                    recording={recordingByUser.get(user.id)}
+                    selected={selectedIds.has(user.id)}
+                    onSelectedChange={(checked) => {
+                      const next = new Set(selectedIds)
+                      if (checked) next.add(user.id)
+                      else next.delete(user.id)
+                      setSelectedIds(next)
+                    }}
+                    onOpen={() => setDetailUserId(user.id)}
+                    onToggleMonitoring={(monitoring) =>
+                      toggleMonitoringMutation.mutate({ id: user.id, isMonitoring: monitoring })
+                    }
+                    onRefresh={() => refreshUserMutation.mutate(user.id)}
+                    onRecord={() => startRecordingMutation.mutate(user.username)}
+                    onRemove={() => { void handleRemoveOne(user.id, user.username) }}
+                    onAvatarError={() => {
+                      if (retriedIdsRef.current.has(user.id)) return
+                      retriedIdsRef.current.add(user.id)
+                      api.users.refresh(user.id, true).catch(() => {})
+                    }}
+                  />
+                ))}
               </div>
 
               {/* Pagination */}
               {filteredUsers.length > PER_PAGE && (
-                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-neutral-700">
-                  <span className="text-sm text-gray-500 dark:text-neutral-400">
+                <div className="flex items-center justify-between pt-4 mt-4 border-t border-border">
+                  <span className="text-sm text-dimmed">
                     {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filteredUsers.length)} of {filteredUsers.length}
                   </span>
-                  <div className="inline-flex rounded-lg shadow-sm">
-                    <button
-                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm-icon"
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={page === 1}
+                      aria-label="Previous page"
                     >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <button
-                      className="py-1.5 px-2 inline-flex items-center -ms-px first:rounded-s-lg first:ms-0 last:rounded-e-lg text-sm font-medium focus:z-10 border border-gray-200 bg-white text-gray-800 hover:bg-gray-50 disabled:opacity-50 dark:bg-neutral-900 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-800"
+                      <ChevronLeft />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm-icon"
                       onClick={() => setPage((p) => Math.min(Math.ceil(filteredUsers.length / PER_PAGE), p + 1))}
                       disabled={page * PER_PAGE >= filteredUsers.length}
+                      aria-label="Next page"
                     >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
+                      <ChevronRight />
+                    </Button>
                   </div>
                 </div>
               )}
             </>
           )}
-        </CardBody>
-      </Card>
+        </div>
+      </section>
 
       {/* User Detail Drawer */}
       <Drawer open={detailUserId !== null} onOpenChange={(open) => { if (!open) setDetailUserId(null) }}>

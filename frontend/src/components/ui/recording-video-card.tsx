@@ -7,11 +7,14 @@ import { cn, formatBytes } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { api, type Recording } from '@/lib/api'
 import { Timestamp } from '@/components/ui/timestamp'
+import { useSpriteScrub } from '@/hooks/useSpriteScrub'
+import { ScrubOverlay } from '@/components/ui/scrub-overlay'
 
 interface RecordingVideoCardProps {
   recording: Recording
-  onFavorite: (e: React.MouseEvent) => void
-  onDownload: (e: React.MouseEvent) => void
+  /** Omit on browse-only surfaces (dashboard rail) to hide the button. */
+  onFavorite?: (e: React.MouseEvent) => void
+  onDownload?: (e: React.MouseEvent) => void
   onRepair?: (e: React.MouseEvent) => void
   isRepairing?: boolean
   onClick: () => void
@@ -30,6 +33,9 @@ export function RecordingVideoCard({
   onSelect,
 }: RecordingVideoCardProps) {
   const fmt = useDateFormat()
+  const scrub = useSpriteScrub(
+    recording.sprite_ready ? api.recordings.getSpriteVttUrl(recording.id) : null,
+  )
 
   return (
     <motion.div
@@ -43,7 +49,8 @@ export function RecordingVideoCard({
         onClick={onClick}
       >
         {/* Thumbnail */}
-        <div className="relative aspect-video overflow-hidden bg-muted">
+        <div className="relative aspect-video overflow-hidden bg-muted" {...scrub.handlers}>
+          <ScrubOverlay style={scrub.style} fraction={scrub.fraction} />
           {onSelect && (
             <div
               className="absolute top-2 left-2 z-10"
@@ -136,20 +143,22 @@ export function RecordingVideoCard({
 
             {/* Actions */}
             <div className="flex items-center gap-0.5 shrink-0">
-              <Button
-                variant="plain"
-                size="icon"
-                className="h-8 w-8"
-                onClick={onFavorite}
-                title={recording.is_favorite ? 'Unfavorite' : 'Favorite'}
-              >
-                <Heart
-                  className={cn(
-                    'h-4 w-4',
-                    recording.is_favorite && 'fill-red-500 text-red-500',
-                  )}
-                />
-              </Button>
+              {onFavorite && (
+                <Button
+                  variant="plain"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onFavorite}
+                  title={recording.is_favorite ? 'Unfavorite' : 'Favorite'}
+                >
+                  <Heart
+                    className={cn(
+                      'h-4 w-4',
+                      recording.is_favorite && 'fill-red-500 text-red-500',
+                    )}
+                  />
+                </Button>
+              )}
               {recording.status !== 'processing' && (recording.status === 'failed' || recording.is_corrupt) && onRepair && (
                 <Button
                   variant="plain"
@@ -166,15 +175,17 @@ export function RecordingVideoCard({
                   )}
                 </Button>
               )}
-              <Button
-                variant="plain"
-                size="icon"
-                className="h-8 w-8"
-                onClick={onDownload}
-                title="Download"
-              >
-                <Download className="h-4 w-4" />
-              </Button>
+              {onDownload && (
+                <Button
+                  variant="plain"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={onDownload}
+                  title="Download"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
 

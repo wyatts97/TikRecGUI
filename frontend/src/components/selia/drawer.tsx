@@ -126,7 +126,7 @@ export function DrawerPopup({
       {backdrop && (
         <BaseDrawer.Backdrop
           className={cn(
-            'inset-0 min-h-dvh',
+            'inset-0 min-h-dvh z-50',
             inlined ? 'absolute' : 'fixed',
             inlined
               ? [
@@ -147,7 +147,7 @@ export function DrawerPopup({
       )}
       <BaseDrawer.Viewport
         className={cn(
-          'inset-0',
+          'inset-0 z-50',
           inlined ? 'absolute' : 'fixed',
           direction === 'bottom' && 'flex items-end justify-center',
           !backdrop && 'pointer-events-none',

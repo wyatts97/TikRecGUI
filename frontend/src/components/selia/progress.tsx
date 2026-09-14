@@ -1,56 +1,52 @@
 'use client';
 
-import * as React from 'react';
 import { Progress as BaseProgress } from '@base-ui/react/progress';
 import { cn } from 'lib/utils';
 
 export function Progress({
   className,
-  value,
-  max = 100,
-  label,
-  count,
-  variant = 'warning',
+  children,
   ...props
-}: React.ComponentProps<typeof BaseProgress.Root> & {
-  label?: string;
-  count?: string;
-  variant?: 'warning' | 'success' | 'danger';
-}) {
+}: React.ComponentProps<typeof BaseProgress.Root>) {
   return (
     <BaseProgress.Root
-      value={value}
-      max={max}
-      className={cn('flex flex-col gap-1 w-full', className)}
+      data-slot="progress"
       {...props}
+      className={cn('flex flex-wrap gap-1.5 justify-between', className)}
     >
-      <div className="flex items-center justify-between text-xs">
-        {label && (
-          <BaseProgress.Label className="text-muted-foreground">
-            {label}
-          </BaseProgress.Label>
-        )}
-        {count && (
-          <span className="font-medium tabular-nums text-foreground">
-            {count}
-          </span>
-        )}
-      </div>
-      <BaseProgress.Track
-        className={cn(
-          'h-1.5 w-full overflow-hidden rounded-full',
-          'bg-muted',
-        )}
-      >
+      {children}
+      <BaseProgress.Track className="h-1.5 w-full rounded-full bg-track">
         <BaseProgress.Indicator
-          className={cn(
-            'h-full rounded-full transition-all duration-500',
-            variant === 'warning' && 'bg-warning',
-            variant === 'success' && 'bg-success',
-            variant === 'danger' && 'bg-danger',
-          )}
+          data-slot="progress-indicator"
+          className="rounded-full bg-primary transition-all duration-500"
         />
       </BaseProgress.Track>
     </BaseProgress.Root>
+  );
+}
+
+export function ProgressLabel({
+  className,
+  ...props
+}: React.ComponentProps<typeof BaseProgress.Label>) {
+  return (
+    <BaseProgress.Label
+      data-slot="progress-label"
+      {...props}
+      className={cn('font-medium text-foreground', className)}
+    />
+  );
+}
+
+export function ProgressValue({
+  className,
+  ...props
+}: React.ComponentProps<typeof BaseProgress.Value>) {
+  return (
+    <BaseProgress.Value
+      data-slot="progress-value"
+      {...props}
+      className={cn('text-sm text-dimmed', className)}
+    />
   );
 }

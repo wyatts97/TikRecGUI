@@ -5,6 +5,8 @@ import { Checkbox } from '@/components/selia/checkbox'
 import { cn, formatBytes, formatDuration } from '@/lib/utils'
 import { useDateFormat } from '@/lib/timezone-context'
 import { api, type Clip } from '@/lib/api'
+import { useSpriteScrub } from '@/hooks/useSpriteScrub'
+import { ScrubOverlay } from '@/components/ui/scrub-overlay'
 
 interface ClipCardProps {
   clip: Clip
@@ -34,13 +36,15 @@ export function ClipCard({
   showUser = true,
 }: ClipCardProps) {
   const fmt = useDateFormat()
+  const scrub = useSpriteScrub(clip.sprite_ready ? api.clips.getSpriteVttUrl(clip.id) : null)
 
   return (
     <Card
       className="group overflow-hidden cursor-pointer border border-border bg-card hover:shadow-md transition-shadow"
       onClick={onClick}
     >
-      <div className="relative aspect-video bg-muted overflow-hidden">
+      <div className="relative aspect-video bg-muted overflow-hidden" {...scrub.handlers}>
+        <ScrubOverlay style={scrub.style} fraction={scrub.fraction} />
         {onSelect && (
           <div className="absolute top-2 left-2 z-10" onClick={(e) => e.stopPropagation()}>
             <Checkbox

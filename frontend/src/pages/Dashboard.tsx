@@ -1,61 +1,55 @@
-import { useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Video, Users, Radio, AlertCircle, Play, Clock, Film, Settings, Plus, HardDrive, Activity, CheckCircle2, Cpu } from 'lucide-react'
-import { Card, CardBody, CardHeader, CardTitle } from 'components/selia/card'
-import { Badge } from 'components/selia/badge'
-import { Button } from 'components/selia/button'
-import { Item, ItemContent, ItemTitle, ItemDescription, ItemMedia, ItemAction } from 'components/selia/item'
-import { IconBox } from 'components/selia/icon-box'
-import { Avatar, AvatarImage, AvatarFallback, AvatarIndicator } from 'components/selia/avatar'
-import { Meter, MeterValue, MeterTrack, MeterIndicator } from 'components/selia/meter'
-import EmptyState from '@/components/EmptyState'
-import QueryError from '@/components/QueryError'
-import { api, type ActiveRecording } from '@/lib/api'
-import { formatBytes, formatDuration } from '@/lib/utils'
-import { useDateFormat } from '@/lib/timezone-context'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { clickable } from '@/lib/a11y'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AlertCircle, ArrowRight, BellRing, Film, Radio, Scissors, Users, Video } from 'lucide-react'
+import { Card, CardBody, CardHeader, CardHeaderAction, CardTitle } from '@/components/selia/card'
+import { Button } from '@/components/selia/button'
+import { IconBox } from '@/components/selia/icon-box'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/selia/avatar'
+import { Stack } from '@/components/selia/stack'
+import { Separator } from '@/components/selia/separator'
+import {
+  Item,
+  ItemAction,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemMeta,
+  ItemTitle,
+} from '@/components/selia/item'
+import LiveProfileCard from '@/components/LiveProfileCard'
+import QueryError from '@/components/QueryError'
+import { RecordingVideoCard } from '@/components/ui/recording-video-card'
+import { ClipCard } from '@/components/ui/clip-card'
+import { api, type ActiveRecording, type AppNotification, type User } from '@/lib/api'
+import { cn, formatBytes } from '@/lib/utils'
+import { notificationIcon, notificationTarget, timeAgo } from '@/lib/notifications'
 import toast from 'react-hot-toast'
 
-export default function Dashboard() {
-  const navigate = useNavigate()
-  const fmt = useDateFormat()
-  const queryClient = useQueryClient()
-  const retriedIdsRef = useRef<Set<number>>(new Set())
-  const handleAvatarError = (id: number) => {
-    if (!retriedIdsRef.current.has(id)) {
-      retriedIdsRef.current.add(id)
-      // Best-effort avatar repair; ignore failures rather than raising
-      // an unhandled rejection from an <img onError> handler.
-      api.users.refresh(id, true).catch(() => {})
-    }
-  }
+// Four fills one desktop row exactly (grid-cols-4) and a 2x2 grid on tablets.
+const RAIL_SIZE = 4
+const ACTIVITY_SIZE = 12
 
-  const { data: users = [], isLoading: usersLoading, isError: usersError, error: usersErr, refetch: refetchUsers } = useQuery({
+export default function Dashboard() {
+  const queryClient = useQueryClient()
+
+  const { data: users = [], isLoading: usersLoading, isError, error, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.users.list(),
     refetchInterval: 30000,
   })
 
-  const { data: activeRecordings = [], isLoading: activeLoading } = useQuery({
+  // Elapsed-time badges on the live cards come from this poll.
+  const { data: activeRecordings = [] } = useQuery({
     queryKey: ['activeRecordings'],
     queryFn: () => api.recordings.getActive(),
     refetchInterval: 5000,
   })
 
-  const startRecordingMutation = useMutation({
-    mutationFn: (username: string) => api.recordings.start({ username }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recordings'] })
-      queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
-      toast.success('Recording started')
-    },
-    onError: (error: Error) => toast.error(error.message),
-  })
-
-  const { data: recentRecordings } = useQuery({
-    queryKey: ['recordings', 'recent'],
-    queryFn: () => api.recordings.list(1, 7, 'completed,stopped'),
+  const { data: overview } = useQuery({
+    queryKey: ['stats', 'overview'],
+    queryFn: () => api.stats.overview(),
+    refetchInterval: 60000,
   })
 
   const { data: health } = useQuery({
@@ -64,444 +58,413 @@ export default function Dashboard() {
     refetchInterval: 60000,
   })
 
-  const liveUsers = users.filter((u) => u.is_live)
-  const monitoredUsers = users.filter((u) => u.is_monitoring)
+  const startRecording = useMutation({
+    mutationFn: (username: string) => api.recordings.start({ username }),
+    onSuccess: (_rec, username) => {
+      queryClient.invalidateQueries({ queryKey: ['activeRecordings'] })
+      queryClient.invalidateQueries({ queryKey: ['recordings'] })
+      toast.success(`Recording @${username}`)
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
 
-  // Simulated disk stats — using recordings_dir info from health
-  const recordingsDir = health?.recordings_dir || 'N/A'
-  const dirExists = health?.recordings_dir_exists
+  // Repair a broken avatar once per user per visit.
+  const repairedAvatars = useRef<Set<number>>(new Set())
+  const repairAvatar = (id: number) => {
+    if (repairedAvatars.current.has(id)) return
+    repairedAvatars.current.add(id)
+    api.users.refresh(id, true).catch(() => {})
+  }
 
-  // Build activity feed from recent recordings and live users
-  const activityItems = [
-    ...(recentRecordings?.recordings || []).map((r) => ({
-      id: `rec-${r.id}`,
-      type: 'recording' as const,
-      label: `Recording completed: @${r.username}`,
-      timestamp: r.ended_at || r.created_at,
-      icon: CheckCircle2,
-      iconClass: 'text-success',
-      onClick: () => navigate(`/watch/${r.id}`),
-    })),
-    ...liveUsers.slice(0, 5).map((u) => ({
-      id: `live-${u.id}`,
-      type: 'live' as const,
-      label: `@${u.username} went live`,
-      timestamp: u.last_checked || u.updated_at,
-      icon: Radio,
-      iconClass: 'text-red-500',
-      onClick: () => navigate('/watchlist'),
-    })),
-  ]
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 7)
+  if (isError) {
+    return <QueryError error={error} what="your dashboard" onRetry={() => refetch()} />
+  }
+
+  const monitored = users.filter((u) => u.is_monitoring).length
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">
-          Monitor TikTok live streams and manage recordings
-        </p>
-      </div>
-
-      {usersError ? (
-        <QueryError error={usersErr} what="your dashboard" onRetry={() => refetchUsers()} />
-      ) : (
-      <>
+    <div className="space-y-10">
       {health?.country_blacklisted && (
-        <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30 dark:border-yellow-900">
-          <CardBody className="flex items-center gap-3 py-4">
-            <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+        <Card className="ring-warning/40 bg-warning/5">
+          <CardBody className="flex items-start gap-3">
+            <IconBox variant="warning-subtle" size="sm">
+              <AlertCircle />
+            </IconBox>
             <div>
-              <p className="font-medium text-yellow-800 dark:text-yellow-200">Region Restricted</p>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                TikTok access is restricted in your region. Configure cookies or use a proxy in Settings.
+              <p className="font-medium text-foreground">Region restricted</p>
+              <p className="text-sm text-muted">
+                TikTok access is restricted in your region. Configure cookies or a proxy in{' '}
+                <Link to="/settings" className="underline">Settings</Link>.
               </p>
             </div>
           </CardBody>
         </Card>
       )}
 
-      {/* Stat cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer" {...clickable(() => navigate('/watchlist'))}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardBody>
-            {usersLoading ? <div className="h-8 w-16 bg-muted animate-pulse rounded" /> : (
-              <>
-                <div className="text-2xl font-bold">{users.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  {monitoredUsers.length} being monitored
-                </p>
-              </>
-            )}
-          </CardBody>
-        </Card>
+      <LiveNow
+        users={users}
+        activeRecordings={activeRecordings}
+        loading={usersLoading}
+        onRecord={(username) => startRecording.mutate(username)}
+        pendingUsername={startRecording.isPending ? startRecording.variables : undefined}
+        onAvatarError={repairAvatar}
+      />
 
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-red-500" {...clickable(() => navigate('/watchlist'))}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Live Now</CardTitle>
-            <Radio className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardBody>
-            {usersLoading ? <div className="h-8 w-16 bg-muted animate-pulse rounded" /> : (
-              <>
-                <div className="text-2xl font-bold">{liveUsers.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Users currently streaming
-                </p>
-              </>
-            )}
-          </CardBody>
-        </Card>
+      <section aria-label="Library at a glance" className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          to="/watchlist"
+          icon={Users}
+          label="Watchlist"
+          value={users.length}
+          detail={`${monitored} monitored`}
+        />
+        <StatCard
+          to="/recordings"
+          icon={Film}
+          label="Recordings"
+          value={overview?.total_recordings}
+          detail={overview ? `${overview.total_hours} hours saved` : undefined}
+        />
+        <StatCard
+          to="/clips"
+          icon={Scissors}
+          label="Clips"
+          value={overview?.total_clips}
+          detail={overview ? formatBytes(overview.clip_storage) : undefined}
+        />
+        <StatCard
+          to="/live"
+          icon={Video}
+          label="Recording now"
+          value={activeRecordings.length}
+          detail={activeRecordings.length === 1 ? '1 stream' : `${activeRecordings.length} streams`}
+        />
+      </section>
 
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer" {...clickable(() => navigate('/recordings'))}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Recordings</CardTitle>
-            <Video className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardBody>
-            {activeLoading ? <div className="h-8 w-16 bg-muted animate-pulse rounded" /> : (
-              <>
-                <div className="text-2xl font-bold">{activeRecordings.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  Recordings in progress
-                </p>
-              </>
-            )}
-          </CardBody>
-        </Card>
+      <LatestRecordings />
+      <RecentClips />
+      <RecentActivity />
+    </div>
+  )
+}
 
-        <Card className="hover:shadow-subtle transition-shadow cursor-pointer border-l-4 border-l-success" {...clickable(() => navigate('/settings'))}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Status</CardTitle>
-            <div className={`h-2 w-2 rounded-full ${health?.status === 'healthy' ? 'bg-success' : 'bg-yellow-500'}`} />
-          </CardHeader>
-          <CardBody>
-            <div className="text-2xl font-bold capitalize">{health?.status || 'Unknown'}</div>
-            <p className="text-xs text-muted-foreground">
-              {health?.cookies_configured ? 'Cookies configured' : 'No cookies set'}
-            </p>
-          </CardBody>
-        </Card>
-      </div>
+/* ------------------------------------------------------------------------ */
 
-      {/* System resources grid */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Storage indicator card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <HardDrive className="h-4 w-4 text-muted-foreground" />
-              Storage
-            </CardTitle>
-            <Button
-              variant="plain"
-              size="sm"
-              onClick={() => navigate('/settings')}
-            >
-              <IconBox variant="secondary-subtle" size="sm">
-                <Settings className="h-3.5 w-3.5" />
-              </IconBox>
-            </Button>
-          </CardHeader>
-          <CardBody>
-            {health?.disk_usage ? (() => {
-              const { total, used, free, percent } = health.disk_usage
-              const freePercent = 100 - percent
-              const indicatorColor = freePercent > 20 ? 'bg-success' : freePercent > 10 ? 'bg-warning' : 'bg-danger'
-              const textColor = freePercent > 20 ? 'text-success' : freePercent > 10 ? 'text-warning' : 'text-danger'
-              return (
-                <Meter value={percent}>
-                  <div className="flex items-center justify-between">
-                    <MeterValue>{formatBytes(used)} used</MeterValue>
-                    <MeterValue>{formatBytes(total)} total</MeterValue>
-                  </div>
-                  <MeterTrack>
-                    <MeterIndicator className={indicatorColor} />
-                  </MeterTrack>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className={textColor}>
-                      {formatBytes(free)} free ({freePercent.toFixed(1)}%)
-                    </span>
-                    {freePercent <= 20 && (
-                      <Badge variant="danger" size="sm" className="text-[10px]">
-                        Low space
-                      </Badge>
-                    )}
-                  </div>
-                </Meter>
-              )
-            })() : dirExists === false ? (
-              <p className="text-xs text-destructive flex items-center gap-1">
-                Recordings directory does not exist. Check your settings.
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground truncate">{recordingsDir}</p>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* System Resources card */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium">
-              <Cpu className="h-4 w-4 text-muted-foreground" />
-              System Resources
-            </CardTitle>
-          </CardHeader>
-          <CardBody className="space-y-4">
-            {health?.cpu_percent != null && health?.ram_percent != null ? (
-              <>
-                {/* CPU */}
-                <Meter value={health.cpu_percent}>
-                  <div className="flex items-center justify-between">
-                    <MeterValue>CPU</MeterValue>
-                    <MeterValue>{health.cpu_percent.toFixed(1)}%</MeterValue>
-                  </div>
-                  <MeterTrack>
-                    <MeterIndicator
-                      className={
-                        health.cpu_percent < 60
-                          ? 'bg-success'
-                          : health.cpu_percent < 80
-                            ? 'bg-warning'
-                            : 'bg-danger'
-                      }
-                    />
-                  </MeterTrack>
-                </Meter>
-                {/* RAM */}
-                <Meter value={health.ram_percent}>
-                  <div className="flex items-center justify-between">
-                    <MeterValue>RAM</MeterValue>
-                    <MeterValue>{health.ram_percent.toFixed(1)}%</MeterValue>
-                  </div>
-                  <MeterTrack>
-                    <MeterIndicator
-                      className={
-                        health.ram_percent < 60
-                          ? 'bg-success'
-                          : health.ram_percent < 80
-                            ? 'bg-warning'
-                            : 'bg-danger'
-                      }
-                    />
-                  </MeterTrack>
-                </Meter>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">System metrics unavailable</p>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Quick actions */}
-      <div className="flex flex-wrap gap-3">
-        <Button onClick={() => navigate('/watchlist')}>
-          <Plus className="h-4 w-4" />
-          Add User
-        </Button>
-        <Button variant="secondary" onClick={() => navigate('/recordings')}>
-          <Film className="h-4 w-4" />
-          New Recording
-        </Button>
-        <Button variant="secondary" onClick={() => navigate('/settings')}>
-          <Settings className="h-4 w-4" />
-          Settings
-        </Button>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Live Users */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Radio className="h-5 w-5 text-red-500" />
-              Live Users
-            </CardTitle>
-          </CardHeader>
-          <CardBody>
-            {usersLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-center gap-3 p-3">
-                    <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-                    <div className="space-y-1.5 flex-1">
-                      <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                      <div className="h-3 w-20 bg-muted animate-pulse rounded" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : liveUsers.length === 0 ? (
-              <div className="py-4">
-                <EmptyState
-                  icon={Radio}
-                  title="No users live"
-                  description="No users are currently live. Add users to your watchlist to monitor them."
-                />
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {liveUsers.slice(0, 5).map((user) => (
-                  <Item key={user.id} size="md">
-                    <ItemMedia>
-                      <Avatar size="md">
-                        <AvatarImage
-                          src={api.users.getAvatarUrl(user.id)}
-                          alt={user.username}
-                          onError={() => handleAvatarError(user.id)}
-                        />
-                        <AvatarFallback>
-                          {user.username[0].toUpperCase()}
-                        </AvatarFallback>
-                        <AvatarIndicator className="bg-success ring-2 ring-background" />
-                      </Avatar>
-                    </ItemMedia>
-                    <ItemContent>
-                      {user.display_name && (
-                        <ItemTitle>{user.display_name}</ItemTitle>
-                      )}
-                      <ItemDescription>@{user.username}</ItemDescription>
-                    </ItemContent>
-                    <ItemAction>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        aria-label={`Start recording @${user.username}`}
-                        onClick={() => startRecordingMutation.mutate(user.username)}
-                        disabled={startRecordingMutation.isPending}
-                      >
-                        <Play className="h-3 w-3 mr-1" />
-                        Record
-                      </Button>
-                    </ItemAction>
-                  </Item>
-                ))}
-                {liveUsers.length > 5 && (
-                  <Link to="/watchlist" className="block">
-                    <Button variant="plain" className="w-full">
-                      View all {liveUsers.length} live users
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* Active Recordings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Video className="h-5 w-5 text-primary" />
-              Active Recordings
-            </CardTitle>
-          </CardHeader>
-          <CardBody>
-            {activeLoading ? (
-              <div className="space-y-3">
-                {[1, 2].map((i) => (
-                  <div key={i} className="flex items-center gap-3 p-3">
-                    <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
-                    <div className="space-y-1.5 flex-1">
-                      <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-                      <div className="h-3 w-20 bg-muted animate-pulse rounded" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : activeRecordings.length === 0 ? (
-              <div className="py-4">
-                <EmptyState
-                  icon={Video}
-                  title="No active recordings"
-                  description="Active recordings from live streams will appear here."
-                />
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {activeRecordings.map((recording: ActiveRecording) => (
-                  <Item key={recording.id} variant="danger" size="md">
-                    <ItemMedia>
-                      <Avatar size="md">
-                        <AvatarImage
-                          src={api.users.getAvatarUrl(recording.user_id)}
-                          alt={recording.username}
-                          onError={() => handleAvatarError(recording.user_id)}
-                        />
-                        <AvatarFallback className="bg-danger/20 text-danger">
-                          {recording.username[0].toUpperCase()}
-                        </AvatarFallback>
-                        <AvatarIndicator className="bg-danger animate-pulse ring-2 ring-background" />
-                      </Avatar>
-                    </ItemMedia>
-                    <ItemContent>
-                      <ItemTitle>@{recording.username}</ItemTitle>
-                      <ItemDescription className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatDuration(recording.duration_seconds)}
-                      </ItemDescription>
-                    </ItemContent>
-                    <ItemAction>
-                      <Badge variant="danger">Recording</Badge>
-                    </ItemAction>
-                  </Item>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* Activity Feed */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-primary" />
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardBody>
-            {activityItems.length === 0 ? (
-              <div className="py-4">
-                <EmptyState
-                  icon={Activity}
-                  title="No activity yet"
-                  description="Recent activity from recordings and live users will appear here."
-                />
-              </div>
-            ) : (
-              <ul className="relative space-y-4 sm:space-y-6 border-s-2 border-border ps-4 sm:ps-6">
-                {activityItems.map((item) => {
-                  const Icon = item.icon
-                  const nodeColor = item.type === 'recording' ? 'bg-success' : 'bg-danger'
-                  return (
-                    <li key={item.id} className="relative">
-                      <span className={`absolute -start-[31px] flex h-6 w-6 items-center justify-center rounded-full ${nodeColor} ring-2 ring-background`}>
-                        <Icon className="h-3 w-3 text-white" />
-                      </span>
-                      <div
-                        className="cursor-pointer hover:bg-accent rounded-lg p-2 -m-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        {...clickable(item.onClick, item.label)}
-                      >
-                        <p className="text-sm font-medium text-foreground truncate">{item.label}</p>
-                        <p className="text-xs text-muted-foreground">{fmt(item.timestamp)}</p>
-                      </div>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-      </>
+function SectionHeader({ title, to, linkLabel }: { title: string; to?: string; linkLabel?: string }) {
+  return (
+    <div className="flex items-end justify-between gap-4 mb-4">
+      <h2 className="text-xl font-semibold tracking-tight text-foreground">{title}</h2>
+      {to && (
+        <Link
+          to={to}
+          className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors"
+        >
+          {linkLabel ?? 'View all'}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
       )}
     </div>
+  )
+}
+
+/** Horizontal snap-scroll rail on small screens, a grid from `sm` up. */
+function Rail({ children, columns = 3 }: { children: React.ReactNode; columns?: 3 | 4 }) {
+  return (
+    <div
+      className={cn(
+        // scroll-px keeps snapped cards clear of the screen edge on phones.
+        '-mx-4 px-4 scroll-px-4 sm:mx-0 sm:px-0 flex sm:grid gap-4 sm:grid-cols-2',
+        columns === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3',
+        'overflow-x-auto sm:overflow-visible snap-x snap-mandatory pb-2 sm:pb-0',
+        '*:shrink-0 *:w-[80%] sm:*:w-auto *:snap-start',
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+function LiveNow({
+  users,
+  activeRecordings,
+  loading,
+  onRecord,
+  pendingUsername,
+  onAvatarError,
+}: {
+  users: User[]
+  activeRecordings: ActiveRecording[]
+  loading: boolean
+  onRecord: (username: string) => void
+  pendingUsername?: string
+  onAvatarError: (id: number) => void
+}) {
+  const recordingByUser = new Map(activeRecordings.map((r) => [r.user_id, r]))
+  // Anyone being recorded is live, even if the last watchlist check lags.
+  const live = users
+    .filter((u) => u.is_live || recordingByUser.has(u.id))
+    .sort((a, b) => Number(recordingByUser.has(b.id)) - Number(recordingByUser.has(a.id)))
+
+  return (
+    <section aria-labelledby="live-now-title">
+      <div className="flex items-end justify-between gap-4 mb-4">
+        <div>
+          <h1 id="live-now-title" className="text-3xl font-bold tracking-tight text-foreground">
+            Live now
+          </h1>
+          <p className="text-muted mt-1">
+            {loading
+              ? 'Checking who is live…'
+              : live.length === 0
+                ? 'Nobody you watch is streaming right now.'
+                : `${live.length} of your creators ${live.length === 1 ? 'is' : 'are'} streaming.`}
+          </p>
+        </div>
+        {live.length > 0 && (
+          <Link
+            to="/live"
+            className="inline-flex items-center gap-1 text-sm text-muted hover:text-foreground transition-colors"
+          >
+            All streams
+            <ArrowRight className="size-3.5" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
+
+      {loading ? (
+        <Rail>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-[420px] rounded-xl bg-muted/50 animate-pulse motion-reduce:animate-none" />
+          ))}
+        </Rail>
+      ) : live.length === 0 ? (
+        <div className="h-40 rounded-xl border border-dashed border-border flex items-center justify-center">
+          <Radio className="size-5 text-dimmed" aria-hidden="true" />
+        </div>
+      ) : (
+        <Rail>
+          {live.map((user) => (
+            <LiveProfileCard
+              key={user.id}
+              userId={user.id}
+              username={user.username}
+              displayName={user.display_name}
+              recording={recordingByUser.get(user.id)}
+              onRecord={() => onRecord(user.username)}
+              recordPending={pendingUsername === user.username}
+              onAvatarError={() => onAvatarError(user.id)}
+            />
+          ))}
+        </Rail>
+      )}
+    </section>
+  )
+}
+
+function StatCard({
+  to,
+  icon: Icon,
+  label,
+  value,
+  detail,
+}: {
+  to: string
+  icon: typeof Users
+  label: string
+  value: number | undefined
+  detail?: string
+}) {
+  return (
+    <Link
+      to={to}
+      className="group rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
+      <Card className="h-full transition-shadow group-hover:shadow-md">
+        <CardBody className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-muted">{label}</span>
+            <IconBox variant="secondary-subtle" size="sm">
+              <Icon />
+            </IconBox>
+          </div>
+          <div>
+            {value === undefined ? (
+              <div className="h-8 w-16 rounded bg-muted animate-pulse motion-reduce:animate-none" />
+            ) : (
+              <p className="text-3xl font-semibold tabular-nums text-foreground">{value.toLocaleString()}</p>
+            )}
+            <p className="text-xs text-dimmed mt-1 h-4">{detail}</p>
+          </div>
+        </CardBody>
+      </Card>
+    </Link>
+  )
+}
+
+function LatestRecordings() {
+  const navigate = useNavigate()
+  const { data } = useQuery({
+    queryKey: ['recordings', 'dashboard-latest'],
+    queryFn: () => api.recordings.list(1, RAIL_SIZE, 'completed,stopped'),
+  })
+  const recordings = data?.recordings ?? []
+  if (data && recordings.length === 0) return null
+
+  return (
+    <section aria-label="Latest recordings">
+      <SectionHeader title="Latest recordings" to="/watch" />
+      <Rail columns={4}>
+        {recordings.map((rec) => (
+          <RecordingVideoCard key={rec.id} recording={rec} onClick={() => navigate(`/watch/${rec.id}`)} />
+        ))}
+      </Rail>
+    </section>
+  )
+}
+
+function RecentClips() {
+  const navigate = useNavigate()
+  const { data } = useQuery({
+    queryKey: ['clips', 'dashboard-recent'],
+    queryFn: () => api.clips.list(1, RAIL_SIZE, 'date', 'desc'),
+  })
+  const clips = data?.clips ?? []
+  if (data && clips.length === 0) return null
+
+  return (
+    <section aria-label="Recent clips">
+      <SectionHeader title="Recent clips" to="/clips" />
+      <Rail columns={4}>
+        {clips.map((clip) => (
+          <ClipCard key={clip.id} clip={clip} onClick={() => navigate(`/clips/${clip.id}`)} />
+        ))}
+      </Rail>
+    </section>
+  )
+}
+
+type NotificationCache = { notifications: AppNotification[]; unread: number }
+
+function RecentActivity() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [permission, setPermission] = useState<NotificationPermission>(
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+  )
+
+  // Same cache key the SSE stream prepends new notifications into.
+  const { data } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => api.notifications.list(50),
+    refetchInterval: 60000,
+  })
+  const items = (data?.notifications ?? []).slice(0, ACTIVITY_SIZE)
+  const unread = data?.unread ?? 0
+
+  // Seeing the feed counts as reading it.
+  useEffect(() => {
+    if (unread === 0) return
+    const t = setTimeout(() => {
+      api.notifications
+        .markAllRead()
+        .then(() =>
+          queryClient.setQueryData(['notifications'], (old: NotificationCache | undefined) =>
+            old ? { ...old, unread: 0 } : old,
+          ),
+        )
+        .catch(() => {})
+    }, 1500)
+    return () => clearTimeout(t)
+  }, [unread, queryClient])
+
+  const enableDesktop = async () => {
+    if (typeof Notification === 'undefined') return
+    setPermission(await Notification.requestPermission())
+  }
+
+  return (
+    <section aria-label="Recent activity">
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent activity</CardTitle>
+          {permission === 'default' && (
+            <CardHeaderAction>
+              <Button variant="plain" size="sm" onClick={enableDesktop}>
+                <BellRing />
+                Desktop alerts
+              </Button>
+            </CardHeaderAction>
+          )}
+        </CardHeader>
+        <CardBody>
+          {items.length === 0 ? (
+            <p className="text-sm text-muted text-center py-6">
+              Streams going live, finished recordings and new clips will show up here.
+            </p>
+          ) : (
+            // Selia's Stack-of-Items pattern: CardBody bleeds the stack to the
+            // card edges and pads each item.
+            <Stack>
+              {items.map((n, i) => (
+                <Fragment key={n.id}>
+                  {i > 0 && <Separator />}
+                  <ActivityItem
+                    notification={n}
+                    onOpen={(to) => navigate(to)}
+                  />
+                </Fragment>
+              ))}
+            </Stack>
+          )}
+        </CardBody>
+      </Card>
+    </section>
+  )
+}
+
+function ActivityItem({
+  notification: n,
+  onOpen,
+}: {
+  notification: AppNotification
+  onOpen: (to: string) => void
+}) {
+  const { Icon, variant } = notificationIcon(n.type)
+  const target = notificationTarget(n)
+  const userId: number | undefined = n.data?.user_id
+
+  return (
+    <Item variant="plain">
+      <ItemMedia>
+        {userId ? (
+          <Avatar size="md">
+            <AvatarImage src={api.users.getAvatarUrl(userId)} alt="" />
+            <AvatarFallback>
+              <Icon className="size-4.5" />
+            </AvatarFallback>
+          </Avatar>
+        ) : (
+          <IconBox variant={variant}>
+            <Icon />
+          </IconBox>
+        )}
+      </ItemMedia>
+      <ItemContent>
+        <ItemTitle>{n.title}</ItemTitle>
+        <ItemMeta className={n.message ? 'mb-1.5' : undefined}>
+          <time dateTime={n.created_at} title={new Date(n.created_at).toLocaleString()}>
+            {timeAgo(n.created_at)}
+          </time>
+        </ItemMeta>
+        {n.message && <ItemDescription className="text-sm">{n.message}</ItemDescription>}
+      </ItemContent>
+      {target && (
+        <ItemAction>
+          <Button variant="outline" size="xs" onClick={() => onOpen(target)}>
+            Open
+          </Button>
+        </ItemAction>
+      )}
+    </Item>
   )
 }

@@ -10,11 +10,9 @@ type NotificationCache = { notifications: AppNotification[]; unread: number }
 /**
  * Subscribes to the notification SSE stream.
  *
- * This lives in a hook rather than in NotificationCenter because that component
- * is rendered twice (mobile header + desktop sidebar) and both copies stay in
- * the DOM -- visibility is CSS-only. Owning the EventSource there opened two
- * connections and fired every desktop notification twice. Mount this exactly
- * once, from Layout.
+ * Mount this exactly once, from Layout: the sidebar renders twice (desktop and
+ * the mobile drawer), and owning the EventSource in a component that renders
+ * twice opened two connections and fired every desktop notification twice.
  */
 export function useNotificationStream() {
   const queryClient = useQueryClient()
