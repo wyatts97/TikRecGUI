@@ -221,11 +221,20 @@ export interface DiskUsage {
   percent: number
 }
 
+export interface LiveCheckHealth {
+  failing_users: number
+  last_error: string | null
+  last_error_user: string | null
+  last_error_at: string | null
+  last_ok_at: string | null
+}
+
 export interface HealthStatus {
   status: string
   recorder_available: boolean
   country_blacklisted: boolean
   cookies_configured: boolean
+  live_checks?: LiveCheckHealth
   recordings_dir: string
   recordings_dir_exists: boolean
   disk_usage: DiskUsage | null

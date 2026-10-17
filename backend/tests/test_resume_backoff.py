@@ -53,7 +53,7 @@ def test_healthy_segments_resume_without_backoff(db, monkeypatch):
     segments_to_capture = 4
     resolved = {"n": 0}
 
-    def fake_resolve(room_id, api, username=None):
+    def fake_resolve(room_id, api, username=None, failed=None):
         resolved["n"] += 1
         return "http://example.invalid/fresh.flv" if resolved["n"] < segments_to_capture else None
 

@@ -101,6 +101,32 @@ export default function Dashboard() {
         </Card>
       )}
 
+      {!!health?.live_checks?.failing_users && (
+        <Card className="ring-warning/40 bg-warning/5">
+          <CardBody className="flex items-start gap-3">
+            <IconBox variant="warning-subtle" size="sm">
+              <AlertCircle />
+            </IconBox>
+            <div className="min-w-0">
+              <p className="font-medium text-foreground">
+                Live checks are failing for {health.live_checks.failing_users}{' '}
+                {health.live_checks.failing_users === 1 ? 'user' : 'users'}
+              </p>
+              <p className="text-sm text-muted">
+                TikTok lookups from this server are being refused, so these users will look offline and
+                won't be recorded. A residential IP or proxy and fresh cookies in{' '}
+                <Link to="/settings" className="underline">Settings</Link> usually fix this.
+              </p>
+              {health.live_checks.last_error && (
+                <p className="mt-1 text-xs text-muted break-words">
+                  @{health.live_checks.last_error_user}: {health.live_checks.last_error}
+                </p>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+      )}
+
       <LiveNow
         users={users}
         activeRecordings={activeRecordings}

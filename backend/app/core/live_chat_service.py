@@ -3,6 +3,8 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import re
+import sys
 import threading
 import asyncio
 from datetime import datetime
@@ -10,6 +12,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Optional
 
 import httpx
+from pydantic.dataclasses import rebuild_dataclass
 
 from app.db.database import get_session
 from app.db.models import LiveEvent
@@ -42,6 +45,8 @@ def _ttl() -> SimpleNamespace:
     from TikTokLive.client.web.web_settings import WebDefaults
     from TikTokLive.events import CommentEvent, ConnectEvent, GiftEvent
 
+    _prebuild_shadowed_proto_schemas()
+
     return SimpleNamespace(
         TikTokLiveClient=TikTokLiveClient,
         AuthenticatedWebSocketConnectionError=AuthenticatedWebSocketConnectionError,
@@ -52,6 +57,67 @@ def _ttl() -> SimpleNamespace:
         ConnectEvent=ConnectEvent,
         GiftEvent=GiftEvent,
     )
+
+
+# Locals of betterproto2's ``Message.parse(cls, data)`` frame.
+_PARSE_FRAME_LOCALS = re.compile(r"(?<![\w.])(?:data|cls|stream)\.")
+
+
+def _rebuild_schema(message_cls) -> None:
+    # Keep this frame free of other locals: pydantic merges the caller's
+    # locals into the namespace it resolves forward references against.
+    rebuild_dataclass(message_cls, force=True)
+
+
+def _prebuild_shadowed_proto_schemas() -> int:
+    """Build the TikTokLive proto schemas that cannot be built lazily.
+
+    TikTokLiveProto's message classes are pydantic dataclasses whose schemas
+    are completed on first instantiation, and that first instantiation
+    happens inside ``Message.parse(cls, data)``. Pydantic resolves forward
+    references against that frame's locals, so an annotation such as
+    ``"data.HashtagNamespace"`` (``data`` being a proto sub-module) resolves
+    ``data`` to the payload bytes and every parse fails with ``'bytes' object
+    has no attribute 'HashtagNamespace'``. That dropped every
+    WebcastLinkLayerMessage with a ~150-line traceback, and - because
+    ``User.fans_club`` is affected too - any comment or gift sent by a
+    fan-club member. Building those schemas here, from a clean frame, means
+    the lazy path never runs. Returns the number of classes rebuilt.
+    """
+    try:
+        import betterproto2
+    except Exception:
+        return 0
+
+    rebuilt = 0
+    for module_name, module in list(sys.modules.items()):
+        if module is None or not module_name.startswith("TikTokLiveProto."):
+            continue
+        for obj in list(vars(module).values()):
+            if not (
+                isinstance(obj, type)
+                and issubclass(obj, betterproto2.Message)
+                and obj.__module__ == module_name
+                and not getattr(obj, "__pydantic_complete__", True)
+            ):
+                continue
+            annotations = getattr(obj, "__annotations__", {})
+            if not any(
+                isinstance(a, str) and _PARSE_FRAME_LOCALS.search(a)
+                for a in annotations.values()
+            ):
+                continue
+            try:
+                _rebuild_schema(obj)
+                rebuilt += 1
+            except Exception as exc:
+                logger.warning(
+                    "Could not prebuild TikTokLive schema %s.%s: %s",
+                    module_name, obj.__qualname__, exc,
+                )
+    if rebuilt:
+        logger.info("Prebuilt %d TikTokLive message schema(s)", rebuilt)
+    return rebuilt
 
 
 def _sign_server_host() -> str:
@@ -408,11 +474,13 @@ class LiveChatListener:
             # Start non-blocking so we can poll the stop event.
             # Pass room_id directly to skip HTML scraping (often blocked on servers).
             # fetch_live_check=False because Phase 2 already confirmed the stream is live.
-            # fetch_gift_info=True enables gift name/metadata resolution.
+            # fetch_gift_info stays off: each GiftEvent already carries the
+            # gift's name and diamond value, and the full gift catalogue was
+            # being re-downloaded on every one of a session's reconnects.
             connection_task = await client.start(
                 room_id=int(self.room_id),
                 fetch_live_check=False,
-                fetch_gift_info=True,
+                fetch_gift_info=False,
             )
         except Exception as exc:
             outcome = self._classify(exc, connected)
@@ -502,24 +570,29 @@ class LiveChatListener:
     async def _shutdown_client(self, client: TikTokLiveClient):
         """Tear a client down without letting cleanup errors escape.
 
-        ``disconnect()`` is only meaningful once a socket exists; calling it
-        after ``start()`` failed left a half-built coroutine behind ("coroutine
-        'TikTokLiveClient.disconnect' was never awaited"). When nothing
-        connected, just close the HTTP sessions.
+        TikTokLive's ``close()`` (and ``disconnect(close_client=True)``, which
+        calls it) ends in ``loop.run_until_complete(self.disconnect())``. From
+        inside a running loop that raises, skips the rest of the cleanup and
+        leaves the ``disconnect()`` coroutine un-awaited ("coroutine
+        'TikTokLiveClient.disconnect' was never awaited"). Do the same two
+        steps directly instead: ``disconnect()`` is a no-op on a socket that
+        never opened, and ``web.close()`` releases the HTTP sessions.
         """
-        try:
-            if client.connected:
-                await asyncio.wait_for(
-                    client.disconnect(close_client=True), timeout=self.SHUTDOWN_TIMEOUT
+        for step in (client.disconnect, client.web.close):
+            try:
+                await asyncio.wait_for(step(), timeout=self.SHUTDOWN_TIMEOUT)
+            except (Exception, asyncio.CancelledError):
+                # disconnect() awaits the connection task, which may be the
+                # one cancelled after SHUTDOWN_TIMEOUT; that CancelledError is
+                # not ours. Only propagate a cancellation aimed at this task.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
+                logger.debug(
+                    "Chat client cleanup for recording %d failed",
+                    self.recording_id,
+                    exc_info=True,
                 )
-            else:
-                await asyncio.wait_for(client.close(), timeout=self.SHUTDOWN_TIMEOUT)
-        except Exception:
-            logger.debug(
-                "Chat client cleanup for recording %d failed",
-                self.recording_id,
-                exc_info=True,
-            )
 
 
 class LiveChatService:

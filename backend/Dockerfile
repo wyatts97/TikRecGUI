@@ -17,7 +17,10 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN uv pip install --system --no-cache --prerelease=allow -r requirements.txt
+# No --prerelease=allow: TikTokLive 7 is stable now, and the flag was quietly
+# pulling beta/RC builds of unrelated packages (curl-cffi, protobuf) into
+# production.
+RUN uv pip install --system --no-cache -r requirements.txt
 
 # Vendor the TikTok recorder into the image so it is always present,
 # independent of the host filesystem / git state.

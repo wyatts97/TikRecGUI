@@ -98,3 +98,40 @@ def test_service_restarts_a_dead_listener(monkeypatch):
     started[0].alive = False
     assert service.start_listening(**args) is True, "a listener that gave up must not block a restart"
     assert len(started) == 2
+
+
+def test_nested_proto_messages_parse_after_prebuild():
+    """TikTokLive's lazily-built schemas broke inside Message.parse(cls, data):
+    annotations like "data.HashtagNamespace" resolved ``data`` to the payload
+    bytes. That dropped every WebcastLinkLayerMessage and, via User.fans_club,
+    any comment from a fan-club member. _ttl() prebuilds those schemas."""
+    lcs._ttl()
+    from TikTokLiveProto.v3.webcast.model import FansClubMember, Hashtag
+    from TikTokLiveProto.v3.webcast.model.message.linkcore import WebcastLinkLayerMessage
+
+    for message_cls in (FansClubMember, Hashtag, WebcastLinkLayerMessage):
+        message_cls.parse(b"")
+
+
+def test_shutdown_client_awaits_both_steps_and_survives_a_cancelled_task():
+    calls = []
+
+    async def disconnect():
+        calls.append("disconnect")
+        # disconnect() awaits the connection task, which may have been
+        # cancelled after SHUTDOWN_TIMEOUT; that must not abort cleanup.
+        raise asyncio.CancelledError()
+
+    async def web_close():
+        calls.append("web.close")
+
+    def close():
+        raise AssertionError("client.close() runs run_until_complete inside the loop")
+
+    client = SimpleNamespace(
+        disconnect=disconnect,
+        close=close,
+        web=SimpleNamespace(close=web_close),
+    )
+    asyncio.run(_listener()._shutdown_client(client))
+    assert calls == ["disconnect", "web.close"]

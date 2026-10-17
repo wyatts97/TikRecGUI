@@ -293,6 +293,9 @@ def health_check():
         "recorder_available": recorder_ready,
         "country_blacklisted": is_blacklisted,
         "cookies_configured": has_cookies,
+        # Room/live lookups that are failing right now. Without this a
+        # server blocked by TikTok just looks like nobody ever goes live.
+        "live_checks": recorder_service.live_check_health(),
         "recordings_dir": str(settings.RECORDINGS_DIR),
         "recordings_dir_exists": settings.RECORDINGS_DIR.exists(),
         "disk_usage": disk_usage,

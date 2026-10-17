@@ -5,6 +5,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from app.config import settings
 from app.db.database import get_session, run_background
@@ -114,19 +115,61 @@ def _check_live_with_backoff(
     return False, None
 
 
-def _resolve_fresh_live_url(room_id: str, api: object, username: str | None = None) -> str | None:
+def _url_key(url: str) -> str:
+    """Identify a stream across re-signs (only the query string changes)."""
+    parts = urlsplit(url)
+    return f"{parts.netloc}{parts.path}"
+
+
+def _live_url_candidates(api: object, room_id: str, username: str | None) -> list[str]:
+    """Every stream URL TikTok offers for *room_id*, best quality first.
+
+    Audio-only renditions (``only_audio=1``) are dropped whenever a video one
+    exists, so falling through the list can never silently produce an
+    audio-only recording.
+    """
+    getter = getattr(api, "get_live_url_candidates", None)
+    if getter is not None:
+        urls = [u for u in getter(room_id, user=username) if u]
+    else:
+        url = api.get_live_url(room_id, user=username)
+        urls = [url] if url else []
+    video = [u for u in urls if "only_audio=1" not in u]
+    return video or urls
+
+
+def _pick_live_url(
+    api: object, room_id: str, username: str | None, failed: set[str] | None = None,
+) -> str | None:
+    """Return the best stream URL that has not already failed this session.
+
+    TikTok's first candidate is sometimes dead (an HLS rendition answering
+    5xx, say) while the others play. Always taking the first one, as the
+    capture loop used to, failed the whole recording on that one bad URL.
+    """
+    candidates = _live_url_candidates(api, room_id, username)
+    for url in candidates:
+        if not failed or _url_key(url) not in failed:
+            return url
+    # Everything has failed once; start over rather than give up.
+    return candidates[0] if candidates else None
+
+
+def _resolve_fresh_live_url(
+    room_id: str, api: object, username: str | None = None, failed: set[str] | None = None,
+) -> str | None:
     """Resolve a fresh live URL for an active room_id.
 
     TikTok live URLs expire quickly; this re-fetches a brand new URL that can be
     used to start the next segment. Passing *username* lets the recorder fall
     back to scraping the live page directly when TikTok's webcast API returns
-    a restricted-access response (status 4003110).
+    a restricted-access response (status 4003110). URLs in *failed* (see
+    ``_url_key``) are skipped in favour of the next candidate.
     """
     try:
         if not api.is_room_alive(room_id):
             return None
-        url = api.get_live_url(room_id, user=username)
-        return url
+        return _pick_live_url(api, room_id, username, failed)
     except Exception as exc:
         logger.debug("Failed to resolve fresh URL for room %s: %s", room_id, exc)
         return None
@@ -276,7 +319,10 @@ class RecordingTask:
             _update_recording_status(self.recording_id, "failed", "User is not live")
             return
 
-        live_url = api.get_live_url(self.room_id, user=self.username)
+        # Stream URLs (by _url_key) that produced no data this session, so a
+        # resume moves on to the next candidate instead of retrying a dead one.
+        failed_urls: set[str] = set()
+        live_url = _pick_live_url(api, self.room_id, self.username)
         if not live_url:
             _update_recording_status(self.recording_id, "failed", "Could not get live stream URL")
             return
@@ -429,9 +475,10 @@ class RecordingTask:
                 )
             elif not self._stop_event.is_set():
                 logger.warning(
-                    "Recording %d: segment %d produced no data; treating as end-of-stream",
-                    self.recording_id, segment_index,
+                    "Recording %d: segment %d produced no data from %s; treating as end-of-stream",
+                    self.recording_id, segment_index, _url_key(live_url),
                 )
+                failed_urls.add(_url_key(live_url))
                 segment_failed = True
 
             # Manual stop or duration cap ends the session.
@@ -450,7 +497,7 @@ class RecordingTask:
                     # session, and try a fresh URL straight away: every second
                     # spent here is a second missing from the recording.
                     resume_attempts = 0
-                    fresh_url = _resolve_fresh_live_url(room_id, api, self.username)
+                    fresh_url = _resolve_fresh_live_url(room_id, api, self.username, failed=failed_urls)
                     if fresh_url:
                         live_url = fresh_url
                         resumed = True
@@ -492,8 +539,11 @@ class RecordingTask:
                     )
                     break
 
-                # User is still live — refresh the URL and resume.
-                fresh_url = _resolve_fresh_live_url(fresh_room_id, api, self.username)
+                # User is still live — refresh the URL and resume. A new room
+                # means a new broadcast, whose streams have not failed yet.
+                if fresh_room_id != room_id:
+                    failed_urls.clear()
+                fresh_url = _resolve_fresh_live_url(fresh_room_id, api, self.username, failed=failed_urls)
                 if not fresh_url:
                     logger.warning(
                         "Recording %d: user still live but could not resolve fresh URL; retrying",
