@@ -148,7 +148,7 @@ export interface LiveEvent {
   id: number
   recording_id: number
   offset_seconds: number
-  event_type: "chat" | "gift"
+  event_type: "chat" | "gift" | "battle"
   user_nickname: string
   user_unique_id: string | null
   content: string | null
@@ -156,6 +156,30 @@ export interface LiveEvent {
   gift_diamond_count: number | null
   gift_repeat_count: number | null
   created_at: string
+}
+
+export interface LiveSuggestion {
+  username: string
+  nickname: string
+  room_id: string
+  title: string
+  viewer_count: number | null
+  avatar_url: string | null
+  cover_url: string | null
+  live_url: string
+  /** Watched creators this person is connected to, strongest first. */
+  related_to: string[]
+  /** Captured events behind the suggestion, by type. */
+  signals: Partial<Record<"battle" | "gift" | "chat", number>>
+  score: number
+}
+
+export interface LiveSuggestions {
+  items: LiveSuggestion[]
+  generated_at: string | null
+  refreshing: boolean
+  checked: number
+  errors: number
 }
 
 export interface LiveEventListResponse {
@@ -351,7 +375,7 @@ export interface GlobalSearchResult {
     recording_id: number
     username: string
     offset_seconds: number
-    event_type: "chat" | "gift"
+    event_type: "chat" | "gift" | "battle"
     user_nickname: string
     content: string | null
     gift_name: string | null
@@ -636,6 +660,11 @@ export const api = {
     markAllRead: () =>
       fetchApi<{ unread: number }>("/notifications/read", { method: "POST" }),
     streamUrl: () => `${API_BASE}/notifications/stream`,
+  },
+
+  suggestions: {
+    live: (refresh = false) =>
+      fetchApi<LiveSuggestions>(`/suggestions/live${refresh ? "?refresh=true" : ""}`),
   },
 
   search: {

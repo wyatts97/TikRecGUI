@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Search as SearchIcon, FileText, MessageCircle, Gift, Clock, Play } from 'lucide-react'
+import { Search as SearchIcon, FileText, MessageCircle, Gift, Clock, Play, Swords } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/selia/card'
 import { Input } from '@/components/selia/input'
 import { Badge } from '@/components/selia/badge'
@@ -147,6 +147,11 @@ export default function GlobalSearch() {
                           <>
                             <Gift className="h-3.5 w-3.5 text-warning shrink-0" />
                             <span>Sent {ev.gift_name}</span>
+                          </>
+                        ) : ev.event_type === 'battle' ? (
+                          <>
+                            <Swords className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span>Battle vs {ev.user_nickname}</span>
                           </>
                         ) : (
                           <span className="line-clamp-2">{ev.content}</span>

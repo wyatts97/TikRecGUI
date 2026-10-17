@@ -30,6 +30,7 @@ from app.api.routes import (
     notifications as notifications_routes,
     search as search_routes,
     exports as export_routes,
+    suggestions as suggestion_routes,
 )
 from app.core.task_manager import task_manager, monitor_service
 
@@ -215,6 +216,7 @@ for _router in (
     notifications_routes.router,
     search_routes.router,
     export_routes.router,
+    suggestion_routes.router,
 ):
     app.include_router(_router, prefix="/api", dependencies=[_protected])
 

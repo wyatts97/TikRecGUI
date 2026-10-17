@@ -1,8 +1,23 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, ArrowRight, BellRing, Film, Radio, Scissors, Users, Video } from 'lucide-react'
+import {
+  AlertCircle,
+  ArrowRight,
+  BellRing,
+  Circle,
+  ExternalLink,
+  Eye,
+  Film,
+  Radio,
+  RefreshCw,
+  Scissors,
+  UserPlus,
+  Users,
+  Video,
+} from 'lucide-react'
 import { Card, CardBody, CardHeader, CardHeaderAction, CardTitle } from '@/components/selia/card'
+import { Badge } from '@/components/selia/badge'
 import { Button } from '@/components/selia/button'
 import { IconBox } from '@/components/selia/icon-box'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/selia/avatar'
@@ -21,7 +36,7 @@ import LiveProfileCard from '@/components/LiveProfileCard'
 import QueryError from '@/components/QueryError'
 import { RecordingVideoCard } from '@/components/ui/recording-video-card'
 import { ClipCard } from '@/components/ui/clip-card'
-import { api, type ActiveRecording, type AppNotification, type User } from '@/lib/api'
+import { api, type ActiveRecording, type AppNotification, type LiveSuggestion, type User } from '@/lib/api'
 import { cn, formatBytes } from '@/lib/utils'
 import { notificationIcon, notificationTarget, timeAgo } from '@/lib/notifications'
 import toast from 'react-hot-toast'
@@ -135,6 +150,8 @@ export default function Dashboard() {
         pendingUsername={startRecording.isPending ? startRecording.variables : undefined}
         onAvatarError={repairAvatar}
       />
+
+      <SuggestedLive watched={users} />
 
       <section aria-label="Library at a glance" className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
@@ -284,6 +301,171 @@ function LiveNow({
         </Rail>
       )}
     </section>
+  )
+}
+
+function suggestionReason(s: LiveSuggestion): string {
+  const shown = s.related_to.slice(0, 2).map((u) => `@${u}`).join(' & ')
+  const more = s.related_to.length > 2 ? ` +${s.related_to.length - 2}` : ''
+  const who = shown + more
+  if (s.signals.battle) return `Battled ${who}`
+  if (s.signals.gift) return `Gifts in ${who}'s lives`
+  return `Chats in ${who}'s lives`
+}
+
+/**
+ * Live creators connected to the watchlist: people they battled, and people
+ * who gift or chat in their lives. Built from captured chat, so it fills in
+ * as recordings accumulate.
+ */
+function SuggestedLive({ watched }: { watched: User[] }) {
+  const queryClient = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['suggestions', 'live'],
+    queryFn: () => api.suggestions.live(),
+    // Live checks run server-side in the background; poll faster meanwhile.
+    refetchInterval: (query) => (query.state.data?.refreshing ? 5000 : 60000),
+  })
+  const refresh = useMutation({
+    mutationFn: () => api.suggestions.live(true),
+    onSuccess: (result) => queryClient.setQueryData(['suggestions', 'live'], result),
+  })
+  const addToWatchlist = useMutation({
+    mutationFn: (username: string) => api.users.create(username),
+    onSuccess: (_user, username) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast.success(`Added @${username} to your watchlist`)
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const watchedNames = new Set(watched.map((u) => u.username.toLowerCase()))
+  // Someone just added stays in the server's cached result until it refreshes.
+  const items = (data?.items ?? []).filter((s) => !watchedNames.has(s.username.toLowerCase()))
+  const firstLoad = !data || (data.refreshing && !data.generated_at)
+
+  let summary: string
+  if (firstLoad) summary = 'Checking creators connected to your watchlist…'
+  else if (items.length > 0) summary = 'Creators your watchlist battles or hangs out with, live right now.'
+  else if (data.checked === 0)
+    summary = 'Suggestions build up from the chat, gifts and battles captured while you record.'
+  else summary = `None of the ${data.checked} creators connected to your watchlist are live right now.`
+
+  return (
+    <section aria-labelledby="suggested-live-title">
+      <div className="flex items-end justify-between gap-4 mb-4">
+        <div>
+          <h2 id="suggested-live-title" className="text-xl font-semibold tracking-tight text-foreground">
+            Suggested live
+          </h2>
+          <p className="text-sm text-muted mt-1">{summary}</p>
+        </div>
+        <Button
+          variant="plain"
+          size="xs"
+          onClick={() => refresh.mutate()}
+          disabled={refresh.isPending || data?.refreshing}
+          aria-label="Refresh suggestions"
+        >
+          <RefreshCw className={cn((refresh.isPending || data?.refreshing) && 'animate-spin motion-reduce:animate-none')} />
+          Refresh
+        </Button>
+      </div>
+
+      {firstLoad ? (
+        <Rail columns={4}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="h-56 rounded-xl bg-secondary animate-pulse motion-reduce:animate-none" />
+          ))}
+        </Rail>
+      ) : items.length > 0 ? (
+        <Rail columns={4}>
+          {items.map((s) => (
+            <SuggestionCard
+              key={s.username}
+              suggestion={s}
+              onAdd={() => addToWatchlist.mutate(s.username)}
+              adding={addToWatchlist.isPending && addToWatchlist.variables === s.username}
+            />
+          ))}
+        </Rail>
+      ) : null}
+    </section>
+  )
+}
+
+function SuggestionCard({
+  suggestion: s,
+  onAdd,
+  adding,
+}: {
+  suggestion: LiveSuggestion
+  onAdd: () => void
+  adding: boolean
+}) {
+  const [coverFailed, setCoverFailed] = useState(false)
+  return (
+    <Card className="overflow-hidden">
+      <a
+        href={s.live_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="relative block aspect-video bg-secondary"
+        aria-label={`Watch @${s.username} on TikTok`}
+      >
+        {s.cover_url && !coverFailed && (
+          <img
+            src={s.cover_url}
+            alt=""
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            onError={() => setCoverFailed(true)}
+            className="size-full object-cover"
+          />
+        )}
+        {/* On the cover image, not a theme surface: same fixed scrim as LiveProfileCard. */}
+        <Badge pill size="sm" className="absolute top-2 left-2 font-semibold tracking-wide bg-black/60 text-white backdrop-blur-sm">
+          <Circle className="fill-red-500 text-red-500" aria-hidden="true" />
+          LIVE
+        </Badge>
+        {s.viewer_count != null && (
+          <Badge pill size="sm" className="absolute top-2 right-2 tabular-nums bg-black/60 text-white backdrop-blur-sm">
+            <Eye aria-hidden="true" />
+            {s.viewer_count.toLocaleString()}
+          </Badge>
+        )}
+      </a>
+      <CardBody className="flex flex-col gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar size="sm">
+            {s.avatar_url && <AvatarImage src={s.avatar_url} alt="" referrerPolicy="no-referrer" />}
+            <AvatarFallback>{s.nickname.slice(0, 1).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="font-medium text-foreground truncate">{s.nickname}</p>
+            <p className="text-xs text-muted truncate">@{s.username}</p>
+          </div>
+        </div>
+        {s.title && <p className="text-sm text-foreground line-clamp-1">{s.title}</p>}
+        <p className="text-xs text-muted line-clamp-2 break-words">{suggestionReason(s)}</p>
+        <div className="flex items-center gap-2">
+          <Button size="xs" onClick={onAdd} disabled={adding} className="flex-1">
+            <UserPlus />
+            {adding ? 'Adding…' : 'Watchlist'}
+          </Button>
+          <a
+            href={s.live_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open on TikTok"
+            aria-label={`Open @${s.username} on TikTok`}
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <ExternalLink className="size-4" aria-hidden="true" />
+          </a>
+        </div>
+      </CardBody>
+    </Card>
   )
 }
 

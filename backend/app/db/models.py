@@ -97,7 +97,7 @@ class LiveEvent(Base):
     id = Column(Integer, primary_key=True, index=True)
     recording_id = Column(Integer, ForeignKey("recordings.id"), nullable=False, index=True)
     offset_seconds = Column(Float, nullable=False)
-    event_type = Column(String(20), nullable=False)  # "chat" or "gift"
+    event_type = Column(String(20), nullable=False)  # "chat", "gift" or "battle"
     user_nickname = Column(String(255), nullable=False)
     user_unique_id = Column(String(255), nullable=True)
     content = Column(Text, nullable=True)

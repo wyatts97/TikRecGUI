@@ -182,19 +182,27 @@ export default function ChatPanel({
                 <span className="text-muted-foreground">[{formatOffset(ev.offset_seconds)}]</span>
               )}
               {' '}
-              <span className="font-semibold text-foreground">{ev.user_nickname}</span>
-              {ev.event_type === 'chat' ? (
-                <>: <span>{ev.content}</span></>
+              {ev.event_type === 'battle' ? (
+                <span className="text-muted">
+                  ⚔ Battle vs <span className="font-semibold text-foreground">{ev.user_nickname}</span>
+                </span>
               ) : (
                 <>
-                  {' '}sent{' '}
-                  <span className="font-semibold">{ev.gift_name}</span>
-                  {ev.gift_repeat_count && ev.gift_repeat_count > 1 ? (
-                    <span> (x{ev.gift_repeat_count})</span>
-                  ) : null}
-                  {ev.gift_diamond_count ? (
-                    <span> 💎{ev.gift_diamond_count}</span>
-                  ) : null}
+                  <span className="font-semibold text-foreground">{ev.user_nickname}</span>
+                  {ev.event_type === 'chat' ? (
+                    <>: <span>{ev.content}</span></>
+                  ) : (
+                    <>
+                      {' '}sent{' '}
+                      <span className="font-semibold">{ev.gift_name}</span>
+                      {ev.gift_repeat_count && ev.gift_repeat_count > 1 ? (
+                        <span> (x{ev.gift_repeat_count})</span>
+                      ) : null}
+                      {ev.gift_diamond_count ? (
+                        <span> 💎{ev.gift_diamond_count}</span>
+                      ) : null}
+                    </>
+                  )}
                 </>
               )}
             </p>

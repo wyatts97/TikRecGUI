@@ -43,7 +43,7 @@ def _ttl() -> SimpleNamespace:
         UserOfflineError,
     )
     from TikTokLive.client.web.web_settings import WebDefaults
-    from TikTokLive.events import CommentEvent, ConnectEvent, GiftEvent
+    from TikTokLive.events import CommentEvent, ConnectEvent, GiftEvent, LinkMicBattleEvent
 
     _prebuild_shadowed_proto_schemas()
 
@@ -56,7 +56,19 @@ def _ttl() -> SimpleNamespace:
         CommentEvent=CommentEvent,
         ConnectEvent=ConnectEvent,
         GiftEvent=GiftEvent,
+        LinkMicBattleEvent=LinkMicBattleEvent,
     )
+
+
+def battle_opponents(event, host: str) -> list[tuple[str, str]]:
+    """``(unique_id, nickname)`` of every creator in a battle except *host*."""
+    opponents = []
+    for wrapper in getattr(event, "anchors_info", None) or []:
+        user = getattr(getattr(wrapper, "value", None), "user", None)
+        unique_id = getattr(user, "display_id", "") or ""
+        if unique_id and unique_id.lower() != host.lower():
+            opponents.append((unique_id, getattr(user, "nick_name", "") or unique_id))
+    return opponents
 
 
 # Locals of betterproto2's ``Message.parse(cls, data)`` frame.
@@ -185,6 +197,9 @@ class LiveChatListener:
         self._connect_count = 0
         self._chat_count = 0
         self._gift_count = 0
+        # (battle_id, opponent) pairs already stored: a battle re-broadcasts
+        # its line-up with every score update.
+        self._battles_seen: set[tuple[int, str]] = set()
 
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -466,6 +481,38 @@ class LiveChatListener:
                 )
             except Exception as e:
                 logger.warning("Failed to save gift event: %s", e)
+
+        @client.on(ttl.LinkMicBattleEvent)
+        async def on_battle(event):
+            # Who a creator battles is the best signal for related creators
+            # (see suggestion_service), and marks the battle in chat replay.
+            if self._stop_event.is_set():
+                return
+            battle_id = getattr(event, "battle_id", 0) or 0
+            fresh = [
+                (unique_id, nickname)
+                for unique_id, nickname in battle_opponents(event, self.username)
+                if (battle_id, unique_id.lower()) not in self._battles_seen
+            ]
+            if not fresh:
+                return
+            offset = (datetime.utcnow() - self.started_at).total_seconds()
+            try:
+                with get_session() as db:
+                    for unique_id, nickname in fresh:
+                        db.add(
+                            LiveEvent(
+                                recording_id=self.recording_id,
+                                offset_seconds=offset,
+                                event_type="battle",
+                                user_nickname=nickname,
+                                user_unique_id=unique_id,
+                            )
+                        )
+                    db.commit()
+                self._battles_seen.update((battle_id, u.lower()) for u, _ in fresh)
+            except Exception as e:
+                logger.warning("Failed to save battle event: %s", e)
 
         # --- Connect and poll ---
 
